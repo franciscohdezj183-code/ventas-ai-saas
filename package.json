@@ -1,0 +1,21 @@
+{
+  "name": "ventas-ai-saas",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Plataforma SaaS multiempresa para negocios pequenos.",
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace backend\" \"npm run dev --workspace frontend\"",
+    "dev:backend": "npm run dev --workspace backend",
+    "dev:frontend": "npm run dev --workspace frontend",
+    "install:all": "npm install --workspaces",
+    "start": "npm run start --workspace backend",
+    "build": "npm run build --workspace frontend"
+  },
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

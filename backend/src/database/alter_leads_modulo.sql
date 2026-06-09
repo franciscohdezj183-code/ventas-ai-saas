@@ -1,0 +1,3 @@
+ALTER TABLE leads
+  CHANGE COLUMN nombre nombre_cliente VARCHAR(150) NOT NULL,
+  CHANGE COLUMN origen interes VARCHAR(180) NULL;

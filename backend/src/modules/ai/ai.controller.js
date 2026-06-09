@@ -1,0 +1,27 @@
+import { generateCompanyReply, getAIStatus } from './ai.service.js';
+
+function resolveCompanyId(req) {
+  if (req.auth.user.rol === 'SUPER_ADMIN') {
+    return req.body.empresa_id;
+  }
+
+  return req.auth.user.empresaId;
+}
+
+export function aiStatus(req, res) {
+  res.json({ data: getAIStatus() });
+}
+
+export async function testReply(req, res, next) {
+  try {
+    const result = await generateCompanyReply({
+      empresaId: resolveCompanyId(req),
+      phone: req.body.telefono ?? 'test',
+      message: req.body.mensaje
+    });
+
+    res.json({ data: result });
+  } catch (error) {
+    next(error);
+  }
+}
