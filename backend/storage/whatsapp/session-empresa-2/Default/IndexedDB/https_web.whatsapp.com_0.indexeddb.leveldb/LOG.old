@@ -1,7 +1,0 @@
-2026/06/09-15:45:17.291 3f40 Reusing MANIFEST C:\Users\test1234\Documents\ventas-ai-saas\backend\storage\whatsapp\session-empresa-2\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001
-2026/06/09-15:45:17.292 3f40 Recovering log #3
-2026/06/09-15:45:17.293 3f40 Reusing old log C:\Users\test1234\Documents\ventas-ai-saas\backend\storage\whatsapp\session-empresa-2\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/000003.log 
-2026/06/09-15:45:17.299 3f40 Level-0 table #5: started
-2026/06/09-15:45:17.305 3f40 Level-0 table #5: 7106 bytes OK
-2026/06/09-15:45:17.306 3f40 Delete type=0 #3
-2026/06/09-15:45:17.307 3f40 Manual compaction at level-0 from '\x00\x01\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x02\x00\x00\x00' @ 0 : 0; will stop at (end)

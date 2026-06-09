@@ -11,7 +11,10 @@ ventas-ai-saas/
   backend/
     src/
       config/
+      ai/
+      bot/
       database/
+      mcp/
       middlewares/
       modules/
       routes/
@@ -36,7 +39,17 @@ ventas-ai-saas/
 El backend usa Express con estructura modular. Cada modulo mantiene sus rutas,
 controladores y servicios.
 
-Modulos principales:
+Capas principales:
+
+- `ai`: interpretacion de intenciones con OpenAI. No consulta catalogos ni decide datos de negocio.
+- `bot`: orquestacion de mensajes WhatsApp, intenciones, herramientas MCP y respuestas finales.
+- `mcp`: herramientas internas para consultar datos reales de MySQL por empresa.
+- `config`: variables de entorno y conexion MySQL.
+- `middlewares`: autenticacion, roles, errores y uploads.
+- `modules`: modulos HTTP de la API.
+- `routes`: registro central de rutas Express.
+
+Modulos HTTP principales:
 
 - `auth`: login, logout, usuario actual y validacion de roles.
 - `companies`: CRUD de empresas, solo `SUPER_ADMIN`.
@@ -48,7 +61,7 @@ Modulos principales:
 - `conversations`: historial de conversaciones.
 - `dashboard`: metricas comerciales.
 - `whatsapp`: sesiones por empresa con QR y estado de conexion.
-- `ai`: respuesta automatica multiempresa usando datos de cada empresa.
+- `ai`: endpoints de estado, prueba de intencion y prueba del orquestador.
 
 ## Frontend
 
@@ -79,6 +92,86 @@ Regla base:
 El backend resuelve el usuario autenticado desde el JWT y usa `empresa_id` para
 filtrar las consultas segun el rol.
 
+## Flujo IA + MCP
+
+La IA no recibe catalogos completos ni consulta MySQL. Su unica responsabilidad
+es interpretar el mensaje del cliente y devolver JSON valido.
+
+Flujo:
+
+1. Cliente envia mensaje por WhatsApp.
+2. Backend identifica `empresa_id` desde la sesion WhatsApp.
+3. Backend obtiene contexto minimo de empresa.
+4. `intentInterpreter` envia a OpenAI solo mensaje, contexto minimo e intenciones permitidas.
+5. OpenAI devuelve JSON estructurado.
+6. Backend valida el JSON.
+7. `messageOrchestrator` llama la herramienta MCP indicada.
+8. MCP consulta MySQL con `empresa_id`.
+9. Backend construye la respuesta final usando datos reales.
+10. Backend guarda la conversacion.
+
+Archivos principales:
+
+- `backend/src/ai/intentInterpreter.js`
+- `backend/src/mcp/mcpClient.js`
+- `backend/src/bot/messageOrchestrator.js`
+
+Contrato de intencion:
+
+```json
+{
+  "intencion": "BUSCAR_PRODUCTO",
+  "herramienta_mcp": "buscar_productos",
+  "parametros": {
+    "texto": "sala gris",
+    "categoria": "salas",
+    "precio_min": null,
+    "precio_max": 8000,
+    "stock_requerido": true
+  },
+  "confianza": 0.92,
+  "requiere_respuesta_ia": false
+}
+```
+
+Si el JSON es invalido o la intencion no es confiable, se usa fallback
+`MENSAJE_GENERAL`.
+
+Fallback:
+
+```json
+{
+  "intencion": "MENSAJE_GENERAL",
+  "herramienta_mcp": null,
+  "parametros": {},
+  "confianza": 0.3,
+  "requiere_respuesta_ia": true
+}
+```
+
+Herramientas MCP actuales:
+
+- `buscar_productos`: consulta productos activos por empresa.
+- `buscar_servicios`: consulta servicios activos por empresa.
+- `obtener_categorias`: lista categorias activas por empresa.
+- `obtener_promociones`: placeholder para futuras promociones.
+- `obtener_configuracion_empresa`: consulta datos basicos de empresa.
+- `crear_lead`: registra un lead con datos reales en MySQL.
+
+## Pruebas
+
+El backend usa `node:test` para pruebas unitarias.
+
+```bash
+npm test -w backend
+```
+
+La prueba principal esta en:
+
+```text
+backend/src/ai/intentInterpreter.test.js
+```
+
 ## Autenticacion
 
 El login valida email y contrasena con bcrypt. Si las credenciales son validas,
@@ -101,4 +194,3 @@ Middlewares:
 - `backend/storage/whatsapp`: sesiones de WhatsApp.
 
 Estas carpetas no deben subirse al repositorio, salvo sus `.gitkeep`.
-

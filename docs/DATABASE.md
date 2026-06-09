@@ -82,3 +82,17 @@ El esquema incluye indices para:
 - Revisar consultas con `EXPLAIN` cuando crezca el volumen.
 - Agregar paginacion en listados grandes.
 
+## Uso desde MCP
+
+Las consultas de negocio usadas por el bot deben pasar por herramientas MCP en:
+
+```text
+backend/src/mcp/mcpClient.js
+```
+
+Reglas:
+
+- Toda herramienta debe recibir y validar `empresa_id`.
+- Ninguna herramienta debe consultar datos de otra empresa.
+- OpenAI no debe ejecutar SQL ni recibir resultados completos para decidir.
+- El backend construye respuestas finales usando datos reales devueltos por MCP.

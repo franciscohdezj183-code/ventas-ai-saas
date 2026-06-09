@@ -12,6 +12,7 @@ Esta guia resume los pasos minimos antes de publicar el proyecto.
 - Configurar `NODE_ENV=production`.
 - Configurar `FRONTEND_URL` con el dominio real.
 - Ejecutar `npm audit --workspaces`.
+- Ejecutar `npm test -w backend`.
 
 ## Autenticacion
 
@@ -37,10 +38,13 @@ El proyecto usa JWT Bearer. Para una version productiva con varias instancias:
 Antes de activar respuestas automaticas:
 
 - Mantener `OPENAI_AUTO_REPLY=false` durante pruebas.
-- Revisar prompts y respuestas con datos reales.
-- Agregar auditoria de respuestas.
+- Verificar que OpenAI solo devuelva JSON de intencion.
+- No enviar catalogos completos a OpenAI.
+- No permitir que OpenAI defina precios, stock, productos ni datos de negocio.
+- Validar siempre el JSON antes de ejecutar herramientas.
+- Agregar auditoria de intenciones y herramientas ejecutadas.
 - Agregar handoff humano.
-- Limitar datos por `empresa_id`.
+- Limitar toda herramienta MCP por `empresa_id`.
 
 ## Uploads
 
@@ -86,10 +90,10 @@ redis: sesiones, rate limit y jobs
 - [ ] `schema.sql` importado.
 - [ ] Usuario `SUPER_ADMIN` creado.
 - [ ] `npm run build` exitoso.
+- [ ] `npm test -w backend` exitoso.
 - [ ] `npm audit --workspaces` revisado.
 - [ ] HTTPS activo.
 - [ ] Backups configurados.
 - [ ] Logs y monitoreo activos.
 - [ ] WhatsApp probado por empresa.
 - [ ] IA probada con `OPENAI_AUTO_REPLY=false`.
-

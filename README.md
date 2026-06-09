@@ -14,7 +14,9 @@ El proyecto contiene una base funcional para:
 - Importacion masiva de productos desde Excel.
 - Dashboard comercial.
 - Integracion WhatsApp con `whatsapp-web.js`.
-- Integracion OpenAI para respuestas automaticas multiempresa.
+- Integracion OpenAI como interprete de intenciones JSON.
+- Orquestador tipo MCP para consultar datos reales antes de responder.
+- Pruebas unitarias del interprete de intenciones.
 
 ## Stack
 
@@ -104,6 +106,7 @@ npm run dev
 npm run dev:backend
 npm run dev:frontend
 npm run build
+npm test -w backend
 npm start
 ```
 
@@ -111,6 +114,7 @@ npm start
 - `npm run dev:backend`: levanta solo la API.
 - `npm run dev:frontend`: levanta solo React/Vite.
 - `npm run build`: genera el build del frontend.
+- `npm test -w backend`: ejecuta pruebas del backend.
 - `npm start`: ejecuta el backend con Node.
 
 ## URLs locales
@@ -162,6 +166,72 @@ VALUES (1, 'Administrador', 'admin@demo.com', 'HASH_GENERADO', 'SUPER_ADMIN', 'A
 - [API](docs/API.md)
 - [Base de datos](docs/DATABASE.md)
 - [Guia de produccion](docs/PRODUCTION.md)
+
+## Flujo IA + MCP
+
+OpenAI no recibe catalogos completos ni consulta MySQL. La IA solo interpreta el
+mensaje del cliente y devuelve JSON. El backend valida ese JSON, ejecuta la
+herramienta MCP correspondiente, consulta datos reales y construye la respuesta
+final para WhatsApp.
+
+Archivos principales del flujo:
+
+- `backend/src/ai/intentInterpreter.js`
+- `backend/src/mcp/mcpClient.js`
+- `backend/src/bot/messageOrchestrator.js`
+- `backend/src/ai/intentInterpreter.test.js`
+
+Contrato de salida de la IA:
+
+```json
+{
+  "intencion": "BUSCAR_PRODUCTO",
+  "herramienta_mcp": "buscar_productos",
+  "parametros": {
+    "texto": "sala gris",
+    "categoria": "salas",
+    "precio_min": null,
+    "precio_max": 8000,
+    "stock_requerido": true
+  },
+  "confianza": 0.92,
+  "requiere_respuesta_ia": false
+}
+```
+
+Fallback obligatorio cuando la IA no entiende o devuelve JSON invalido:
+
+```json
+{
+  "intencion": "MENSAJE_GENERAL",
+  "herramienta_mcp": null,
+  "parametros": {},
+  "confianza": 0.3,
+  "requiere_respuesta_ia": true
+}
+```
+
+Herramientas MCP disponibles:
+
+- `buscar_productos`
+- `buscar_servicios`
+- `obtener_categorias`
+- `obtener_promociones`
+- `obtener_configuracion_empresa`
+- `crear_lead`
+
+## Pruebas
+
+```bash
+npm test -w backend
+```
+
+Las pruebas actuales validan que el interprete:
+
+- Devuelva intenciones validas para mensajes reales.
+- Asigne la herramienta MCP correcta.
+- Use fallback ante JSON invalido.
+- Rechace herramientas que no corresponden a la intencion.
 
 ## Seguridad antes de subir a produccion
 

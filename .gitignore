@@ -1,20 +1,48 @@
-node_modules
-dist
+# Dependencias
+node_modules/
+
+# Build
+dist/
+build/
+
+# Variables de entorno
 .env
 .env.*
 !.env.example
+
+# Logs
 npm-debug.log*
 *.log
-coverage
+
+# Coverage
+coverage/
+
+# WhatsApp Sessions
 backend/storage/*
 !backend/storage/.gitkeep
-!backend/storage/whatsapp/
+
+backend/storage/whatsapp/*
 !backend/storage/whatsapp/.gitkeep
+
 backend/.wwebjs_cache/
+
+# Uploads
 backend/uploads/*
 !backend/uploads/.gitkeep
-!backend/uploads/products/
+
+backend/uploads/products/*
 !backend/uploads/products/.gitkeep
-!backend/uploads/imports/
+
+backend/uploads/imports/*
 !backend/uploads/imports/.gitkeep
+
+# Sistema operativo
 .DS_Store
+Thumbs.db
+
+# VSCode
+.vscode/
+
+# Archivos temporales
+*.tmp
+*.temp

@@ -217,8 +217,84 @@ Campos:
 | Metodo | Ruta | Descripcion |
 | --- | --- | --- |
 | GET | `/ai/status` | Estado de configuracion IA |
-| POST | `/ai/test-reply` | Genera respuesta de prueba |
+| POST | `/ai/test-intent` | Interpreta intencion y devuelve JSON validado |
+| POST | `/ai/test-reply` | Ejecuta el orquestador completo y genera respuesta final |
 
-La IA consulta productos y servicios de la empresa correspondiente, detecta
-intencion de compra y puede generar leads.
+La IA no consulta productos, servicios ni MySQL. Solo interpreta el mensaje y
+devuelve JSON. Las consultas de negocio se hacen mediante herramientas MCP.
 
+Ejemplo de `/ai/test-intent`:
+
+```json
+{
+  "empresa_id": 1,
+  "mensaje": "Busco un comedor para 6 personas barato",
+  "contexto": {
+    "nombre": "Empresa Demo",
+    "tipo_negocio": "Muebleria"
+  }
+}
+```
+
+Respuesta esperada:
+
+```json
+{
+  "data": {
+    "intencion": "BUSCAR_PRODUCTO",
+    "herramienta_mcp": "buscar_productos",
+    "parametros": {
+      "texto": "comedor 6 personas barato",
+      "categoria": "comedor"
+    },
+    "confianza": 0.9,
+    "requiere_respuesta_ia": false
+  }
+}
+```
+
+Fallback esperado si OpenAI devuelve JSON invalido o una herramienta incorrecta:
+
+```json
+{
+  "data": {
+    "intencion": "MENSAJE_GENERAL",
+    "herramienta_mcp": null,
+    "parametros": {},
+    "confianza": 0.3,
+    "requiere_respuesta_ia": true
+  }
+}
+```
+
+Intenciones soportadas:
+
+- `SALUDO`
+- `DESPEDIDA`
+- `AGRADECIMIENTO`
+- `AYUDA`
+- `BUSCAR_PRODUCTO`
+- `BUSCAR_SERVICIO`
+- `VER_CATEGORIAS`
+- `VER_PROMOCIONES`
+- `CONSULTAR_PRECIO`
+- `CONSULTAR_STOCK`
+- `CONSULTAR_HORARIO`
+- `CONSULTAR_UBICACION`
+- `INTENCION_COMPRA`
+- `AGENDAR_CITA`
+- `HABLAR_ASESOR`
+- `FUERA_DE_TEMA`
+- `MENSAJE_GENERAL`
+
+Herramientas MCP usadas por el orquestador:
+
+- `buscar_productos`
+- `buscar_servicios`
+- `obtener_categorias`
+- `obtener_promociones`
+- `obtener_configuracion_empresa`
+- `crear_lead`
+
+Regla de seguridad: OpenAI nunca ejecuta SQL, no recibe catalogos completos y
+no decide precios, stock ni datos de negocio.
