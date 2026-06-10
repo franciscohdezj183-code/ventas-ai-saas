@@ -1,70 +1,183 @@
-import { Edit3, Trash2 } from 'lucide-react';
+import { Eye, Pencil, Phone, Trash2 } from 'lucide-react';
+import { DataTable, EmptyState, StatusBadge } from '../../components/ui/index.js';
 
-function statusClass(status) {
-  if (status === 'GANADO') {
-    return 'status-pill active';
-  }
+export const CRM_STATES = ['NUEVO', 'CONTACTADO', 'COTIZADO', 'GANADO', 'PERDIDO'];
 
-  if (status === 'PERDIDO') {
-    return 'status-pill inactive';
-  }
+export const stateLabels = {
+  NUEVO: 'Nuevo',
+  EN_PROCESO: 'Contactado',
+  CONTACTADO: 'Contactado',
+  COTIZADO: 'Cotizado',
+  GANADO: 'Ganado',
+  PERDIDO: 'Perdido'
+};
 
-  return 'status-pill';
+export function normalizeLeadState(state) {
+  return state === 'EN_PROCESO' ? 'CONTACTADO' : state ?? 'NUEVO';
 }
 
-export function LeadTable({ isLoading, leads, onDelete, onEdit }) {
-  if (isLoading) {
-    return <div className="empty-state table-message">Cargando leads...</div>;
+export function getLeadPriority(lead) {
+  const state = normalizeLeadState(lead.estado);
+  const createdAt = lead.fecha_creacion ? new Date(lead.fecha_creacion) : null;
+  const ageHours = createdAt ? (Date.now() - createdAt.getTime()) / 36e5 : 999;
+
+  if (state === 'NUEVO' && ageHours <= 24) {
+    return { label: 'Alta', tone: 'danger' };
+  }
+
+  if (state === 'COTIZADO') {
+    return { label: 'Media', tone: 'warning' };
+  }
+
+  return { label: 'Normal', tone: 'info' };
+}
+
+function formatDate(value) {
+  return value ? new Date(value).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }) : '-';
+}
+
+function LeadActions({ lead, onDelete, onEdit, onView }) {
+  return (
+    <div className="table-actions lead-actions">
+      <button aria-label="Ver lead" onClick={() => onView(lead)} type="button">
+        <Eye size={16} aria-hidden="true" />
+      </button>
+      <button aria-label="Editar lead" onClick={() => onEdit(lead)} type="button">
+        <Pencil size={16} aria-hidden="true" />
+      </button>
+      <button aria-label="Eliminar lead" onClick={() => onDelete(lead)} type="button">
+        <Trash2 size={16} aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
+function PhoneLink({ phone }) {
+  const clean = String(phone ?? '').replace(/\s/g, '');
+
+  return phone ? (
+    <a className="phone-link" href={`tel:${clean}`}>
+      <Phone size={15} aria-hidden="true" />
+      {phone}
+    </a>
+  ) : (
+    '-'
+  );
+}
+
+function LeadCard({ lead, onDelete, onEdit, onView }) {
+  const state = normalizeLeadState(lead.estado);
+  const priority = getLeadPriority(lead);
+
+  return (
+    <article className="crm-lead-card">
+      <div className="crm-lead-card-header">
+        <div>
+          <strong>{lead.nombre_cliente}</strong>
+          <span>{lead.interes}</span>
+        </div>
+        <StatusBadge status={state}>{stateLabels[state]}</StatusBadge>
+      </div>
+      <PhoneLink phone={lead.telefono} />
+      <div className="crm-lead-meta">
+        <span className={`priority-badge ${priority.tone}`}>{priority.label}</span>
+        <span>{lead.origen ?? 'Panel'}</span>
+        <span>{formatDate(lead.fecha_creacion)}</span>
+      </div>
+      {lead.notas ? <p>{lead.notas}</p> : null}
+      <LeadActions lead={lead} onDelete={onDelete} onEdit={onEdit} onView={onView} />
+    </article>
+  );
+}
+
+export function LeadKanban({ leads, onDelete, onEdit, onView }) {
+  if (!leads.length) {
+    return (
+      <EmptyState
+        title="Sin leads en el pipeline"
+        description="Los prospectos apareceran aqui cuando entren desde el bot o el panel."
+      />
+    );
   }
 
   return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Cliente</th>
-            <th>Telefono</th>
-            <th>Interes</th>
-            <th>Estado</th>
-            <th>Empresa</th>
-            <th>Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          {leads.length === 0 ? (
-            <tr>
-              <td colSpan="6" className="empty-state">
-                No hay leads registrados todavia.
-              </td>
-            </tr>
-          ) : (
-            leads.map((lead) => (
-              <tr key={lead.id}>
-                <td>
-                  <strong>{lead.nombre_cliente}</strong>
-                  <span className="muted-cell">ID {lead.id}</span>
-                </td>
-                <td>{lead.telefono}</td>
-                <td>{lead.interes}</td>
-                <td>
-                  <span className={statusClass(lead.estado)}>{lead.estado}</span>
-                </td>
-                <td>{lead.empresa_nombre}</td>
-                <td>
-                  <div className="table-actions">
-                    <button aria-label="Editar lead" onClick={() => onEdit(lead)} type="button">
-                      <Edit3 size={16} aria-hidden="true" />
-                    </button>
-                    <button aria-label="Eliminar lead" onClick={() => onDelete(lead)} type="button">
-                      <Trash2 size={16} aria-hidden="true" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+    <div className="crm-kanban">
+      {CRM_STATES.map((state) => {
+        const columnLeads = leads.filter((lead) => normalizeLeadState(lead.estado) === state);
+
+        return (
+          <section className="crm-kanban-column" key={state}>
+            <header>
+              <span>{stateLabels[state]}</span>
+              <strong>{columnLeads.length}</strong>
+            </header>
+            <div>
+              {columnLeads.length ? (
+                columnLeads.map((lead) => (
+                  <LeadCard key={lead.id} lead={lead} onDelete={onDelete} onEdit={onEdit} onView={onView} />
+                ))
+              ) : (
+                <div className="crm-kanban-empty">Sin leads</div>
+              )}
+            </div>
+          </section>
+        );
+      })}
     </div>
+  );
+}
+
+export function LeadTable({ isLoading, leads, onDelete, onEdit, onView, viewMode = 'table' }) {
+  const columns = [
+    {
+      key: 'cliente',
+      header: 'Cliente',
+      render: (lead) => (
+        <div className="lead-client-cell">
+          <strong>{lead.nombre_cliente}</strong>
+          <span>{lead.interes}</span>
+        </div>
+      )
+    },
+    { key: 'telefono', header: 'Telefono', render: (lead) => <PhoneLink phone={lead.telefono} /> },
+    {
+      key: 'estado',
+      header: 'Estado',
+      render: (lead) => {
+        const state = normalizeLeadState(lead.estado);
+        return <StatusBadge status={state}>{stateLabels[state]}</StatusBadge>;
+      }
+    },
+    {
+      key: 'prioridad',
+      header: 'Prioridad',
+      render: (lead) => {
+        const priority = getLeadPriority(lead);
+        return <span className={`priority-badge ${priority.tone}`}>{priority.label}</span>;
+      }
+    },
+    { key: 'origen', header: 'Origen', render: (lead) => lead.origen ?? 'Panel' },
+    { key: 'fecha', header: 'Fecha', render: (lead) => formatDate(lead.fecha_creacion) },
+    {
+      key: 'acciones',
+      header: 'Acciones',
+      render: (lead) => <LeadActions lead={lead} onDelete={onDelete} onEdit={onEdit} onView={onView} />
+    }
+  ];
+
+  if (viewMode === 'kanban' && !isLoading) {
+    return <LeadKanban leads={leads} onDelete={onDelete} onEdit={onEdit} onView={onView} />;
+  }
+
+  return (
+    <DataTable
+      className="crm-leads-table"
+      columns={columns}
+      data={leads}
+      emptyDescription="Los interesados creados por el bot y el panel apareceran aqui."
+      emptyTitle="No hay leads registrados"
+      isLoading={isLoading}
+      loadingMessage="Cargando leads..."
+    />
   );
 }

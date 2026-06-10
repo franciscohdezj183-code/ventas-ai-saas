@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 
 const initialForm = {
   nombre: '',
+  tipo: 'PRODUCTO',
+  estado: 'ACTIVA',
   empresa_id: ''
 };
 
@@ -28,6 +30,8 @@ export function CategoryForm({ canSelectCompany, category, companies, isSaving, 
     if (category) {
       setForm({
         nombre: category.nombre ?? '',
+        tipo: category.tipo ?? 'PRODUCTO',
+        estado: category.estado ?? 'ACTIVA',
         empresa_id: String(category.empresa_id ?? '')
       });
       return;
@@ -62,6 +66,8 @@ export function CategoryForm({ canSelectCompany, category, companies, isSaving, 
 
     onSubmit({
       nombre: form.nombre,
+      tipo: form.tipo,
+      estado: form.estado,
       empresa_id: form.empresa_id ? Number(form.empresa_id) : undefined
     });
   }
@@ -80,6 +86,22 @@ export function CategoryForm({ canSelectCompany, category, companies, isSaving, 
             value={form.nombre}
           />
           {errors.nombre ? <small>{errors.nombre}</small> : null}
+        </label>
+
+        <label className="field-group" htmlFor="category-type">
+          <span>Tipo</span>
+          <select id="category-type" name="tipo" onChange={handleChange} value={form.tipo}>
+            <option value="PRODUCTO">PRODUCTO</option>
+            <option value="SERVICIO">SERVICIO</option>
+          </select>
+        </label>
+
+        <label className="field-group" htmlFor="category-status">
+          <span>Estado</span>
+          <select id="category-status" name="estado" onChange={handleChange} value={form.estado}>
+            <option value="ACTIVA">ACTIVA</option>
+            <option value="INACTIVA">INACTIVA</option>
+          </select>
         </label>
 
         {canSelectCompany ? (

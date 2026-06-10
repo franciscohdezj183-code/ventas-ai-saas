@@ -5,6 +5,7 @@ const initialForm = {
   telefono: '',
   interes: '',
   estado: 'NUEVO',
+  notas: '',
   empresa_id: ''
 };
 
@@ -41,7 +42,8 @@ export function LeadForm({ canSelectCompany, companies, isSaving, lead, onCancel
         nombre_cliente: lead.nombre_cliente ?? '',
         telefono: lead.telefono ?? '',
         interes: lead.interes ?? '',
-        estado: lead.estado ?? 'NUEVO',
+        estado: lead.estado === 'EN_PROCESO' ? 'CONTACTADO' : lead.estado ?? 'NUEVO',
+        notas: lead.notas ?? '',
         empresa_id: String(lead.empresa_id ?? '')
       });
       return;
@@ -126,10 +128,22 @@ export function LeadForm({ canSelectCompany, companies, isSaving, lead, onCancel
           <span>Estado</span>
           <select id="lead-status" name="estado" onChange={handleChange} value={form.estado}>
             <option value="NUEVO">NUEVO</option>
-            <option value="EN_PROCESO">EN_PROCESO</option>
+            <option value="CONTACTADO">CONTACTADO</option>
+            <option value="COTIZADO">COTIZADO</option>
             <option value="GANADO">GANADO</option>
             <option value="PERDIDO">PERDIDO</option>
           </select>
+        </label>
+
+        <label className="field-group full-field" htmlFor="lead-notes">
+          <span>Notas internas</span>
+          <textarea
+            id="lead-notes"
+            name="notas"
+            onChange={handleChange}
+            placeholder="Seguimiento, acuerdos, objeciones o siguiente paso"
+            value={form.notas}
+          />
         </label>
 
         {canSelectCompany ? (

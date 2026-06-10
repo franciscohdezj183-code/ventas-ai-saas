@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { api } from '../config/api.js';
 import { clearStoredToken, getStoredToken, setStoredToken } from '../features/auth/tokenStorage.js';
 
@@ -33,6 +33,36 @@ export function AuthProvider({ children }) {
       setUser(null);
     }
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function hydrateUser() {
+      if (!token || user) {
+        return;
+      }
+
+      try {
+        const response = await api.get('/auth/me');
+
+        if (isMounted) {
+          setUser(response.data.data);
+        }
+      } catch {
+        if (isMounted) {
+          clearStoredToken();
+          setToken(null);
+          setUser(null);
+        }
+      }
+    }
+
+    hydrateUser();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [token, user]);
 
   const value = useMemo(
     () => ({

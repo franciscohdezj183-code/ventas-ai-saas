@@ -1,0 +1,3 @@
+ALTER TABLE servicios
+  ADD COLUMN tipo_precio ENUM('FIJO', 'DESDE', 'POR_M2', 'COTIZACION') NOT NULL DEFAULT 'FIJO'
+  AFTER precio;

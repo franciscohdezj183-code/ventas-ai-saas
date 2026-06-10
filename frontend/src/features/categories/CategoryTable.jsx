@@ -1,60 +1,76 @@
-import { Edit3, Trash2 } from 'lucide-react';
+import { Edit3, Power, Tag, Trash2 } from 'lucide-react';
+import { DataTable, StatusBadge } from '../../components/ui/index.js';
 
-export function CategoryTable({ categories, isLoading, onDelete, onEdit }) {
-  if (isLoading) {
-    return <div className="empty-state table-message">Cargando categorias...</div>;
-  }
+function formatDate(value) {
+  return value ? new Date(value).toLocaleDateString('es-MX', { dateStyle: 'medium' }) : '-';
+}
+
+export function CategoryTable({ categories, isLoading, onDelete, onEdit, onToggle }) {
+  const columns = [
+    {
+      key: 'categoria',
+      header: 'Categoria',
+      render: (category) => (
+        <div className="category-table-name">
+          <span className="category-table-icon">
+            <Tag size={16} aria-hidden="true" />
+          </span>
+          <div>
+            <strong>{category.nombre}</strong>
+            <span className="muted-cell">ID {category.id}</span>
+          </div>
+        </div>
+      )
+    },
+    { key: 'empresa', header: 'Empresa', render: (category) => category.empresa_nombre },
+    {
+      key: 'tipo',
+      header: 'Tipo',
+      render: (category) => <span className={`category-type-badge ${String(category.tipo ?? 'PRODUCTO').toLowerCase()}`}>{category.tipo ?? 'PRODUCTO'}</span>
+    },
+    {
+      key: 'estado',
+      header: 'Estado',
+      render: (category) => <StatusBadge status={category.estado ?? 'ACTIVA'}>{category.estado ?? 'ACTIVA'}</StatusBadge>
+    },
+    {
+      key: 'creada',
+      header: 'Creada',
+      render: (category) => formatDate(category.fecha_creacion)
+    },
+    {
+      key: 'acciones',
+      header: 'Acciones',
+      render: (category) => (
+        <div className="table-actions">
+          <button aria-label="Editar categoria" onClick={() => onEdit(category)} type="button">
+            <Edit3 size={16} aria-hidden="true" />
+          </button>
+          <button
+            aria-label={category.estado === 'ACTIVA' ? 'Desactivar categoria' : 'Activar categoria'}
+            onClick={() => onToggle(category)}
+            title={category.estado === 'ACTIVA' ? 'Desactivar' : 'Activar'}
+            type="button"
+          >
+            <Power size={16} aria-hidden="true" />
+          </button>
+          <button aria-label="Eliminar categoria" onClick={() => onDelete(category)} type="button">
+            <Trash2 size={16} aria-hidden="true" />
+          </button>
+        </div>
+      )
+    }
+  ];
 
   return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Categoria</th>
-            <th>Empresa</th>
-            <th>Creada</th>
-            <th>Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          {categories.length === 0 ? (
-            <tr>
-              <td colSpan="4" className="empty-state">
-                No hay categorias registradas todavia.
-              </td>
-            </tr>
-          ) : (
-            categories.map((category) => (
-              <tr key={category.id}>
-                <td>
-                  <strong>{category.nombre}</strong>
-                  <span className="muted-cell">ID {category.id}</span>
-                </td>
-                <td>{category.empresa_nombre}</td>
-                <td>{new Date(category.fecha_creacion).toLocaleDateString()}</td>
-                <td>
-                  <div className="table-actions">
-                    <button
-                      aria-label="Editar categoria"
-                      onClick={() => onEdit(category)}
-                      type="button"
-                    >
-                      <Edit3 size={16} aria-hidden="true" />
-                    </button>
-                    <button
-                      aria-label="Eliminar categoria"
-                      onClick={() => onDelete(category)}
-                      type="button"
-                    >
-                      <Trash2 size={16} aria-hidden="true" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      columns={columns}
+      data={categories}
+      emptyDescription="Crea categorias para ordenar productos y servicios."
+      emptyTitle="No hay categorias registradas"
+      isLoading={isLoading}
+      loadingMessage="Cargando categorias..."
+      className="categories-data-table"
+    />
   );
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Bot } from 'lucide-react';
+import { StatusBadge } from '../../components/ui/StatusBadge.jsx';
 import { fetchAIStatus } from './aiApi.js';
 
 export function AIStatusCard() {
@@ -22,9 +23,13 @@ export function AIStatusCard() {
       <Bot size={22} aria-hidden="true" />
       <div>
         <span>IA comercial</span>
-        <strong>{status?.configured ? 'Configurada' : 'Sin API Key'}</strong>
+        <strong>
+          <StatusBadge status={status?.configured ? 'ACTIVO' : 'INACTIVO'}>
+            {status?.configured ? 'Configurada' : 'Sin API Key'}
+          </StatusBadge>
+        </strong>
         <small>
-          Modelo {status?.model ?? '...'} · Auto-respuesta{' '}
+          Modelo {status?.model ?? '...'} - Auto-respuesta{' '}
           {status?.auto_reply ? 'activa' : 'desactivada'}
         </small>
       </div>

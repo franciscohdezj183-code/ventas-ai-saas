@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Bot, Building2, MessageSquare, Smartphone } from 'lucide-react';
+import { ConfirmModal, ErrorState, LoadingState } from '../../components/ui/index.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { fetchCompanies } from '../companies/companiesApi.js';
 import {
@@ -22,6 +24,7 @@ export function CompanySettingsManager() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [pendingReset, setPendingReset] = useState(null);
 
   const selectedSettings = useMemo(() => {
     if (canSelectCompany) {
@@ -107,9 +110,13 @@ export function CompanySettingsManager() {
       return;
     }
 
-    const shouldDelete = window.confirm('Restablecer la configuracion personalizada de esta empresa?');
+    setPendingReset(empresaId);
+  }
 
-    if (!shouldDelete) {
+  async function confirmDelete() {
+    const empresaId = pendingReset;
+
+    if (!empresaId) {
       return;
     }
 
@@ -124,6 +131,7 @@ export function CompanySettingsManager() {
           String(settings.empresa_id) === String(empresaId) ? nextSettings : settings
         )
       );
+      setPendingReset(null);
     } catch (requestError) {
       setError(getApiError(requestError));
     } finally {
@@ -132,12 +140,39 @@ export function CompanySettingsManager() {
   }
 
   if (isLoading) {
-    return <div className="empty-state">Cargando configuracion...</div>;
+    return <LoadingState message="Cargando configuracion..." />;
   }
 
   return (
-    <div className="companies-manager">
-      {error ? <div className="form-alert">{error}</div> : null}
+    <div className="resource-page settings-page">
+      <div className="settings-unified-header">
+        <div>
+          <span className="settings-header-icon">
+            <Bot size={22} aria-hidden="true" />
+          </span>
+          <div>
+            <p className="eyebrow">Operacion</p>
+            <h1>Configuracion de empresa</h1>
+            <p>Personaliza el bot, politicas comerciales, horarios y canales por empresa.</p>
+          </div>
+        </div>
+        <div className="settings-header-summary">
+          <div>
+            <Building2 size={18} aria-hidden="true" />
+            <span>{selectedSettings?.empresa_nombre ?? 'Empresa'}</span>
+          </div>
+          <div className={selectedSettings?.activo_ia ? 'active' : ''}>
+            <MessageSquare size={18} aria-hidden="true" />
+            <span>{selectedSettings?.activo_ia ? 'IA activa' : 'IA pausada'}</span>
+          </div>
+          <div className={selectedSettings?.activo_whatsapp ? 'active' : ''}>
+            <Smartphone size={18} aria-hidden="true" />
+            <span>{selectedSettings?.activo_whatsapp ? 'WhatsApp activo' : 'WhatsApp pausado'}</span>
+          </div>
+        </div>
+      </div>
+
+      {error ? <ErrorState message={error} onRetry={loadData} /> : null}
 
       <CompanySettingsForm
         canSelectCompany={canSelectCompany}
@@ -147,6 +182,16 @@ export function CompanySettingsManager() {
         onDelete={handleDelete}
         onSubmit={handleSubmit}
         settings={selectedSettings}
+      />
+
+      <ConfirmModal
+        destructive
+        confirmLabel="Restablecer"
+        description="Se eliminaran los valores personalizados y se usara la configuracion base."
+        onCancel={() => setPendingReset(null)}
+        onConfirm={confirmDelete}
+        open={Boolean(pendingReset)}
+        title="Restablecer configuracion"
       />
     </div>
   );

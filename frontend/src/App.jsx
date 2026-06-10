@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import {
   CategoriesPage,
+  BotPromptsPage,
   CompaniesPage,
   ConversationsPage,
   LeadsPage,
@@ -37,6 +38,7 @@ export function App() {
         <Route path="conversaciones" element={<ConversationsPage />} />
         <Route path="whatsapp" element={<WhatsAppPage />} />
         <Route path="configuracion" element={<SettingsPage />} />
+        <Route path="prompts-bot" element={<BotPromptsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

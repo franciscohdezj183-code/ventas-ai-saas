@@ -16,6 +16,18 @@ function toDateOnly(value) {
   return Number.isNaN(date.getTime()) ? null : value;
 }
 
+function toDateKey(value) {
+  if (!value) {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString().slice(0, 10);
+  }
+
+  return String(value).slice(0, 10);
+}
+
 function addDays(dateOnly, days) {
   const date = new Date(`${dateOnly}T00:00:00.000Z`);
   date.setUTCDate(date.getUTCDate() + days);
@@ -26,6 +38,16 @@ function defaultStartDate() {
   const date = new Date();
   date.setUTCDate(date.getUTCDate() - (DEFAULT_RANGE_DAYS - 1));
   return date.toISOString().slice(0, 10);
+}
+
+function todayRange() {
+  const today = new Date().toISOString().slice(0, 10);
+
+  return {
+    fecha: today,
+    start: `${today} 00:00:00`,
+    endExclusive: `${addDays(today, 1)} 00:00:00`
+  };
 }
 
 function normalizeDateFilters(filters = {}) {
@@ -91,6 +113,12 @@ async function scalarCount(sql, params = []) {
   return Number(rows[0]?.total ?? 0);
 }
 
+function scopedWhatsappStatuses(auth) {
+  return listWhatsappStatuses().filter(
+    (status) => isSuperAdmin(auth) || Number(status.empresa_id) === getAuthenticatedEmpresaId(auth)
+  );
+}
+
 async function leadCountByState(auth, dateRange, state) {
   const where = combineWhere(
     companyCondition(auth, 'l'),
@@ -126,14 +154,7 @@ export async function getDashboardSummary(auth, filters = {}) {
     scalarCount(`SELECT COUNT(*) AS total FROM empresas e ${activeCompanyWhere.clause}`, activeCompanyWhere.params)
   ]);
 
-  const whatsappStatuses = listWhatsappStatuses();
-  const whatsappConnected = whatsappStatuses.filter((status) => {
-    if (status.status !== 'CONNECTED') {
-      return false;
-    }
-
-    return isSuperAdmin(auth) || Number(status.empresa_id) === getAuthenticatedEmpresaId(auth);
-  }).length;
+  const whatsappConnected = scopedWhatsappStatuses(auth).filter((status) => status.status === 'CONNECTED').length;
   const conversionRate = totalLeads > 0 ? Number(((leadsGanados / totalLeads) * 100).toFixed(2)) : 0;
 
   return {
@@ -151,6 +172,147 @@ export async function getDashboardSummary(auth, filters = {}) {
       sesiones_whatsapp_conectadas: whatsappConnected
     }
   };
+}
+
+export async function getOperationalMetrics(auth) {
+  const range = todayRange();
+  const leadTodayWhere = combineWhere(companyCondition(auth, 'l'), dateCondition('l', 'fecha_creacion', range));
+  const conversationTodayWhere = combineWhere(companyCondition(auth, 'c'), dateCondition('c', 'fecha', range));
+  const productWhere = combineWhere(companyCondition(auth, 'p'), { clause: "AND p.estado = 'ACTIVO'", params: [] });
+  const serviceWhere = combineWhere(companyCondition(auth, 's'), { clause: "AND s.estado = 'ACTIVO'", params: [] });
+  const activeCompanyWhere = isSuperAdmin(auth)
+    ? { clause: "WHERE e.activo = 1 AND e.estado = 'ACTIVA'", params: [] }
+    : { clause: "WHERE e.id = ? AND e.activo = 1 AND e.estado = 'ACTIVA'", params: [getAuthenticatedEmpresaId(auth)] };
+
+  const [leadsToday, conversationsToday, activeProducts, activeServices, activeCompanies] = await Promise.all([
+    scalarCount(`SELECT COUNT(*) AS total FROM leads l ${leadTodayWhere.clause}`, leadTodayWhere.params),
+    scalarCount(`SELECT COUNT(*) AS total FROM conversaciones c ${conversationTodayWhere.clause}`, conversationTodayWhere.params),
+    scalarCount(`SELECT COUNT(*) AS total FROM productos p ${productWhere.clause}`, productWhere.params),
+    scalarCount(`SELECT COUNT(*) AS total FROM servicios s ${serviceWhere.clause}`, serviceWhere.params),
+    scalarCount(`SELECT COUNT(*) AS total FROM empresas e ${activeCompanyWhere.clause}`, activeCompanyWhere.params)
+  ]);
+
+  const whatsappStatuses = scopedWhatsappStatuses(auth);
+  const whatsappConnected = whatsappStatuses.filter((status) => status.status === 'CONNECTED').length;
+
+  return {
+    fecha: range.fecha,
+    leads_hoy: leadsToday,
+    conversaciones_hoy: conversationsToday,
+    productos_activos: activeProducts,
+    servicios_activos: activeServices,
+    whatsapp: {
+      conectadas: whatsappConnected,
+      desconectadas: Math.max(activeCompanies - whatsappConnected, 0),
+      total: activeCompanies,
+      estado: whatsappConnected > 0 ? 'CONNECTED' : 'DISCONNECTED'
+    }
+  };
+}
+
+export async function getLeadStates(auth, filters = {}) {
+  const dateRange = normalizeDateFilters(filters);
+  const where = combineWhere(companyCondition(auth, 'l'), dateCondition('l', 'fecha_creacion', dateRange));
+  const [rows] = await query(
+    `SELECT l.estado, COUNT(*) AS total
+     FROM leads l
+     ${where.clause}
+     GROUP BY l.estado`,
+    where.params
+  );
+
+  const totalsByState = new Map(rows.map((row) => [row.estado, Number(row.total)]));
+
+  return ['NUEVO', 'EN_PROCESO', 'GANADO', 'PERDIDO'].map((estado) => ({
+    estado,
+    total: totalsByState.get(estado) ?? 0
+  }));
+}
+
+export async function getDailyActivity(auth, filters = {}) {
+  const dateRange = normalizeDateFilters(filters);
+  const leadWhere = combineWhere(companyCondition(auth, 'l'), dateCondition('l', 'fecha_creacion', dateRange));
+  const conversationWhere = combineWhere(companyCondition(auth, 'c'), dateCondition('c', 'fecha', dateRange));
+
+  const [leadRows, conversationRows] = await Promise.all([
+    query(
+      `SELECT DATE(l.fecha_creacion) AS fecha, COUNT(*) AS total
+       FROM leads l
+       ${leadWhere.clause}
+       GROUP BY DATE(l.fecha_creacion)
+       ORDER BY fecha ASC`,
+      leadWhere.params
+    ),
+    query(
+      `SELECT DATE(c.fecha) AS fecha, COUNT(*) AS total
+       FROM conversaciones c
+       ${conversationWhere.clause}
+       GROUP BY DATE(c.fecha)
+       ORDER BY fecha ASC`,
+      conversationWhere.params
+    )
+  ]);
+
+  const leadsByDate = new Map(leadRows[0].map((row) => [toDateKey(row.fecha), Number(row.total)]));
+  const conversationsByDate = new Map(
+    conversationRows[0].map((row) => [toDateKey(row.fecha), Number(row.total)])
+  );
+  const days = [];
+  let cursor = dateRange.fecha_inicio;
+
+  while (cursor <= dateRange.fecha_fin) {
+    days.push({
+      fecha: cursor,
+      leads: leadsByDate.get(cursor) ?? 0,
+      conversaciones: conversationsByDate.get(cursor) ?? 0
+    });
+    cursor = addDays(cursor, 1);
+  }
+
+  return days.slice(-14);
+}
+
+export async function getRecentLeads(auth) {
+  const where = companyWhere(auth, 'l');
+  const [rows] = await query(
+    `SELECT
+       l.id,
+       l.nombre_cliente,
+       l.telefono,
+       l.interes,
+       l.estado,
+       l.fecha_creacion,
+       e.nombre AS empresa_nombre
+     FROM leads l
+     INNER JOIN empresas e ON e.id = l.empresa_id
+     ${where.clause}
+     ORDER BY l.fecha_creacion DESC
+     LIMIT 6`,
+    where.params
+  );
+
+  return rows;
+}
+
+export async function getRecentActivity(auth) {
+  const where = companyWhere(auth, 'a');
+  const [rows] = await query(
+    `SELECT
+       a.id,
+       a.accion,
+       a.modulo,
+       a.descripcion,
+       a.fecha,
+       e.nombre AS empresa_nombre
+     FROM audit_logs a
+     LEFT JOIN empresas e ON e.id = a.empresa_id
+     ${where.clause}
+     ORDER BY a.fecha DESC
+     LIMIT 8`,
+    where.params
+  );
+
+  return rows;
 }
 
 export async function getTopProducts(auth, filters = {}) {
@@ -301,17 +463,37 @@ export async function getRecentErrors(auth, filters = {}) {
 }
 
 export async function getCommercialDashboard(auth, filters = {}) {
-  const [summary, topProducts, topServices, recentErrors] = await Promise.all([
+  const [
+    summary,
+    metrics,
+    leadStates,
+    dailyActivity,
+    topProducts,
+    topServices,
+    recentLeads,
+    recentActivity,
+    recentErrors
+  ] = await Promise.all([
     getDashboardSummary(auth, filters),
+    getOperationalMetrics(auth),
+    getLeadStates(auth, filters),
+    getDailyActivity(auth, filters),
     getTopProducts(auth, filters),
     getTopServices(auth, filters),
+    getRecentLeads(auth),
+    getRecentActivity(auth),
     getRecentErrors(auth, filters)
   ]);
 
   return {
     ...summary,
+    metrics,
+    lead_states: leadStates,
+    daily_activity: dailyActivity,
     productos_mas_consultados: topProducts,
     servicios_mas_consultados: topServices,
+    leads_recientes: recentLeads,
+    actividad_reciente: recentActivity,
     errores_recientes: recentErrors
   };
 }

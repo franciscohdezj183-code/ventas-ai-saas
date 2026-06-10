@@ -5,7 +5,8 @@ const initialForm = {
   correo: '',
   password: '',
   rol: 'OWNER',
-  empresa_id: ''
+  empresa_id: '',
+  estado: 'ACTIVO'
 };
 
 function validateUser(form, isEditing) {
@@ -47,7 +48,8 @@ export function UserForm({ companies, isSaving, onCancel, onSubmit, user }) {
         correo: user.correo ?? '',
         password: '',
         rol: user.rol ?? 'OWNER',
-        empresa_id: String(user.empresa_id ?? '')
+        empresa_id: String(user.empresa_id ?? ''),
+        estado: user.estado ?? 'ACTIVO'
       });
       return;
     }
@@ -115,12 +117,12 @@ export function UserForm({ companies, isSaving, onCancel, onSubmit, user }) {
         </label>
 
         <label className="field-group" htmlFor="user-password">
-          <span>Password</span>
+          <span>{isEditing ? 'Nueva contrasena' : 'Contrasena'}</span>
           <input
             id="user-password"
             name="password"
             onChange={handleChange}
-            placeholder={isEditing ? 'Dejar vacio para conservar' : 'Minimo 6 caracteres'}
+            placeholder={isEditing ? 'Opcional, minimo 6 caracteres' : 'Minimo 6 caracteres'}
             type="password"
             value={form.password}
           />
@@ -132,6 +134,14 @@ export function UserForm({ companies, isSaving, onCancel, onSubmit, user }) {
           <select id="user-role" name="rol" onChange={handleChange} value={form.rol}>
             <option value="OWNER">OWNER</option>
             <option value="SUPER_ADMIN">SUPER_ADMIN</option>
+          </select>
+        </label>
+
+        <label className="field-group" htmlFor="user-status">
+          <span>Estado</span>
+          <select id="user-status" name="estado" onChange={handleChange} value={form.estado}>
+            <option value="ACTIVO">ACTIVO</option>
+            <option value="INACTIVO">INACTIVO</option>
           </select>
         </label>
 

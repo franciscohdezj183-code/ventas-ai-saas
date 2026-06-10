@@ -2,6 +2,10 @@ import { env } from './config/env.js';
 import { app } from './app.js';
 import { closeDatabase } from './config/database.js';
 import { shutdownWhatsappSessions } from './modules/whatsapp/whatsapp.service.js';
+import {
+  startHumanHandoffExpirationJob,
+  stopHumanHandoffExpirationJob
+} from './bot/humanHandoffManager.js';
 import { logger } from './utils/logger.js';
 
 const server = app.listen(env.port, () => {
@@ -10,6 +14,8 @@ const server = app.listen(env.port, () => {
     environment: env.nodeEnv
   });
 });
+
+startHumanHandoffExpirationJob();
 
 let shuttingDown = false;
 
@@ -29,6 +35,7 @@ async function shutdown(signal) {
     }
 
     try {
+      stopHumanHandoffExpirationJob();
       await shutdownWhatsappSessions();
       await closeDatabase();
       logger.info('server_shutdown_completed');

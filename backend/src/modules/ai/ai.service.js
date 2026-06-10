@@ -29,12 +29,13 @@ export function getAIStatus() {
   };
 }
 
-export async function generateCompanyReply({ empresaId, phone, message }) {
+export async function generateCompanyReply({ empresaId, phone, message, whatsappChatId = null }) {
   try {
     return await orchestrateIncomingMessage({
       empresaId,
       phone,
-      message
+      message,
+      whatsappChatId
     });
   } catch (error) {
     await createAuditLog({
@@ -65,7 +66,7 @@ export async function interpretCustomerIntent({ empresaId, message, contexto }) 
   }
 }
 
-export async function processIncomingCustomerMessage({ empresaId, phone, message }) {
+export async function processIncomingCustomerMessage({ empresaId, phone, message, whatsappChatId = null }) {
   const cleanPhone = normalizePhone(phone);
 
   if (!env.openai.apiKey || !env.openai.autoReply) {
@@ -87,7 +88,8 @@ export async function processIncomingCustomerMessage({ empresaId, phone, message
   return generateCompanyReply({
     empresaId,
     phone: cleanPhone,
-    message
+    message,
+    whatsappChatId
   });
 }
 

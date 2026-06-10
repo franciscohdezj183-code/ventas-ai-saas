@@ -12,6 +12,7 @@ import { dashboardRouter } from '../modules/dashboard/dashboard.routes.js';
 import { whatsappRouter } from '../modules/whatsapp/whatsapp.routes.js';
 import { aiRouter } from '../modules/ai/ai.routes.js';
 import { companySettingsRouter } from '../modules/company-settings/company-settings.routes.js';
+import { botPromptsRouter } from '../modules/bot-prompts/bot-prompts.routes.js';
 
 export const apiRouter = Router();
 
@@ -28,3 +29,4 @@ apiRouter.use('/dashboard', dashboardRouter);
 apiRouter.use('/whatsapp', whatsappRouter);
 apiRouter.use('/ai', aiRouter);
 apiRouter.use('/configuracion-empresa', companySettingsRouter);
+apiRouter.use('/bot-prompts', botPromptsRouter);

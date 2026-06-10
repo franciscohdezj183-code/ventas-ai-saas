@@ -24,6 +24,7 @@ function normalizeProductPayload(payload, auth) {
   const precio = Number(payload.precio);
   const stock = Number(payload.stock ?? 0);
   const categoriaId = payload.categoria_id ? Number(payload.categoria_id) : null;
+  const estado = ['ACTIVO', 'INACTIVO'].includes(payload.estado) ? payload.estado : 'ACTIVO';
 
   if (!nombre) {
     throw createHttpError(400, 'El nombre del producto es requerido');
@@ -47,7 +48,8 @@ function normalizeProductPayload(payload, auth) {
     nombre,
     descripcion: String(payload.descripcion ?? '').trim() || null,
     precio,
-    stock
+    stock,
+    estado
   };
 }
 
@@ -113,7 +115,7 @@ export async function createProduct(payload, auth, file) {
     const [result] = await query(
       `INSERT INTO productos
         (empresa_id, categoria_id, nombre, descripcion, precio, stock, imagen, estado)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'ACTIVO')`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         product.empresaId,
         product.categoriaId,
@@ -121,7 +123,8 @@ export async function createProduct(payload, auth, file) {
         product.descripcion,
         product.precio,
         product.stock,
-        imagen
+        imagen,
+        product.estado
       ]
     );
 
@@ -151,7 +154,8 @@ export async function updateProduct(productId, payload, auth, file) {
            descripcion = ?,
            precio = ?,
            stock = ?,
-           imagen = ?
+           imagen = ?,
+           estado = ?
        WHERE id = ?
        ${scope.clause}`,
       [
@@ -162,6 +166,7 @@ export async function updateProduct(productId, payload, auth, file) {
         product.precio,
         product.stock,
         imagen,
+        product.estado,
         ...scope.params
       ]
     );

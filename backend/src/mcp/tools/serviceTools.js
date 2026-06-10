@@ -23,13 +23,14 @@ async function executeBuscarServicios(args, auth) {
   const conditions = ["s.empresa_id = ?", "s.estado = 'ACTIVO'"];
 
   if (input.text) {
-    conditions.push('(s.nombre LIKE ? OR s.descripcion LIKE ?)');
-    params.push(input.text, input.text);
+    conditions.push('(s.nombre LIKE ? OR s.descripcion LIKE ? OR c.nombre LIKE ?)');
+    params.push(input.text, input.text, input.text);
   }
 
   const [rows] = await query(
-    `SELECT s.id, s.nombre, s.descripcion, s.precio, s.duracion_minutos AS duracion
+    `SELECT s.id, s.nombre, s.descripcion, s.precio, s.tipo_precio, s.duracion_minutos AS duracion, c.nombre AS categoria
      FROM servicios s
+     LEFT JOIN categorias c ON c.empresa_id = s.empresa_id AND c.id = s.categoria_id
      WHERE ${conditions.join(' AND ')}
      ORDER BY s.precio ASC, s.nombre ASC
      LIMIT ${MAX_RESULTS}`,
@@ -51,9 +52,10 @@ function validateObtenerServicio(args, auth) {
 async function executeObtenerServicio(args, auth) {
   const input = validateObtenerServicio(args, auth);
   const [rows] = await query(
-    `SELECT id, nombre, descripcion, precio, duracion_minutos AS duracion
-     FROM servicios
-     WHERE empresa_id = ? AND id = ? AND estado = 'ACTIVO'
+    `SELECT s.id, s.nombre, s.descripcion, s.precio, s.tipo_precio, s.duracion_minutos AS duracion, c.nombre AS categoria
+     FROM servicios s
+     LEFT JOIN categorias c ON c.empresa_id = s.empresa_id AND c.id = s.categoria_id
+     WHERE s.empresa_id = ? AND s.id = ? AND s.estado = 'ACTIVO'
      LIMIT 1`,
     [input.empresaId, input.servicioId]
   );

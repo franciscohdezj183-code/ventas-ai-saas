@@ -10,22 +10,40 @@ function normalizePhone(value) {
 }
 
 function buildOwnerNotificationMessage({
-  cliente,
   telefono,
-  interes,
+  producto,
   mensajeOriginal,
   empresa,
   fecha
 }) {
   return [
-    'Nuevo lead:',
-    `Cliente: ${cliente || 'Cliente WhatsApp'}`,
-    `Telefono: ${telefono || '-'}`,
-    `Interes: ${interes || '-'}`,
-    `Mensaje original: ${mensajeOriginal || '-'}`,
+    '🛎️ Nuevo cliente interesado',
+    '',
+    `Cliente: ${telefono || '-'}`,
+    `Producto: ${producto || '-'}`,
+    `Mensaje: ${mensajeOriginal || '-'}`,
     `Empresa: ${empresa || '-'}`,
-    `Fecha: ${fecha}`
+    `Fecha: ${fecha}`,
+    '',
+    'Dale seguimiento lo antes posible.'
   ].join('\n');
+}
+
+async function resolveProductName({ empresaId, productoId, fallback, mcpClientInstance }) {
+  if (!productoId) {
+    return fallback;
+  }
+
+  try {
+    const result = await mcpClientInstance.callTool('obtener_producto', {
+      empresa_id: empresaId,
+      producto_id: productoId
+    });
+
+    return result?.producto?.nombre ?? fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 async function createNotification({
@@ -87,10 +105,20 @@ export async function notifyOwnerForLead({
   });
   const empresa = configResult.empresa;
   const telefonoDestino = normalizePhone(empresa?.telefono_dueno);
+
+  if (!telefonoDestino) {
+    return { notification_id: null, estado: 'OMITIDA', motivo: 'telefono_dueno no configurado' };
+  }
+
+  const producto = await resolveProductName({
+    empresaId,
+    productoId: toolResult?.producto_id ?? intent?.parametros?.producto_id,
+    fallback: toolResult?.interes ?? intent?.parametros?.interes ?? intent?.parametros?.texto,
+    mcpClientInstance
+  });
   const notificationMessage = buildOwnerNotificationMessage({
-    cliente: toolResult?.nombre_cliente,
     telefono: normalizePhone(toolResult?.telefono ?? phone),
-    interes: toolResult?.interes ?? intent?.parametros?.interes ?? intent?.parametros?.texto,
+    producto,
     mensajeOriginal: message,
     empresa: empresa?.nombre,
     fecha: new Date().toISOString()
@@ -102,11 +130,6 @@ export async function notifyOwnerForLead({
     telefonoDestino,
     mensaje: notificationMessage
   });
-
-  if (!telefonoDestino) {
-    await markNotificationError(notificationId, 'telefono_dueno no configurado');
-    return { notification_id: notificationId, estado: 'ERROR' };
-  }
 
   try {
     const { sendWhatsappMessage } = await import('../modules/whatsapp/whatsapp.service.js');

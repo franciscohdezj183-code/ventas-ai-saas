@@ -6,6 +6,8 @@ const CATEGORY_COLUMNS = `
   c.id,
   c.empresa_id,
   c.nombre,
+  c.tipo,
+  c.estado,
   c.fecha_creacion,
   c.fecha_actualizacion,
   e.nombre AS empresa_nombre
@@ -13,13 +15,25 @@ const CATEGORY_COLUMNS = `
 
 function normalizeCategoryPayload(payload, auth) {
   const nombre = String(payload.nombre ?? '').trim();
+  const tipo = String(payload.tipo ?? 'PRODUCTO').trim().toUpperCase();
+  const estado = String(payload.estado ?? 'ACTIVA').trim().toUpperCase();
 
   if (!nombre) {
     throw createHttpError(400, 'El nombre de la categoria es requerido');
   }
 
+  if (!['PRODUCTO', 'SERVICIO'].includes(tipo)) {
+    throw createHttpError(400, 'El tipo debe ser PRODUCTO o SERVICIO');
+  }
+
+  if (!['ACTIVA', 'INACTIVA'].includes(estado)) {
+    throw createHttpError(400, 'El estado debe ser ACTIVA o INACTIVA');
+  }
+
   return {
     nombre,
+    tipo,
+    estado,
     empresaId: resolveScopedEmpresaId(auth, payload.empresa_id)
   };
 }
@@ -74,8 +88,8 @@ export async function createCategory(payload, auth) {
   try {
     const [result] = await query(
       `INSERT INTO categorias (empresa_id, nombre, tipo, estado)
-       VALUES (?, ?, 'PRODUCTO', 'ACTIVA')`,
-      [category.empresaId, category.nombre]
+       VALUES (?, ?, ?, ?)`,
+      [category.empresaId, category.nombre, category.tipo, category.estado]
     );
 
     return findCategoryById(result.insertId, auth);
@@ -98,10 +112,12 @@ export async function updateCategory(categoryId, payload, auth) {
     await query(
       `UPDATE categorias
        SET empresa_id = ?,
-           nombre = ?
+           nombre = ?,
+           tipo = ?,
+           estado = ?
        WHERE id = ?
        ${scope.clause}`,
-      [category.empresaId, category.nombre, ...scope.params]
+      [category.empresaId, category.nombre, category.tipo, category.estado, ...scope.params]
     );
 
     return findCategoryById(categoryId, auth);

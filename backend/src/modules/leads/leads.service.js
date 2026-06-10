@@ -9,18 +9,20 @@ const LEAD_COLUMNS = `
   l.telefono,
   l.interes,
   l.estado,
+  l.notas,
   l.fecha_creacion,
   l.fecha_actualizacion,
   e.nombre AS empresa_nombre
 `;
 
-const VALID_STATES = ['NUEVO', 'EN_PROCESO', 'GANADO', 'PERDIDO'];
+const VALID_STATES = ['NUEVO', 'EN_PROCESO', 'CONTACTADO', 'COTIZADO', 'GANADO', 'PERDIDO'];
 
 function normalizeLeadPayload(payload, auth) {
   const nombreCliente = String(payload.nombre_cliente ?? '').trim();
   const telefono = String(payload.telefono ?? '').trim();
   const interes = String(payload.interes ?? '').trim();
   const estado = String(payload.estado ?? 'NUEVO').trim().toUpperCase();
+  const notas = String(payload.notas ?? '').trim() || null;
 
   if (!nombreCliente) {
     throw createHttpError(400, 'El nombre del cliente es requerido');
@@ -43,7 +45,8 @@ function normalizeLeadPayload(payload, auth) {
     nombreCliente,
     telefono,
     interes,
-    estado
+    estado,
+    notas
   };
 }
 
@@ -107,14 +110,22 @@ export async function getLeadStats(auth) {
     total: 0,
     nuevo: 0,
     en_proceso: 0,
+    contactado: 0,
+    cotizado: 0,
     ganado: 0,
     perdido: 0
   };
 
   rows.forEach((row) => {
     const total = Number(row.total);
+    const key = String(row.estado).toLowerCase();
+
     stats.total += total;
-    stats[String(row.estado).toLowerCase()] = total;
+    stats[key] = total;
+
+    if (key === 'en_proceso') {
+      stats.contactado += total;
+    }
   });
 
   return stats;
@@ -125,9 +136,9 @@ export async function createLead(payload, auth) {
 
   try {
     const [result] = await query(
-      `INSERT INTO leads (empresa_id, nombre_cliente, telefono, interes, estado)
-       VALUES (?, ?, ?, ?, ?)`,
-      [lead.empresaId, lead.nombreCliente, lead.telefono, lead.interes, lead.estado]
+      `INSERT INTO leads (empresa_id, nombre_cliente, telefono, interes, estado, notas)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [lead.empresaId, lead.nombreCliente, lead.telefono, lead.interes, lead.estado, lead.notas]
     );
 
     return findLeadById(result.insertId, auth);
@@ -153,10 +164,11 @@ export async function updateLead(leadId, payload, auth) {
            nombre_cliente = ?,
            telefono = ?,
            interes = ?,
-           estado = ?
+           estado = ?,
+           notas = ?
        WHERE id = ?
        ${scope.clause}`,
-      [lead.empresaId, lead.nombreCliente, lead.telefono, lead.interes, lead.estado, ...scope.params]
+      [lead.empresaId, lead.nombreCliente, lead.telefono, lead.interes, lead.estado, lead.notas, ...scope.params]
     );
 
     return findLeadById(leadId, auth);

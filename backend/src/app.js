@@ -59,7 +59,16 @@ app.use(
   })
 );
 app.use(requestLogger);
-app.use('/uploads', express.static(uploadsPath));
+app.use(
+  '/uploads',
+  express.static(uploadsPath, {
+    setHeaders(res, filePath) {
+      if (path.extname(filePath).toLowerCase() === '.jfif') {
+        res.setHeader('Content-Type', 'image/jpeg');
+      }
+    }
+  })
+);
 
 app.use('/api', apiRouter);
 

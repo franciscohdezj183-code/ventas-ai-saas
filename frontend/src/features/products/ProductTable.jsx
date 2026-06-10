@@ -1,65 +1,182 @@
-import { Edit3, Trash2 } from 'lucide-react';
+import { Eye, ImageIcon, Pencil, PowerOff } from 'lucide-react';
+import { DataTable, EmptyState, StatusBadge } from '../../components/ui/index.js';
 
-export function ProductTable({ isLoading, onDelete, onEdit, products }) {
-  if (isLoading) {
-    return <div className="empty-state table-message">Cargando productos...</div>;
+export function getStockStatus(product) {
+  const stock = Number(product.stock ?? 0);
+
+  if (stock <= 0) {
+    return { label: 'Agotado', tone: 'danger' };
+  }
+
+  if (stock <= 5) {
+    return { label: 'Bajo stock', tone: 'warning' };
+  }
+
+  return { label: 'Disponible', tone: 'success' };
+}
+
+function formatPrice(value) {
+  return Number(value ?? 0).toLocaleString('es-MX', {
+    currency: 'MXN',
+    style: 'currency'
+  });
+}
+
+function ProductImage({ product, size = 'sm' }) {
+  return product.imagen ? (
+    <img alt={product.nombre} className={`product-image ${size}`} src={product.imagen} />
+  ) : (
+    <span className={`product-image placeholder ${size}`}>
+      <ImageIcon size={size === 'lg' ? 28 : 18} aria-hidden="true" />
+    </span>
+  );
+}
+
+function ProductActions({ onDeactivate, onEdit, onView, product }) {
+  return (
+    <div className="table-actions product-actions">
+      <button aria-label="Ver detalle" onClick={() => onView(product)} type="button">
+        <Eye size={16} aria-hidden="true" />
+      </button>
+      <button aria-label="Editar producto" onClick={() => onEdit(product)} type="button">
+        <Pencil size={16} aria-hidden="true" />
+      </button>
+      <button aria-label="Desactivar producto" onClick={() => onDeactivate(product)} type="button">
+        <PowerOff size={16} aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
+function ProductCards({ onDeactivate, onEdit, onView, products }) {
+  if (!products.length) {
+    return (
+      <EmptyState
+        description="Apareceran aqui cuando crees productos o importes tu catalogo desde Excel."
+        title="Tu catalogo esta vacio"
+      />
+    );
   }
 
   return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Producto</th>
-            <th>Categoria</th>
-            <th>Precio</th>
-            <th>Stock</th>
-            <th>Empresa</th>
-            <th>Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          {products.length === 0 ? (
-            <tr>
-              <td colSpan="6" className="empty-state">
-                No hay productos registrados todavia.
-              </td>
-            </tr>
-          ) : (
-            products.map((product) => (
-              <tr key={product.id}>
-                <td>
-                  <div className="product-cell">
-                    {product.imagen ? <img alt="" src={product.imagen} /> : <span />}
-                    <div>
-                      <strong>{product.nombre}</strong>
-                      <span className="muted-cell">{product.descripcion || 'Sin descripcion'}</span>
-                    </div>
-                  </div>
-                </td>
-                <td>{product.categoria_nombre || '-'}</td>
-                <td>${Number(product.precio).toFixed(2)}</td>
-                <td>{product.stock}</td>
-                <td>{product.empresa_nombre}</td>
-                <td>
-                  <div className="table-actions">
-                    <button aria-label="Editar producto" onClick={() => onEdit(product)} type="button">
-                      <Edit3 size={16} aria-hidden="true" />
-                    </button>
-                    <button
-                      aria-label="Eliminar producto"
-                      onClick={() => onDelete(product)}
-                      type="button"
-                    >
-                      <Trash2 size={16} aria-hidden="true" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+    <div className="product-card-grid">
+      {products.map((product) => {
+        const stockStatus = getStockStatus(product);
+
+        return (
+          <article className="product-card" key={product.id}>
+            <ProductImage product={product} size="lg" />
+            <div className="product-card-body">
+              <div className="product-card-heading">
+                <div>
+                  <strong>{product.nombre}</strong>
+                  <span>{product.categoria_nombre || 'Sin categoria'}</span>
+                </div>
+                <StatusBadge status={product.estado}>{product.estado}</StatusBadge>
+              </div>
+
+              <p>{product.descripcion || 'Sin descripcion registrada.'}</p>
+
+              <div className="product-card-meta">
+                <div>
+                  <span>Precio</span>
+                  <strong>{formatPrice(product.precio)}</strong>
+                </div>
+                <div>
+                  <span>Stock</span>
+                  <strong>{product.stock}</strong>
+                </div>
+              </div>
+
+              <span className={`stock-badge ${stockStatus.tone}`}>{stockStatus.label}</span>
+            </div>
+
+            <ProductActions
+              onDeactivate={onDeactivate}
+              onEdit={onEdit}
+              onView={onView}
+              product={product}
+            />
+          </article>
+        );
+      })}
     </div>
+  );
+}
+
+export function ProductTable({
+  isLoading,
+  onDeactivate,
+  onEdit,
+  onView,
+  products,
+  viewMode = 'table'
+}) {
+  const columns = [
+    {
+      key: 'producto',
+      header: 'Producto',
+      render: (product) => (
+        <div className="product-cell">
+          <ProductImage product={product} />
+          <div>
+            <strong>{product.nombre}</strong>
+            <span className="muted-cell">{product.sku || product.descripcion || 'Sin SKU'}</span>
+          </div>
+        </div>
+      )
+    },
+    { key: 'categoria', header: 'Categoria', render: (product) => product.categoria_nombre || '-' },
+    { key: 'precio', header: 'Precio', render: (product) => formatPrice(product.precio) },
+    {
+      key: 'stock',
+      header: 'Stock',
+      render: (product) => {
+        const stockStatus = getStockStatus(product);
+
+        return (
+          <div className="stock-cell">
+            <strong>{product.stock}</strong>
+            <span className={`stock-badge ${stockStatus.tone}`}>{stockStatus.label}</span>
+          </div>
+        );
+      }
+    },
+    { key: 'estado', header: 'Estado', render: (product) => <StatusBadge status={product.estado}>{product.estado}</StatusBadge> },
+    {
+      key: 'acciones',
+      header: 'Acciones',
+      render: (product) => (
+        <ProductActions
+          onDeactivate={onDeactivate}
+          onEdit={onEdit}
+          onView={onView}
+          product={product}
+        />
+      )
+    }
+  ];
+
+  if (viewMode === 'cards' && !isLoading) {
+    return (
+      <ProductCards
+        onDeactivate={onDeactivate}
+        onEdit={onEdit}
+        onView={onView}
+        products={products}
+      />
+    );
+  }
+
+  return (
+    <DataTable
+      className="products-table"
+      columns={columns}
+      data={products}
+      emptyDescription="Crea tu primer producto o importa un catalogo desde Excel."
+      emptyTitle="No hay productos registrados"
+      isLoading={isLoading}
+      loadingMessage="Cargando productos..."
+    />
   );
 }

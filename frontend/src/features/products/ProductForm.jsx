@@ -1,3 +1,4 @@
+import { ImagePlus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 const initialForm = {
@@ -7,7 +8,8 @@ const initialForm = {
   stock: '',
   imagen: null,
   categoria_id: '',
-  empresa_id: ''
+  empresa_id: '',
+  estado: 'ACTIVO'
 };
 
 function validateProduct(form, canSelectCompany) {
@@ -44,6 +46,13 @@ export function ProductForm({
   const [form, setForm] = useState(initialForm);
   const [errors, setErrors] = useState({});
   const isEditing = Boolean(product);
+  const imagePreview = useMemo(() => {
+    if (form.imagen) {
+      return URL.createObjectURL(form.imagen);
+    }
+
+    return product?.imagen ?? '';
+  }, [form.imagen, product?.imagen]);
 
   const filteredCategories = useMemo(() => {
     if (!canSelectCompany || !form.empresa_id) {
@@ -62,13 +71,22 @@ export function ProductForm({
         stock: product.stock ?? '',
         imagen: null,
         categoria_id: String(product.categoria_id ?? ''),
-        empresa_id: String(product.empresa_id ?? '')
+        empresa_id: String(product.empresa_id ?? ''),
+        estado: product.estado ?? 'ACTIVO'
       });
       return;
     }
 
     setForm(initialForm);
   }, [product]);
+
+  useEffect(() => {
+    if (!form.imagen || !imagePreview) {
+      return undefined;
+    }
+
+    return () => URL.revokeObjectURL(imagePreview);
+  }, [form.imagen, imagePreview]);
 
   function handleChange(event) {
     const { files, name, type, value } = event.target;
@@ -99,13 +117,29 @@ export function ProductForm({
       precio: Number(form.precio),
       stock: Number(form.stock),
       categoria_id: form.categoria_id ? Number(form.categoria_id) : '',
-      empresa_id: form.empresa_id ? Number(form.empresa_id) : undefined
+      empresa_id: form.empresa_id ? Number(form.empresa_id) : undefined,
+      estado: form.estado
     });
   }
 
   return (
-    <form className="company-form" onSubmit={handleSubmit} noValidate>
-      <div className="form-grid">
+    <form className="company-form product-form" onSubmit={handleSubmit} noValidate>
+      <div className="product-form-layout">
+        <div className="product-image-preview">
+          {imagePreview ? (
+            <img alt="Vista previa del producto" src={imagePreview} />
+          ) : (
+            <span>
+              <ImagePlus size={34} aria-hidden="true" />
+            </span>
+          )}
+          <div>
+            <strong>Imagen del producto</strong>
+            <p>Usa una imagen clara para que el cliente reconozca rapido el articulo.</p>
+          </div>
+        </div>
+
+        <div className="form-grid product-form-grid">
         <label className="field-group" htmlFor="product-name">
           <span>Nombre</span>
           <input
@@ -145,6 +179,14 @@ export function ProductForm({
             value={form.stock}
           />
           {errors.stock ? <small>{errors.stock}</small> : null}
+        </label>
+
+        <label className="field-group" htmlFor="product-status">
+          <span>Estado</span>
+          <select id="product-status" name="estado" onChange={handleChange} value={form.estado}>
+            <option value="ACTIVO">Activo</option>
+            <option value="INACTIVO">Inactivo</option>
+          </select>
         </label>
 
         {canSelectCompany ? (
@@ -187,7 +229,7 @@ export function ProductForm({
         <label className="field-group" htmlFor="product-image">
           <span>Imagen</span>
           <input accept="image/*" id="product-image" name="imagen" onChange={handleChange} type="file" />
-          {product?.imagen && !form.imagen ? <small>Imagen actual disponible.</small> : null}
+          {imagePreview ? <small>Vista previa activa.</small> : null}
         </label>
 
         <label className="field-group full-field" htmlFor="product-description">
@@ -201,6 +243,7 @@ export function ProductForm({
             value={form.descripcion}
           />
         </label>
+        </div>
       </div>
 
       <div className="form-actions">

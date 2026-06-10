@@ -1,66 +1,70 @@
-import { Edit3, Trash2 } from 'lucide-react';
+import { Edit3, Eye, Power, Trash2 } from 'lucide-react';
+import { DataTable, StatusBadge } from '../../components/ui/index.js';
 
-export function CompanyTable({ companies, isLoading, onDelete, onEdit }) {
-  if (isLoading) {
-    return <div className="empty-state table-message">Cargando empresas...</div>;
-  }
+export function CompanyTable({ companies, isLoading, onDelete, onEdit, onToggle, onView }) {
+  const columns = [
+    {
+      key: 'empresa',
+      header: 'Empresa',
+      render: (company) => (
+        <div className="company-table-name">
+          <strong>{company.nombre}</strong>
+          <span className="muted-cell">{company.direccion || company.slug}</span>
+        </div>
+      )
+    },
+    { key: 'telefono', header: 'Telefono', render: (company) => company.telefono || '-' },
+    { key: 'tipo', header: 'Tipo', render: (company) => company.tipo_negocio || '-' },
+    {
+      key: 'plan',
+      header: 'Plan',
+      render: (company) => <span className="plan-badge">{company.plan || 'SIN PLAN'}</span>
+    },
+    {
+      key: 'activo',
+      header: 'Estado',
+      render: (company) => (
+        <StatusBadge status={company.activo ? 'ACTIVA' : 'INACTIVA'}>
+          {company.activo ? 'ACTIVA' : 'INACTIVA'}
+        </StatusBadge>
+      )
+    },
+    {
+      key: 'acciones',
+      header: 'Acciones',
+      render: (company) => (
+        <div className="table-actions">
+          <button aria-label="Ver empresa" onClick={() => onView(company)} type="button" title="Ver detalle">
+            <Eye size={16} aria-hidden="true" />
+          </button>
+          <button aria-label="Editar empresa" onClick={() => onEdit(company)} type="button">
+            <Edit3 size={16} aria-hidden="true" />
+          </button>
+          <button
+            aria-label={company.activo ? 'Desactivar empresa' : 'Activar empresa'}
+            onClick={() => onToggle(company)}
+            type="button"
+            title={company.activo ? 'Desactivar' : 'Activar'}
+          >
+            <Power size={16} aria-hidden="true" />
+          </button>
+          <button aria-label="Eliminar empresa" onClick={() => onDelete(company)} type="button">
+            <Trash2 size={16} aria-hidden="true" />
+          </button>
+        </div>
+      )
+    }
+  ];
 
   return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Empresa</th>
-            <th>Telefono</th>
-            <th>Tipo</th>
-            <th>Plan</th>
-            <th>Activo</th>
-            <th>Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          {companies.length === 0 ? (
-            <tr>
-              <td colSpan="6" className="empty-state">
-                No hay empresas registradas todavia.
-              </td>
-            </tr>
-          ) : (
-            companies.map((company) => (
-              <tr key={company.id}>
-                <td>
-                  <strong>{company.nombre}</strong>
-                  <span className="muted-cell">{company.direccion || company.slug}</span>
-                </td>
-                <td>{company.telefono || '-'}</td>
-                <td>{company.tipo_negocio || '-'}</td>
-                <td>
-                  <span className="status-pill">{company.plan}</span>
-                </td>
-                <td>
-                  <span className={company.activo ? 'status-pill active' : 'status-pill inactive'}>
-                    {company.activo ? 'Si' : 'No'}
-                  </span>
-                </td>
-                <td>
-                  <div className="table-actions">
-                    <button aria-label="Editar empresa" onClick={() => onEdit(company)} type="button">
-                      <Edit3 size={16} aria-hidden="true" />
-                    </button>
-                    <button
-                      aria-label="Eliminar empresa"
-                      onClick={() => onDelete(company)}
-                      type="button"
-                    >
-                      <Trash2 size={16} aria-hidden="true" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      columns={columns}
+      data={companies}
+      emptyDescription="Crea una empresa para administrar usuarios, catalogo, WhatsApp y automatizaciones."
+      emptyTitle="No hay empresas para mostrar"
+      isLoading={isLoading}
+      loadingMessage="Cargando empresas..."
+      className="companies-data-table"
+    />
   );
 }

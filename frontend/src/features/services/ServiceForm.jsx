@@ -4,7 +4,10 @@ const initialForm = {
   nombre: '',
   descripcion: '',
   precio: '',
+  tipo_precio: 'FIJO',
   duracion: '',
+  categoria_id: '',
+  estado: 'ACTIVO',
   empresa_id: ''
 };
 
@@ -30,7 +33,7 @@ function validateService(form, canSelectCompany) {
   return errors;
 }
 
-export function ServiceForm({ canSelectCompany, companies, isSaving, onCancel, onSubmit, service }) {
+export function ServiceForm({ canSelectCompany, categories = [], companies, isSaving, onCancel, onSubmit, service }) {
   const [form, setForm] = useState(initialForm);
   const [errors, setErrors] = useState({});
   const isEditing = Boolean(service);
@@ -41,7 +44,10 @@ export function ServiceForm({ canSelectCompany, companies, isSaving, onCancel, o
         nombre: service.nombre ?? '',
         descripcion: service.descripcion ?? '',
         precio: service.precio ?? '',
+        tipo_precio: service.tipo_precio ?? 'FIJO',
         duracion: service.duracion ?? '',
+        categoria_id: String(service.categoria_id ?? ''),
+        estado: service.estado ?? 'ACTIVO',
         empresa_id: String(service.empresa_id ?? '')
       });
       return;
@@ -77,7 +83,10 @@ export function ServiceForm({ canSelectCompany, companies, isSaving, onCancel, o
     onSubmit({
       ...form,
       precio: Number(form.precio),
+      tipo_precio: form.tipo_precio,
       duracion: Number(form.duracion),
+      categoria_id: form.categoria_id ? Number(form.categoria_id) : undefined,
+      estado: form.estado,
       empresa_id: form.empresa_id ? Number(form.empresa_id) : undefined
     });
   }
@@ -112,6 +121,16 @@ export function ServiceForm({ canSelectCompany, companies, isSaving, onCancel, o
           {errors.precio ? <small>{errors.precio}</small> : null}
         </label>
 
+        <label className="field-group" htmlFor="service-price-type">
+          <span>Tipo de precio</span>
+          <select id="service-price-type" name="tipo_precio" onChange={handleChange} value={form.tipo_precio}>
+            <option value="FIJO">Precio fijo</option>
+            <option value="DESDE">Desde</option>
+            <option value="POR_M2">Por m2</option>
+            <option value="COTIZACION">Cotizacion con asesor</option>
+          </select>
+        </label>
+
         <label className="field-group" htmlFor="service-duration">
           <span>Duracion minutos</span>
           <input
@@ -124,6 +143,31 @@ export function ServiceForm({ canSelectCompany, companies, isSaving, onCancel, o
             value={form.duracion}
           />
           {errors.duracion ? <small>{errors.duracion}</small> : null}
+        </label>
+
+        <label className="field-group" htmlFor="service-category">
+          <span>Categoria</span>
+          <select
+            id="service-category"
+            name="categoria_id"
+            onChange={handleChange}
+            value={form.categoria_id}
+          >
+            <option value="">Sin categoria</option>
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.nombre}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="field-group" htmlFor="service-status">
+          <span>Estado</span>
+          <select id="service-status" name="estado" onChange={handleChange} value={form.estado}>
+            <option value="ACTIVO">ACTIVO</option>
+            <option value="INACTIVO">INACTIVO</option>
+          </select>
         </label>
 
         {canSelectCompany ? (
@@ -148,12 +192,11 @@ export function ServiceForm({ canSelectCompany, companies, isSaving, onCancel, o
 
         <label className="field-group full-field" htmlFor="service-description">
           <span>Descripcion</span>
-          <input
+          <textarea
             id="service-description"
             name="descripcion"
             onChange={handleChange}
             placeholder="Descripcion del servicio"
-            type="text"
             value={form.descripcion}
           />
         </label>

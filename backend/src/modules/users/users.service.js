@@ -38,6 +38,12 @@ function normalizeUserPayload(payload, auth, { requirePassword = true } = {}) {
     throw createHttpError(400, 'El rol debe ser SUPER_ADMIN u OWNER');
   }
 
+  const estado = String(payload.estado ?? payload.activo_estado ?? '').trim().toUpperCase();
+
+  if (estado && !['ACTIVO', 'INACTIVO'].includes(estado)) {
+    throw createHttpError(400, 'El estado debe ser ACTIVO o INACTIVO');
+  }
+
   if (requirePassword && password.length < 6) {
     throw createHttpError(400, 'El password debe tener al menos 6 caracteres');
   }
@@ -46,7 +52,7 @@ function normalizeUserPayload(payload, auth, { requirePassword = true } = {}) {
     throw createHttpError(400, 'El password debe tener al menos 6 caracteres');
   }
 
-  return { nombre, correo, password, rol, empresaId };
+  return { nombre, correo, password, rol, empresaId, estado };
 }
 
 function mapDatabaseError(error) {
@@ -131,10 +137,19 @@ export async function updateUser(userId, payload, auth) {
              nombre = ?,
              email = ?,
              password_hash = ?,
-             rol = ?
+             rol = ?,
+             estado = ?
          WHERE id = ?
          ${scope.clause}`,
-        [user.empresaId, user.nombre, user.correo, passwordHash, user.rol, ...scope.params]
+        [
+          user.empresaId,
+          user.nombre,
+          user.correo,
+          passwordHash,
+          user.rol,
+          user.estado || currentUser.estado,
+          ...scope.params
+        ]
       );
     } else {
       await query(
@@ -142,10 +157,11 @@ export async function updateUser(userId, payload, auth) {
          SET empresa_id = ?,
              nombre = ?,
              email = ?,
-             rol = ?
+             rol = ?,
+             estado = ?
          WHERE id = ?
          ${scope.clause}`,
-        [user.empresaId, user.nombre, user.correo, user.rol, ...scope.params]
+        [user.empresaId, user.nombre, user.correo, user.rol, user.estado || currentUser.estado, ...scope.params]
       );
     }
 
