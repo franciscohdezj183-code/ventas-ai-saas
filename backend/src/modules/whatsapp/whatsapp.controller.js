@@ -4,18 +4,24 @@ import {
   listWhatsappStatuses,
   startWhatsappSession
 } from './whatsapp.service.js';
+import { resolveScopedEmpresaId } from '../../middlewares/company-scope.middleware.js';
+import { auditFromRequest } from '../audit/audit.service.js';
 
 function resolveCompanyId(req) {
-  if (req.auth.user.rol === 'SUPER_ADMIN') {
-    return req.params.empresaId ?? req.body.empresa_id ?? req.query.empresa_id;
-  }
-
-  return req.auth.user.empresaId;
+  return resolveScopedEmpresaId(req.auth, req.params.empresaId ?? req.body.empresa_id ?? req.query.empresa_id);
 }
 
 export async function startSession(req, res, next) {
   try {
-    res.json({ data: await startWhatsappSession(resolveCompanyId(req)) });
+    const empresaId = resolveCompanyId(req);
+    const status = await startWhatsappSession(empresaId);
+    await auditFromRequest(req, {
+      accion: 'INICIAR_SESION',
+      modulo: 'whatsapp',
+      descripcion: `Inicio de sesion WhatsApp para empresa #${empresaId}`,
+      empresaId
+    });
+    res.json({ data: status });
   } catch (error) {
     next(error);
   }

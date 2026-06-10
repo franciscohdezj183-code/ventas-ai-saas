@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import { authenticate } from '../../middlewares/auth.middleware.js';
+import { attachCompanyScope } from '../../middlewares/company-scope.middleware.js';
 import { authorizeRoles } from '../../middlewares/roles.middleware.js';
 import { getLead, leadStats, listLeads, patchLead, removeLead, storeLead } from './leads.controller.js';
 
 export const leadsRouter = Router();
 
-leadsRouter.use(authenticate, authorizeRoles('SUPER_ADMIN', 'OWNER'));
+leadsRouter.use(authenticate, authorizeRoles('SUPER_ADMIN', 'OWNER'), attachCompanyScope);
 
 leadsRouter.get('/', listLeads);
 leadsRouter.get('/stats', leadStats);

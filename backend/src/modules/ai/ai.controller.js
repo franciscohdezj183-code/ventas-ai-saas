@@ -1,11 +1,8 @@
 import { generateCompanyReply, getAIStatus, interpretCustomerIntent } from './ai.service.js';
+import { resolveScopedEmpresaId } from '../../middlewares/company-scope.middleware.js';
 
 function resolveCompanyId(req) {
-  if (req.auth.user.rol === 'SUPER_ADMIN') {
-    return req.body.empresa_id;
-  }
-
-  return req.auth.user.empresaId;
+  return resolveScopedEmpresaId(req.auth, req.body.empresa_id);
 }
 
 export function aiStatus(req, res) {

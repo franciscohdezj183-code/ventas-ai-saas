@@ -1,5 +1,6 @@
 import { getConnection, query } from '../../config/database.js';
 import { env } from '../../config/env.js';
+import { appendCompanyScope, companyScopeCondition, isSuperAdmin, resolveScopedEmpresaId } from '../../middlewares/company-scope.middleware.js';
 import { createHttpError } from '../../utils/http-error.js';
 
 const PRODUCT_COLUMNS = `
@@ -17,24 +18,6 @@ const PRODUCT_COLUMNS = `
   e.nombre AS empresa_nombre,
   c.nombre AS categoria_nombre
 `;
-
-function isSuperAdmin(auth) {
-  return auth?.user?.rol === 'SUPER_ADMIN';
-}
-
-function getScopedEmpresaId(auth, payloadEmpresaId) {
-  if (isSuperAdmin(auth)) {
-    const empresaId = Number(payloadEmpresaId);
-
-    if (!Number.isInteger(empresaId) || empresaId <= 0) {
-      throw createHttpError(400, 'La empresa es requerida');
-    }
-
-    return empresaId;
-  }
-
-  return auth.user.empresaId;
-}
 
 function normalizeProductPayload(payload, auth) {
   const nombre = String(payload.nombre ?? '').trim();
@@ -59,7 +42,7 @@ function normalizeProductPayload(payload, auth) {
   }
 
   return {
-    empresaId: getScopedEmpresaId(auth, payload.empresa_id),
+    empresaId: resolveScopedEmpresaId(auth, payload.empresa_id),
     categoriaId,
     nombre,
     descripcion: String(payload.descripcion ?? '').trim() || null,
@@ -89,43 +72,34 @@ function mapDatabaseError(error) {
 }
 
 export async function findProducts(auth) {
-  const params = [];
-  const scopeCondition = isSuperAdmin(auth) ? '' : 'WHERE p.empresa_id = ?';
-
-  if (!isSuperAdmin(auth)) {
-    params.push(auth.user.empresaId);
-  }
+  const scope = companyScopeCondition(auth, 'p');
+  const whereClause = scope.clause ? `WHERE ${scope.clause}` : '';
 
   const [rows] = await query(
     `SELECT ${PRODUCT_COLUMNS}
      FROM productos p
      INNER JOIN empresas e ON e.id = p.empresa_id
-     LEFT JOIN categorias c ON c.id = p.categoria_id
-     ${scopeCondition}
+     LEFT JOIN categorias c ON c.empresa_id = p.empresa_id AND c.id = p.categoria_id
+     ${whereClause}
      ORDER BY p.fecha_creacion DESC`,
-    params
+    scope.params
   );
 
   return rows;
 }
 
 export async function findProductById(productId, auth) {
-  const params = [productId];
-  const scopeCondition = isSuperAdmin(auth) ? '' : 'AND p.empresa_id = ?';
-
-  if (!isSuperAdmin(auth)) {
-    params.push(auth.user.empresaId);
-  }
+  const scope = appendCompanyScope(auth, [productId], 'p');
 
   const [rows] = await query(
     `SELECT ${PRODUCT_COLUMNS}
      FROM productos p
      INNER JOIN empresas e ON e.id = p.empresa_id
-     LEFT JOIN categorias c ON c.id = p.categoria_id
+     LEFT JOIN categorias c ON c.empresa_id = p.empresa_id AND c.id = p.categoria_id
      WHERE p.id = ?
-     ${scopeCondition}
+     ${scope.clause}
      LIMIT 1`,
-    params
+    scope.params
   );
 
   return rows[0] ?? null;
@@ -166,6 +140,7 @@ export async function updateProduct(productId, payload, auth, file) {
 
   const product = normalizeProductPayload(payload, auth);
   const imagen = imageUrlFromFile(file) ?? currentProduct.imagen;
+  const scope = appendCompanyScope(auth, [productId], 'productos');
 
   try {
     await query(
@@ -177,7 +152,8 @@ export async function updateProduct(productId, payload, auth, file) {
            precio = ?,
            stock = ?,
            imagen = ?
-       WHERE id = ?`,
+       WHERE id = ?
+       ${scope.clause}`,
       [
         product.empresaId,
         product.categoriaId,
@@ -186,7 +162,7 @@ export async function updateProduct(productId, payload, auth, file) {
         product.precio,
         product.stock,
         imagen,
-        productId
+        ...scope.params
       ]
     );
 
@@ -197,14 +173,19 @@ export async function updateProduct(productId, payload, auth, file) {
 }
 
 export async function deleteProduct(productId, auth) {
-  const currentProduct = await findProductById(productId, auth);
+  const scope = appendCompanyScope(auth, [productId], 'productos');
 
-  if (!currentProduct) {
-    throw createHttpError(404, 'Producto no encontrado');
+  try {
+    const [result] = await query(`DELETE FROM productos WHERE id = ? ${scope.clause}`, scope.params);
+
+    if (result.affectedRows === 0) {
+      throw createHttpError(404, 'Producto no encontrado');
+    }
+
+    return true;
+  } catch (error) {
+    mapDatabaseError(error);
   }
-
-  await query('DELETE FROM productos WHERE id = ?', [productId]);
-  return true;
 }
 
 async function findCategoryByName(connection, empresaId, nombre) {
@@ -280,7 +261,7 @@ export async function importProducts(rows, auth, payload = {}) {
     throw createHttpError(400, 'El archivo no contiene productos para importar');
   }
 
-  const empresaId = getScopedEmpresaId(auth, payload.empresa_id);
+  const empresaId = resolveScopedEmpresaId(auth, payload.empresa_id);
   const normalizedRows = rows.map((row, index) => normalizeImportRow(row, index, auth, empresaId));
   const validationErrors = normalizedRows.filter((row) => row.error).map((row) => row.error);
   const validRows = normalizedRows.filter((row) => !row.error).map((row) => row.data);

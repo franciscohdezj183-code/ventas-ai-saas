@@ -5,6 +5,7 @@ import {
   findConversations,
   updateConversation
 } from './conversations.service.js';
+import { auditFromRequest } from '../audit/audit.service.js';
 
 export async function listConversations(req, res, next) {
   try {
@@ -50,6 +51,11 @@ export async function patchConversation(req, res, next) {
 export async function removeConversation(req, res, next) {
   try {
     await deleteConversation(req.params.id, req.auth);
+    await auditFromRequest(req, {
+      accion: 'ELIMINAR',
+      modulo: 'conversaciones',
+      descripcion: `Conversacion eliminada: #${req.params.id}`
+    });
     res.status(204).send();
   } catch (error) {
     next(error);

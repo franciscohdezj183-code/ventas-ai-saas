@@ -5,6 +5,7 @@ import {
   findServices,
   updateService
 } from './services.service.js';
+import { auditFromRequest } from '../audit/audit.service.js';
 
 export async function listServices(req, res, next) {
   try {
@@ -50,6 +51,11 @@ export async function patchService(req, res, next) {
 export async function removeService(req, res, next) {
   try {
     await deleteService(req.params.id, req.auth);
+    await auditFromRequest(req, {
+      accion: 'ELIMINAR',
+      modulo: 'servicios',
+      descripcion: `Servicio eliminado: #${req.params.id}`
+    });
     res.status(204).send();
   } catch (error) {
     next(error);

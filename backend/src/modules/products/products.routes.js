@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../../middlewares/auth.middleware.js';
+import { attachCompanyScope } from '../../middlewares/company-scope.middleware.js';
 import { authorizeRoles } from '../../middlewares/roles.middleware.js';
 import { uploadProductImage, uploadProductsXlsx } from '../../middlewares/upload.middleware.js';
 import {
@@ -13,7 +14,7 @@ import {
 
 export const productsRouter = Router();
 
-productsRouter.use(authenticate, authorizeRoles('SUPER_ADMIN', 'OWNER'));
+productsRouter.use(authenticate, authorizeRoles('SUPER_ADMIN', 'OWNER'), attachCompanyScope);
 
 productsRouter.get('/', listProducts);
 productsRouter.post('/import', uploadProductsXlsx, importProductsFromExcel);

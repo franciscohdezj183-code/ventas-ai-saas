@@ -6,7 +6,8 @@
   "main": "src/server.js",
   "scripts": {
     "dev": "nodemon src/server.js",
-    "test": "node --test src/ai/intentInterpreter.test.js",
+    "test": "set NODE_ENV=test&& node --test src/ai/intentInterpreter.test.js src/middlewares/company-scope.middleware.test.js src/middlewares/roles.middleware.test.js src/mcp/mcpClient.test.js src/bot/messageOrchestrator.test.js src/test/integration.test.js",
+    "test:db": "set NODE_ENV=test&& set RUN_DB_TESTS=true&& node --test src/test/integration.test.js",
     "start": "node src/server.js"
   },
   "dependencies": {

@@ -5,6 +5,7 @@ import {
   findCategoryById,
   updateCategory
 } from './categories.service.js';
+import { auditFromRequest } from '../audit/audit.service.js';
 
 export async function listCategories(req, res, next) {
   try {
@@ -50,6 +51,11 @@ export async function patchCategory(req, res, next) {
 export async function removeCategory(req, res, next) {
   try {
     await deleteCategory(req.params.id, req.auth);
+    await auditFromRequest(req, {
+      accion: 'ELIMINAR',
+      modulo: 'categorias',
+      descripcion: `Categoria eliminada: #${req.params.id}`
+    });
     res.status(204).send();
   } catch (error) {
     next(error);

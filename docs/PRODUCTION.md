@@ -5,14 +5,50 @@ Esta guia resume los pasos minimos antes de publicar el proyecto.
 ## Seguridad
 
 - Cambiar `JWT_SECRET` por un secreto largo y aleatorio.
+- Usar `API_URL=https://...` en produccion.
+- Definir `CORS_ORIGINS` con dominios exactos separados por coma, por ejemplo `https://app.tudominio.com`.
+- Ajustar `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_MAX` y `AUTH_RATE_LIMIT_MAX` segun trafico real.
+- Mantener `JSON_BODY_LIMIT` bajo, por ejemplo `1mb`, salvo que exista una razon operativa.
 - No subir `.env`.
 - No subir `backend/storage/whatsapp`.
+- No subir `.wwebjs_auth` ni `.wwebjs_cache`.
 - No subir `backend/uploads`.
+- No subir `node_modules`, `dist` ni builds generados.
 - No usar usuario MySQL `root`.
 - Configurar `NODE_ENV=production`.
-- Configurar `FRONTEND_URL` con el dominio real.
+- Configurar `FRONTEND_URL` y `CORS_ORIGINS` con dominios reales.
 - Ejecutar `npm audit --workspaces`.
 - Ejecutar `npm test -w backend`.
+
+## Variables obligatorias
+
+En produccion la API falla al iniciar si faltan o son inseguras:
+
+```env
+NODE_ENV=production
+PORT=4000
+API_URL=https://api.tudominio.com
+FRONTEND_URL=https://app.tudominio.com
+CORS_ORIGINS=https://app.tudominio.com
+JWT_SECRET=un_secreto_largo_de_32_caracteres_o_mas
+DB_HOST=...
+DB_PORT=3306
+DB_USER=ventas_ai
+DB_PASSWORD=...
+DB_NAME=ventas_ai_saas
+```
+
+Opcionales recomendadas:
+
+```env
+JSON_BODY_LIMIT=1mb
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX=300
+AUTH_RATE_LIMIT_MAX=20
+WHATSAPP_SESSION_PATH=/var/lib/ventas-ai/whatsapp
+WHATSAPP_HEADLESS=true
+OPENAI_AUTO_REPLY=false
+```
 
 ## Autenticacion
 
@@ -21,7 +57,7 @@ El proyecto usa JWT Bearer. Para una version productiva con varias instancias:
 - Mover blacklist de logout a Redis.
 - Usar access tokens cortos.
 - Evaluar refresh tokens rotados.
-- Agregar rate limiting a `/api/auth/login`.
+- El rate limiting ya esta activo en API general y `/api/auth/login`; si escalas a varias instancias, mover contadores a Redis.
 
 ## WhatsApp
 
@@ -29,6 +65,7 @@ El proyecto usa JWT Bearer. Para una version productiva con varias instancias:
 
 - Usar un volumen persistente para `WHATSAPP_SESSION_PATH`.
 - No versionar sesiones.
+- Confirmar que `.gitignore` cubre `backend/storage/whatsapp`, `.wwebjs_auth` y `.wwebjs_cache`.
 - Ejecutar WhatsApp en un worker o servicio separado si hay muchas empresas.
 - Agregar backoff de reconexion.
 - Monitorear estado de cada sesion.
@@ -63,6 +100,15 @@ Para imagenes y Excel:
 - Activar slow query log.
 - Hacer backups periodicos.
 - Usar pool de conexiones con limites adecuados.
+- Ejecutar migraciones SQL nuevas antes de arrancar la version nueva.
+
+## Observabilidad
+
+- Los logs salen en JSON por stdout/stderr.
+- Configura el runtime para capturar stdout y enviarlo a tu plataforma de logs.
+- El health check completo vive en `/api/health` e incluye DB, uptime, memoria y sesiones WhatsApp.
+- Los errores HTTP pasan por un handler centralizado.
+- El apagado ordenado escucha `SIGINT` y `SIGTERM`, cierra sesiones WhatsApp y pool MySQL.
 
 ## Frontend
 
@@ -83,9 +129,31 @@ storage: volumen persistente o servicio externo
 redis: sesiones, rate limit y jobs
 ```
 
+## Comandos sugeridos
+
+Backend:
+
+```bash
+cd backend
+npm ci --omit=dev
+NODE_ENV=production npm start
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm ci
+npm run build
+```
+
+Sirve `frontend/dist` desde hosting estatico/CDN. No lo subas al repositorio.
+
 ## Checklist antes de publicar
 
 - [ ] `.env` configurado sin secretos por defecto.
+- [ ] `CORS_ORIGINS` solo contiene dominios reales.
+- [ ] Rate limits revisados.
 - [ ] MySQL con usuario limitado.
 - [ ] `schema.sql` importado.
 - [ ] Usuario `SUPER_ADMIN` creado.
@@ -95,5 +163,6 @@ redis: sesiones, rate limit y jobs
 - [ ] HTTPS activo.
 - [ ] Backups configurados.
 - [ ] Logs y monitoreo activos.
+- [ ] `/api/health` responde `ok`.
 - [ ] WhatsApp probado por empresa.
 - [ ] IA probada con `OPENAI_AUTO_REPLY=false`.

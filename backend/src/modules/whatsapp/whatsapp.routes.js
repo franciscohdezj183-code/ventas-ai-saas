@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../../middlewares/auth.middleware.js';
+import { attachCompanyScope } from '../../middlewares/company-scope.middleware.js';
 import { authorizeRoles } from '../../middlewares/roles.middleware.js';
 import {
   disconnectSession,
@@ -11,7 +12,7 @@ import {
 
 export const whatsappRouter = Router();
 
-whatsappRouter.use(authenticate, authorizeRoles('SUPER_ADMIN', 'OWNER'));
+whatsappRouter.use(authenticate, authorizeRoles('SUPER_ADMIN', 'OWNER'), attachCompanyScope);
 
 whatsappRouter.get('/sessions', listStatuses);
 whatsappRouter.post('/sessions/:empresaId/start', startSession);

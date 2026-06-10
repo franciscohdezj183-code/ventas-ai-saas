@@ -1,7 +1,8 @@
 import { env } from '../../config/env.js';
 import { interpretIntent } from '../../ai/intentInterpreter.js';
 import { orchestrateIncomingMessage } from '../../bot/messageOrchestrator.js';
-import { query } from '../../config/database.js';
+import { mcpClient } from '../../mcp/mcpClient.js';
+import { createAuditLog } from '../audit/audit.service.js';
 
 function normalizePhone(value) {
   return String(value ?? '')
@@ -10,13 +11,13 @@ function normalizePhone(value) {
 }
 
 async function saveConversationWithoutReply({ empresaId, phone, message }) {
-  const [result] = await query(
-    `INSERT INTO conversaciones (empresa_id, telefono_cliente, mensaje, respuesta, fecha)
-     VALUES (?, ?, ?, NULL, NOW())`,
-    [empresaId, phone, message]
-  );
+  const result = await mcpClient.callTool('guardar_conversacion', {
+    empresa_id: empresaId,
+    telefono: phone,
+    mensaje: message
+  });
 
-  return result.insertId;
+  return result.conversacion_id;
 }
 
 export function getAIStatus() {
@@ -29,19 +30,39 @@ export function getAIStatus() {
 }
 
 export async function generateCompanyReply({ empresaId, phone, message }) {
-  return orchestrateIncomingMessage({
-    empresaId,
-    phone,
-    message
-  });
+  try {
+    return await orchestrateIncomingMessage({
+      empresaId,
+      phone,
+      message
+    });
+  } catch (error) {
+    await createAuditLog({
+      empresaId,
+      accion: 'ERROR',
+      modulo: 'ai',
+      descripcion: `Error IA generando respuesta: ${error.message}`
+    });
+    throw error;
+  }
 }
 
 export async function interpretCustomerIntent({ empresaId, message, contexto }) {
-  return interpretIntent({
-    empresa_id: empresaId,
-    mensaje_cliente: message,
-    contexto
-  });
+  try {
+    return await interpretIntent({
+      empresa_id: empresaId,
+      mensaje_cliente: message,
+      contexto
+    });
+  } catch (error) {
+    await createAuditLog({
+      empresaId,
+      accion: 'ERROR',
+      modulo: 'ai',
+      descripcion: `Error IA interpretando intencion: ${error.message}`
+    });
+    throw error;
+  }
 }
 
 export async function processIncomingCustomerMessage({ empresaId, phone, message }) {

@@ -1,5 +1,6 @@
 import { CategoriesManager } from '../features/categories/CategoriesManager.jsx';
 import { CompaniesManager } from '../features/companies/CompaniesManager.jsx';
+import { CompanySettingsManager } from '../features/companySettings/CompanySettingsManager.jsx';
 import { ConversationsManager } from '../features/conversations/ConversationsManager.jsx';
 import { LeadsManager } from '../features/leads/LeadsManager.jsx';
 import { ProductsManager } from '../features/products/ProductsManager.jsx';
@@ -106,13 +107,10 @@ export function WhatsAppPage() {
 export function SettingsPage() {
   return (
     <SectionPage
-      description="Parametros generales de la plataforma y preparacion para opciones avanzadas."
+      description="Define respuestas, horarios, politicas y canales por empresa."
       title="Configuracion"
     >
-      <div className="empty-state">
-        <strong>Configuracion pendiente</strong>
-        <p>Este modulo esta listo para conectar preferencias de empresa, permisos y automatizaciones.</p>
-      </div>
+      <CompanySettingsManager />
     </SectionPage>
   );
 }

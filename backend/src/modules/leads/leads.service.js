@@ -1,4 +1,5 @@
 import { query } from '../../config/database.js';
+import { appendCompanyScope, companyScopeCondition, resolveScopedEmpresaId } from '../../middlewares/company-scope.middleware.js';
 import { createHttpError } from '../../utils/http-error.js';
 
 const LEAD_COLUMNS = `
@@ -14,24 +15,6 @@ const LEAD_COLUMNS = `
 `;
 
 const VALID_STATES = ['NUEVO', 'EN_PROCESO', 'GANADO', 'PERDIDO'];
-
-function isSuperAdmin(auth) {
-  return auth?.user?.rol === 'SUPER_ADMIN';
-}
-
-function getScopedEmpresaId(auth, payloadEmpresaId) {
-  if (isSuperAdmin(auth)) {
-    const empresaId = Number(payloadEmpresaId);
-
-    if (!Number.isInteger(empresaId) || empresaId <= 0) {
-      throw createHttpError(400, 'La empresa es requerida');
-    }
-
-    return empresaId;
-  }
-
-  return auth.user.empresaId;
-}
 
 function normalizeLeadPayload(payload, auth) {
   const nombreCliente = String(payload.nombre_cliente ?? '').trim();
@@ -56,7 +39,7 @@ function normalizeLeadPayload(payload, auth) {
   }
 
   return {
-    empresaId: getScopedEmpresaId(auth, payload.empresa_id),
+    empresaId: resolveScopedEmpresaId(auth, payload.empresa_id),
     nombreCliente,
     telefono,
     interes,
@@ -77,60 +60,47 @@ function mapDatabaseError(error) {
 }
 
 export async function findLeads(auth) {
-  const params = [];
-  const scopeCondition = isSuperAdmin(auth) ? '' : 'WHERE l.empresa_id = ?';
-
-  if (!isSuperAdmin(auth)) {
-    params.push(auth.user.empresaId);
-  }
+  const scope = companyScopeCondition(auth, 'l');
+  const whereClause = scope.clause ? `WHERE ${scope.clause}` : '';
 
   const [rows] = await query(
     `SELECT ${LEAD_COLUMNS}
      FROM leads l
      INNER JOIN empresas e ON e.id = l.empresa_id
-     ${scopeCondition}
+     ${whereClause}
      ORDER BY l.fecha_creacion DESC`,
-    params
+    scope.params
   );
 
   return rows;
 }
 
 export async function findLeadById(leadId, auth) {
-  const params = [leadId];
-  const scopeCondition = isSuperAdmin(auth) ? '' : 'AND l.empresa_id = ?';
-
-  if (!isSuperAdmin(auth)) {
-    params.push(auth.user.empresaId);
-  }
+  const scope = appendCompanyScope(auth, [leadId], 'l');
 
   const [rows] = await query(
     `SELECT ${LEAD_COLUMNS}
      FROM leads l
      INNER JOIN empresas e ON e.id = l.empresa_id
      WHERE l.id = ?
-     ${scopeCondition}
+     ${scope.clause}
      LIMIT 1`,
-    params
+    scope.params
   );
 
   return rows[0] ?? null;
 }
 
 export async function getLeadStats(auth) {
-  const params = [];
-  const scopeCondition = isSuperAdmin(auth) ? '' : 'WHERE empresa_id = ?';
-
-  if (!isSuperAdmin(auth)) {
-    params.push(auth.user.empresaId);
-  }
+  const scope = companyScopeCondition(auth);
+  const whereClause = scope.clause ? `WHERE ${scope.clause}` : '';
 
   const [rows] = await query(
     `SELECT estado, COUNT(*) AS total
      FROM leads
-     ${scopeCondition}
+     ${whereClause}
      GROUP BY estado`,
-    params
+    scope.params
   );
 
   const stats = {
@@ -174,6 +144,7 @@ export async function updateLead(leadId, payload, auth) {
   }
 
   const lead = normalizeLeadPayload(payload, auth);
+  const scope = appendCompanyScope(auth, [leadId], 'leads');
 
   try {
     await query(
@@ -183,8 +154,9 @@ export async function updateLead(leadId, payload, auth) {
            telefono = ?,
            interes = ?,
            estado = ?
-       WHERE id = ?`,
-      [lead.empresaId, lead.nombreCliente, lead.telefono, lead.interes, lead.estado, leadId]
+       WHERE id = ?
+       ${scope.clause}`,
+      [lead.empresaId, lead.nombreCliente, lead.telefono, lead.interes, lead.estado, ...scope.params]
     );
 
     return findLeadById(leadId, auth);
@@ -194,12 +166,17 @@ export async function updateLead(leadId, payload, auth) {
 }
 
 export async function deleteLead(leadId, auth) {
-  const currentLead = await findLeadById(leadId, auth);
+  const scope = appendCompanyScope(auth, [leadId], 'leads');
 
-  if (!currentLead) {
-    throw createHttpError(404, 'Lead no encontrado');
+  try {
+    const [result] = await query(`DELETE FROM leads WHERE id = ? ${scope.clause}`, scope.params);
+
+    if (result.affectedRows === 0) {
+      throw createHttpError(404, 'Lead no encontrado');
+    }
+
+    return true;
+  } catch (error) {
+    mapDatabaseError(error);
   }
-
-  await query('DELETE FROM leads WHERE id = ?', [leadId]);
-  return true;
 }

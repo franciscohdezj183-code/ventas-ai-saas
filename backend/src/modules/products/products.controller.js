@@ -8,6 +8,7 @@ import {
 } from './products.service.js';
 import xlsx from 'xlsx';
 import { createHttpError } from '../../utils/http-error.js';
+import { auditFromRequest } from '../audit/audit.service.js';
 
 export async function listProducts(req, res, next) {
   try {
@@ -35,6 +36,12 @@ export async function getProduct(req, res, next) {
 export async function storeProduct(req, res, next) {
   try {
     const product = await createProduct(req.body, req.auth, req.file);
+    await auditFromRequest(req, {
+      accion: 'CREAR',
+      modulo: 'productos',
+      descripcion: `Producto creado: ${product.nombre} (#${product.id})`,
+      empresaId: product.empresa_id
+    });
     res.status(201).json({ data: product });
   } catch (error) {
     next(error);
@@ -53,6 +60,11 @@ export async function patchProduct(req, res, next) {
 export async function removeProduct(req, res, next) {
   try {
     await deleteProduct(req.params.id, req.auth);
+    await auditFromRequest(req, {
+      accion: 'ELIMINAR',
+      modulo: 'productos',
+      descripcion: `Producto eliminado: #${req.params.id}`
+    });
     res.status(204).send();
   } catch (error) {
     next(error);
@@ -78,6 +90,11 @@ export async function importProductsFromExcel(req, res, next) {
     });
 
     const result = await importProducts(rows, req.auth, req.body);
+    await auditFromRequest(req, {
+      accion: 'CREAR',
+      modulo: 'productos',
+      descripcion: `Importacion de productos procesada: ${result.insertados} insertados`
+    });
 
     res.status(201).json({
       message: 'Importacion procesada',

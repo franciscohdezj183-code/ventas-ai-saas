@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../../middlewares/auth.middleware.js';
+import { attachCompanyScope } from '../../middlewares/company-scope.middleware.js';
 import { authorizeRoles } from '../../middlewares/roles.middleware.js';
 import {
   getConversation,
@@ -11,7 +12,7 @@ import {
 
 export const conversationsRouter = Router();
 
-conversationsRouter.use(authenticate, authorizeRoles('SUPER_ADMIN', 'OWNER'));
+conversationsRouter.use(authenticate, authorizeRoles('SUPER_ADMIN', 'OWNER'), attachCompanyScope);
 
 conversationsRouter.get('/', listConversations);
 conversationsRouter.post('/', storeConversation);

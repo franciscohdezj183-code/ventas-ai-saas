@@ -35,6 +35,18 @@ function normalizeCompanyId(companyId) {
   return id;
 }
 
+function normalizePhoneForWhatsapp(phone) {
+  const cleanPhone = String(phone ?? '')
+    .replace('@c.us', '')
+    .replace(/\D/g, '');
+
+  if (!cleanPhone) {
+    throw createHttpError(400, 'El telefono destino es requerido');
+  }
+
+  return `${cleanPhone}@c.us`;
+}
+
 function getSession(companyId) {
   return sessions.get(companyId) ?? null;
 }
@@ -177,6 +189,30 @@ export function listWhatsappStatuses() {
   return Array.from(sessions.values()).map((session) => session.state);
 }
 
+export async function sendWhatsappMessage(companyId, phone, message) {
+  const id = normalizeCompanyId(companyId);
+  const session = getSession(id);
+
+  if (!session || session.state.status !== 'CONNECTED') {
+    throw createHttpError(409, 'La sesion de WhatsApp de la empresa no esta conectada');
+  }
+
+  const cleanMessage = String(message ?? '').trim();
+
+  if (!cleanMessage) {
+    throw createHttpError(400, 'El mensaje es requerido');
+  }
+
+  await session.client.sendMessage(normalizePhoneForWhatsapp(phone), cleanMessage);
+
+  return {
+    empresa_id: id,
+    telefono_destino: phone,
+    status: 'SENT',
+    sent_at: new Date().toISOString()
+  };
+}
+
 export async function disconnectWhatsappSession(companyId) {
   const id = normalizeCompanyId(companyId);
   const session = getSession(id);
@@ -199,4 +235,10 @@ export async function disconnectWhatsappSession(companyId) {
   }
 
   return baseStatus(id);
+}
+
+export async function shutdownWhatsappSessions() {
+  const companyIds = Array.from(sessions.keys());
+
+  await Promise.allSettled(companyIds.map((companyId) => disconnectWhatsappSession(companyId)));
 }

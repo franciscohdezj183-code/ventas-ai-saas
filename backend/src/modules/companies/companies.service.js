@@ -1,4 +1,5 @@
 import { query } from '../../config/database.js';
+import { getAuthenticatedEmpresaId, isSuperAdmin, resolveScopedEmpresaId } from '../../middlewares/company-scope.middleware.js';
 import { createHttpError } from '../../utils/http-error.js';
 
 const COMPANY_COLUMNS = `
@@ -58,23 +59,46 @@ function mapDuplicateError(error) {
   throw error;
 }
 
-export async function findCompanies() {
+function resolveAccessibleCompanyId(companyId, auth) {
+  if (isSuperAdmin(auth)) {
+    return companyId;
+  }
+
+  const scopedCompanyId = resolveScopedEmpresaId(auth, companyId);
+
+  if (Number(companyId) !== scopedCompanyId) {
+    throw createHttpError(404, 'Empresa no encontrada');
+  }
+
+  return scopedCompanyId;
+}
+
+export async function findCompanies(auth) {
+  const scope = isSuperAdmin(auth)
+    ? { clause: '', params: [] }
+    : { clause: 'AND id = ?', params: [getAuthenticatedEmpresaId(auth)] };
+
   const [rows] = await query(
     `SELECT ${COMPANY_COLUMNS}
      FROM empresas
-     ORDER BY fecha_creacion DESC`
+     WHERE 1 = 1
+     ${scope.clause}
+     ORDER BY fecha_creacion DESC`,
+    scope.params
   );
 
   return rows;
 }
 
-export async function findCompanyById(companyId) {
+export async function findCompanyById(companyId, auth) {
+  const requestedCompanyId = resolveAccessibleCompanyId(companyId, auth);
+
   const [rows] = await query(
     `SELECT ${COMPANY_COLUMNS}
      FROM empresas
      WHERE id = ?
      LIMIT 1`,
-    [companyId]
+    [requestedCompanyId]
   );
 
   return rows[0] ?? null;
@@ -104,20 +128,25 @@ export async function createCompany(payload) {
       ]
     );
 
-    return findCompanyById(result.insertId);
+    return findCompanyById(result.insertId, { user: { rol: 'SUPER_ADMIN' } });
   } catch (error) {
     mapDuplicateError(error);
   }
 }
 
-export async function updateCompany(companyId, payload) {
-  const currentCompany = await findCompanyById(companyId);
+export async function updateCompany(companyId, payload, auth) {
+  const scopedCompanyId = resolveAccessibleCompanyId(companyId, auth);
+  const currentCompany = await findCompanyById(scopedCompanyId, auth);
 
   if (!currentCompany) {
     throw createHttpError(404, 'Empresa no encontrada');
   }
 
-  const company = normalizeCompanyPayload(payload);
+  const company = normalizeCompanyPayload({
+    ...payload,
+    plan: isSuperAdmin(auth) ? payload.plan : currentCompany.plan,
+    activo: isSuperAdmin(auth) ? payload.activo : Boolean(currentCompany.activo)
+  });
   assertValidPlan(company.plan);
 
   const slug = toSlug(company.nombre);
@@ -144,11 +173,11 @@ export async function updateCompany(companyId, payload) {
         company.plan,
         company.activo ? 1 : 0,
         estado,
-        companyId
+        scopedCompanyId
       ]
     );
 
-    return findCompanyById(companyId);
+    return findCompanyById(scopedCompanyId, auth);
   } catch (error) {
     mapDuplicateError(error);
   }

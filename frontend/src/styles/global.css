@@ -551,6 +551,17 @@ h1 {
   gap: 18px;
 }
 
+.dashboard-filters {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(180px, 240px) auto;
+  gap: 14px;
+  align-items: end;
+  padding: 18px;
+  border: 1px solid #dbe3ea;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
 .commercial-stats-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -862,6 +873,50 @@ th {
   display: grid;
 }
 
+.settings-form {
+  gap: 20px;
+}
+
+.settings-form-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.settings-form-header > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.settings-form-header svg {
+  flex: 0 0 auto;
+  padding: 9px;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  background: #eaf2ff;
+  color: #1877f2;
+}
+
+.settings-form-header strong,
+.settings-form-header span {
+  display: block;
+}
+
+.settings-form-header span {
+  margin-top: 3px;
+  color: #64748b;
+  font-weight: 700;
+}
+
+.settings-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+
 .whatsapp-manager {
   display: grid;
   gap: 18px;
@@ -1030,6 +1085,7 @@ th {
   }
 
   .commercial-charts-grid,
+  .dashboard-filters,
   .lead-state-chart {
     grid-template-columns: 1fr;
   }

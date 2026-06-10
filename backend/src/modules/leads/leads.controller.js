@@ -6,6 +6,7 @@ import {
   getLeadStats,
   updateLead
 } from './leads.service.js';
+import { auditFromRequest } from '../audit/audit.service.js';
 
 export async function listLeads(req, res, next) {
   try {
@@ -59,6 +60,11 @@ export async function patchLead(req, res, next) {
 export async function removeLead(req, res, next) {
   try {
     await deleteLead(req.params.id, req.auth);
+    await auditFromRequest(req, {
+      accion: 'ELIMINAR',
+      modulo: 'leads',
+      descripcion: `Lead eliminado: #${req.params.id}`
+    });
     res.status(204).send();
   } catch (error) {
     next(error);

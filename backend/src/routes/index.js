@@ -11,6 +11,7 @@ import { conversationsRouter } from '../modules/conversations/conversations.rout
 import { dashboardRouter } from '../modules/dashboard/dashboard.routes.js';
 import { whatsappRouter } from '../modules/whatsapp/whatsapp.routes.js';
 import { aiRouter } from '../modules/ai/ai.routes.js';
+import { companySettingsRouter } from '../modules/company-settings/company-settings.routes.js';
 
 export const apiRouter = Router();
 
@@ -26,3 +27,4 @@ apiRouter.use('/conversations', conversationsRouter);
 apiRouter.use('/dashboard', dashboardRouter);
 apiRouter.use('/whatsapp', whatsappRouter);
 apiRouter.use('/ai', aiRouter);
+apiRouter.use('/configuracion-empresa', companySettingsRouter);

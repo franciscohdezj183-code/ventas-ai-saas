@@ -25,6 +25,9 @@ backend/storage/whatsapp/*
 !backend/storage/whatsapp/.gitkeep
 
 backend/.wwebjs_cache/
+backend/.wwebjs_auth/
+.wwebjs_cache/
+.wwebjs_auth/
 
 # Uploads
 backend/uploads/*

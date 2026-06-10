@@ -1,4 +1,5 @@
 import { query } from '../../config/database.js';
+import { appendCompanyScope, companyScopeCondition, resolveScopedEmpresaId } from '../../middlewares/company-scope.middleware.js';
 import { createHttpError } from '../../utils/http-error.js';
 
 const SERVICE_COLUMNS = `
@@ -13,24 +14,6 @@ const SERVICE_COLUMNS = `
   s.fecha_actualizacion,
   e.nombre AS empresa_nombre
 `;
-
-function isSuperAdmin(auth) {
-  return auth?.user?.rol === 'SUPER_ADMIN';
-}
-
-function getScopedEmpresaId(auth, payloadEmpresaId) {
-  if (isSuperAdmin(auth)) {
-    const empresaId = Number(payloadEmpresaId);
-
-    if (!Number.isInteger(empresaId) || empresaId <= 0) {
-      throw createHttpError(400, 'La empresa es requerida');
-    }
-
-    return empresaId;
-  }
-
-  return auth.user.empresaId;
-}
 
 function normalizeServicePayload(payload, auth) {
   const nombre = String(payload.nombre ?? '').trim();
@@ -50,7 +33,7 @@ function normalizeServicePayload(payload, auth) {
   }
 
   return {
-    empresaId: getScopedEmpresaId(auth, payload.empresa_id),
+    empresaId: resolveScopedEmpresaId(auth, payload.empresa_id),
     nombre,
     descripcion: String(payload.descripcion ?? '').trim() || null,
     precio,
@@ -71,41 +54,32 @@ function mapDatabaseError(error) {
 }
 
 export async function findServices(auth) {
-  const params = [];
-  const scopeCondition = isSuperAdmin(auth) ? '' : 'WHERE s.empresa_id = ?';
-
-  if (!isSuperAdmin(auth)) {
-    params.push(auth.user.empresaId);
-  }
+  const scope = companyScopeCondition(auth, 's');
+  const whereClause = scope.clause ? `WHERE ${scope.clause}` : '';
 
   const [rows] = await query(
     `SELECT ${SERVICE_COLUMNS}
      FROM servicios s
      INNER JOIN empresas e ON e.id = s.empresa_id
-     ${scopeCondition}
+     ${whereClause}
      ORDER BY s.fecha_creacion DESC`,
-    params
+    scope.params
   );
 
   return rows;
 }
 
 export async function findServiceById(serviceId, auth) {
-  const params = [serviceId];
-  const scopeCondition = isSuperAdmin(auth) ? '' : 'AND s.empresa_id = ?';
-
-  if (!isSuperAdmin(auth)) {
-    params.push(auth.user.empresaId);
-  }
+  const scope = appendCompanyScope(auth, [serviceId], 's');
 
   const [rows] = await query(
     `SELECT ${SERVICE_COLUMNS}
      FROM servicios s
      INNER JOIN empresas e ON e.id = s.empresa_id
      WHERE s.id = ?
-     ${scopeCondition}
+     ${scope.clause}
      LIMIT 1`,
-    params
+    scope.params
   );
 
   return rows[0] ?? null;
@@ -142,6 +116,7 @@ export async function updateService(serviceId, payload, auth) {
   }
 
   const service = normalizeServicePayload(payload, auth);
+  const scope = appendCompanyScope(auth, [serviceId], 'servicios');
 
   try {
     await query(
@@ -151,14 +126,15 @@ export async function updateService(serviceId, payload, auth) {
            descripcion = ?,
            precio = ?,
            duracion_minutos = ?
-       WHERE id = ?`,
+       WHERE id = ?
+       ${scope.clause}`,
       [
         service.empresaId,
         service.nombre,
         service.descripcion,
         service.precio,
         service.duracion,
-        serviceId
+        ...scope.params
       ]
     );
 
@@ -169,12 +145,17 @@ export async function updateService(serviceId, payload, auth) {
 }
 
 export async function deleteService(serviceId, auth) {
-  const currentService = await findServiceById(serviceId, auth);
+  const scope = appendCompanyScope(auth, [serviceId], 'servicios');
 
-  if (!currentService) {
-    throw createHttpError(404, 'Servicio no encontrado');
+  try {
+    const [result] = await query(`DELETE FROM servicios WHERE id = ? ${scope.clause}`, scope.params);
+
+    if (result.affectedRows === 0) {
+      throw createHttpError(404, 'Servicio no encontrado');
+    }
+
+    return true;
+  } catch (error) {
+    mapDatabaseError(error);
   }
-
-  await query('DELETE FROM servicios WHERE id = ?', [serviceId]);
-  return true;
 }

@@ -1,4 +1,5 @@
 import { query } from '../../config/database.js';
+import { appendCompanyScope, companyScopeCondition, resolveScopedEmpresaId } from '../../middlewares/company-scope.middleware.js';
 import { createHttpError } from '../../utils/http-error.js';
 
 const CONVERSATION_COLUMNS = `
@@ -12,24 +13,6 @@ const CONVERSATION_COLUMNS = `
   c.fecha_actualizacion,
   e.nombre AS empresa_nombre
 `;
-
-function isSuperAdmin(auth) {
-  return auth?.user?.rol === 'SUPER_ADMIN';
-}
-
-function getScopedEmpresaId(auth, payloadEmpresaId) {
-  if (isSuperAdmin(auth)) {
-    const empresaId = Number(payloadEmpresaId);
-
-    if (!Number.isInteger(empresaId) || empresaId <= 0) {
-      throw createHttpError(400, 'La empresa es requerida');
-    }
-
-    return empresaId;
-  }
-
-  return auth.user.empresaId;
-}
 
 function normalizeConversationPayload(payload, auth) {
   const telefonoCliente = String(payload.telefono_cliente ?? '').trim();
@@ -50,7 +33,7 @@ function normalizeConversationPayload(payload, auth) {
   }
 
   return {
-    empresaId: getScopedEmpresaId(auth, payload.empresa_id),
+    empresaId: resolveScopedEmpresaId(auth, payload.empresa_id),
     telefonoCliente,
     mensaje,
     respuesta,
@@ -69,13 +52,14 @@ function mapDatabaseError(error) {
 export async function findConversations(auth, filters = {}) {
   const params = [];
   const conditions = [];
+  const scope = companyScopeCondition(auth, 'c');
 
-  if (!isSuperAdmin(auth)) {
-    conditions.push('c.empresa_id = ?');
-    params.push(auth.user.empresaId);
+  if (scope.clause) {
+    conditions.push(scope.clause);
+    params.push(...scope.params);
   } else if (filters.empresa_id) {
     conditions.push('c.empresa_id = ?');
-    params.push(Number(filters.empresa_id));
+    params.push(resolveScopedEmpresaId(auth, filters.empresa_id, { requiredForSuperAdmin: false }));
   }
 
   if (filters.telefono_cliente) {
@@ -98,21 +82,16 @@ export async function findConversations(auth, filters = {}) {
 }
 
 export async function findConversationById(conversationId, auth) {
-  const params = [conversationId];
-  const scopeCondition = isSuperAdmin(auth) ? '' : 'AND c.empresa_id = ?';
-
-  if (!isSuperAdmin(auth)) {
-    params.push(auth.user.empresaId);
-  }
+  const scope = appendCompanyScope(auth, [conversationId], 'c');
 
   const [rows] = await query(
     `SELECT ${CONVERSATION_COLUMNS}
      FROM conversaciones c
      INNER JOIN empresas e ON e.id = c.empresa_id
      WHERE c.id = ?
-     ${scopeCondition}
+     ${scope.clause}
      LIMIT 1`,
-    params
+    scope.params
   );
 
   return rows[0] ?? null;
@@ -149,6 +128,7 @@ export async function updateConversation(conversationId, payload, auth) {
   }
 
   const conversation = normalizeConversationPayload(payload, auth);
+  const scope = appendCompanyScope(auth, [conversationId], 'conversaciones');
 
   try {
     await query(
@@ -158,14 +138,15 @@ export async function updateConversation(conversationId, payload, auth) {
            mensaje = ?,
            respuesta = ?,
            fecha = ?
-       WHERE id = ?`,
+       WHERE id = ?
+       ${scope.clause}`,
       [
         conversation.empresaId,
         conversation.telefonoCliente,
         conversation.mensaje,
         conversation.respuesta,
         conversation.fecha,
-        conversationId
+        ...scope.params
       ]
     );
 
@@ -176,12 +157,12 @@ export async function updateConversation(conversationId, payload, auth) {
 }
 
 export async function deleteConversation(conversationId, auth) {
-  const currentConversation = await findConversationById(conversationId, auth);
+  const scope = appendCompanyScope(auth, [conversationId], 'conversaciones');
+  const [result] = await query(`DELETE FROM conversaciones WHERE id = ? ${scope.clause}`, scope.params);
 
-  if (!currentConversation) {
+  if (result.affectedRows === 0) {
     throw createHttpError(404, 'Conversacion no encontrada');
   }
 
-  await query('DELETE FROM conversaciones WHERE id = ?', [conversationId]);
   return true;
 }

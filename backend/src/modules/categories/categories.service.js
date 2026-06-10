@@ -1,4 +1,5 @@
 import { query } from '../../config/database.js';
+import { appendCompanyScope, companyScopeCondition, resolveScopedEmpresaId } from '../../middlewares/company-scope.middleware.js';
 import { createHttpError } from '../../utils/http-error.js';
 
 const CATEGORY_COLUMNS = `
@@ -10,24 +11,6 @@ const CATEGORY_COLUMNS = `
   e.nombre AS empresa_nombre
 `;
 
-function isSuperAdmin(auth) {
-  return auth?.user?.rol === 'SUPER_ADMIN';
-}
-
-function getScopedEmpresaId(auth, payloadEmpresaId) {
-  if (isSuperAdmin(auth)) {
-    const empresaId = Number(payloadEmpresaId);
-
-    if (!Number.isInteger(empresaId) || empresaId <= 0) {
-      throw createHttpError(400, 'La empresa es requerida');
-    }
-
-    return empresaId;
-  }
-
-  return auth.user.empresaId;
-}
-
 function normalizeCategoryPayload(payload, auth) {
   const nombre = String(payload.nombre ?? '').trim();
 
@@ -37,7 +20,7 @@ function normalizeCategoryPayload(payload, auth) {
 
   return {
     nombre,
-    empresaId: getScopedEmpresaId(auth, payload.empresa_id)
+    empresaId: resolveScopedEmpresaId(auth, payload.empresa_id)
   };
 }
 
@@ -54,45 +37,32 @@ function mapDatabaseError(error) {
 }
 
 export async function findCategories(auth) {
-  if (isSuperAdmin(auth)) {
-    const [rows] = await query(
-      `SELECT ${CATEGORY_COLUMNS}
-       FROM categorias c
-       INNER JOIN empresas e ON e.id = c.empresa_id
-       ORDER BY c.fecha_creacion DESC`
-    );
-
-    return rows;
-  }
+  const scope = companyScopeCondition(auth, 'c');
+  const whereClause = scope.clause ? `WHERE ${scope.clause}` : '';
 
   const [rows] = await query(
     `SELECT ${CATEGORY_COLUMNS}
      FROM categorias c
      INNER JOIN empresas e ON e.id = c.empresa_id
-     WHERE c.empresa_id = ?
+     ${whereClause}
      ORDER BY c.fecha_creacion DESC`,
-    [auth.user.empresaId]
+    scope.params
   );
 
   return rows;
 }
 
 export async function findCategoryById(categoryId, auth) {
-  const params = [categoryId];
-  const scopeCondition = isSuperAdmin(auth) ? '' : 'AND c.empresa_id = ?';
-
-  if (!isSuperAdmin(auth)) {
-    params.push(auth.user.empresaId);
-  }
+  const scope = appendCompanyScope(auth, [categoryId], 'c');
 
   const [rows] = await query(
     `SELECT ${CATEGORY_COLUMNS}
      FROM categorias c
      INNER JOIN empresas e ON e.id = c.empresa_id
      WHERE c.id = ?
-     ${scopeCondition}
+     ${scope.clause}
      LIMIT 1`,
-    params
+    scope.params
   );
 
   return rows[0] ?? null;
@@ -122,14 +92,16 @@ export async function updateCategory(categoryId, payload, auth) {
   }
 
   const category = normalizeCategoryPayload(payload, auth);
+  const scope = appendCompanyScope(auth, [categoryId], 'categorias');
 
   try {
     await query(
       `UPDATE categorias
        SET empresa_id = ?,
            nombre = ?
-       WHERE id = ?`,
-      [category.empresaId, category.nombre, categoryId]
+       WHERE id = ?
+       ${scope.clause}`,
+      [category.empresaId, category.nombre, ...scope.params]
     );
 
     return findCategoryById(categoryId, auth);
@@ -139,12 +111,12 @@ export async function updateCategory(categoryId, payload, auth) {
 }
 
 export async function deleteCategory(categoryId, auth) {
-  const currentCategory = await findCategoryById(categoryId, auth);
+  const scope = appendCompanyScope(auth, [categoryId], 'categorias');
+  const [result] = await query(`DELETE FROM categorias WHERE id = ? ${scope.clause}`, scope.params);
 
-  if (!currentCategory) {
+  if (result.affectedRows === 0) {
     throw createHttpError(404, 'Categoria no encontrada');
   }
 
-  await query('DELETE FROM categorias WHERE id = ?', [categoryId]);
   return true;
 }
