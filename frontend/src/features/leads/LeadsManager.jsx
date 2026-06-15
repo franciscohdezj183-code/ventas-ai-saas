@@ -1,5 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, Grid2X2, List, Plus, Search, SlidersHorizontal, UsersRound } from 'lucide-react';
+import {
+  Activity,
+  CalendarDays,
+  Flame,
+  Grid2X2,
+  List,
+  Plus,
+  Search,
+  SlidersHorizontal,
+  TrendingUp,
+  UsersRound
+} from 'lucide-react';
 import { ConfirmModal, ErrorState, StatusBadge } from '../../components/ui/index.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { fetchCompanies } from '../companies/companiesApi.js';
@@ -27,6 +38,26 @@ function formatDateTime(value) {
 
 function leadOrigin(lead) {
   return lead.origen ?? 'Panel';
+}
+
+function formatPercent(value) {
+  return `${Number(value || 0).toFixed(0)}%`;
+}
+
+function buildCommercialSnapshot(leads) {
+  const activeLeads = leads.filter((lead) => !['GANADO', 'PERDIDO'].includes(normalizeLeadState(lead.estado)));
+  const wonLeads = leads.filter((lead) => normalizeLeadState(lead.estado) === 'GANADO').length;
+  const quotedLeads = leads.filter((lead) => normalizeLeadState(lead.estado) === 'COTIZADO').length;
+  const hotLeads = leads.filter((lead) => ['CRITICA', 'ALTA'].includes(lead.prioridad) || Number(lead.score ?? 0) >= 65);
+  const totalScore = leads.reduce((total, lead) => total + Number(lead.score ?? 0), 0);
+
+  return {
+    activeLeads: activeLeads.length,
+    averageScore: leads.length ? Math.round(totalScore / leads.length) : 0,
+    conversionRate: leads.length ? (wonLeads / leads.length) * 100 : 0,
+    hotLeads: hotLeads.length,
+    quotedLeads
+  };
 }
 
 function buildTimeline(lead) {
@@ -78,6 +109,13 @@ export function LeadsManager() {
   }, [filters, leads]);
 
   const origins = useMemo(() => Array.from(new Set(leads.map(leadOrigin))), [leads]);
+  const commercialSnapshot = useMemo(() => buildCommercialSnapshot(filteredLeads), [filteredLeads]);
+  const priorityLeads = useMemo(
+    () => [...filteredLeads]
+      .sort((first, second) => Number(second.score ?? 0) - Number(first.score ?? 0))
+      .slice(0, 4),
+    [filteredLeads]
+  );
 
   async function loadData() {
     try {
@@ -138,6 +176,23 @@ export function LeadsManager() {
     }
   }
 
+  async function handleStageChange(lead, nextState) {
+    try {
+      setError('');
+      await updateLead(lead.id, {
+        empresa_id: lead.empresa_id,
+        nombre_cliente: lead.nombre_cliente,
+        telefono: lead.telefono,
+        interes: lead.interes,
+        estado: nextState,
+        notas: lead.notas ?? ''
+      });
+      await loadData();
+    } catch (requestError) {
+      setError(getApiError(requestError));
+    }
+  }
+
   return (
     <div className="resource-page crm-page">
       <div className="crm-unified-header">
@@ -152,10 +207,6 @@ export function LeadsManager() {
           </div>
         </div>
         <div>
-          <div className="crm-header-metric">
-            <strong>{filteredLeads.length}</strong>
-            <span>leads visibles</span>
-          </div>
           <button
             className="primary-button"
             onClick={() => {
@@ -173,6 +224,55 @@ export function LeadsManager() {
       {error ? <ErrorState message={error} onRetry={loadData} /> : null}
 
       <LeadStats stats={stats} />
+
+      <section className="crm-command-center" aria-label="Resumen comercial visual">
+        <article>
+          <span><Flame size={18} aria-hidden="true" /></span>
+          <div>
+            <strong>{commercialSnapshot.hotLeads}</strong>
+            <small>oportunidades calientes</small>
+          </div>
+        </article>
+        <article>
+          <span><Activity size={18} aria-hidden="true" /></span>
+          <div>
+            <strong>{commercialSnapshot.activeLeads}</strong>
+            <small>leads activos</small>
+          </div>
+        </article>
+        <article>
+          <span><TrendingUp size={18} aria-hidden="true" /></span>
+          <div>
+            <strong>{formatPercent(commercialSnapshot.conversionRate)}</strong>
+            <small>conversion visible</small>
+          </div>
+        </article>
+        <article>
+          <span><UsersRound size={18} aria-hidden="true" /></span>
+          <div>
+            <strong>{commercialSnapshot.averageScore}</strong>
+            <small>score promedio</small>
+          </div>
+        </article>
+      </section>
+
+      <section className="crm-priority-strip" aria-label="Leads prioritarios">
+        <div>
+          <p className="eyebrow">Seguimiento prioritario</p>
+          <h2>Atiende primero los leads con mayor probabilidad</h2>
+        </div>
+        <div>
+          {priorityLeads.length ? priorityLeads.map((lead) => (
+            <button className="crm-priority-chip" key={lead.id} onClick={() => setSelectedLead(lead)} type="button">
+              <span>{lead.score ?? 0}</span>
+              <strong>{lead.nombre_cliente}</strong>
+              <small>{stateLabels[normalizeLeadState(lead.estado)]}</small>
+            </button>
+          )) : (
+            <span className="crm-priority-empty">Sin leads para priorizar</span>
+          )}
+        </div>
+      </section>
 
       <section className="panel-section crm-panel">
         <div className="crm-toolbar">
@@ -245,6 +345,7 @@ export function LeadsManager() {
             setEditingLead(lead);
             setIsFormOpen(true);
           }}
+          onStageChange={handleStageChange}
           onView={setSelectedLead}
           viewMode={viewMode}
         />
@@ -307,6 +408,10 @@ export function LeadsManager() {
             </div>
             <dl className="lead-detail-grid">
               <div>
+                <dt>Score</dt>
+                <dd>{selectedLead.score ?? 0}</dd>
+              </div>
+              <div>
                 <dt>Interes</dt>
                 <dd>{selectedLead.interes}</dd>
               </div>
@@ -319,6 +424,18 @@ export function LeadsManager() {
                 <dd>{selectedLead.empresa_nombre ?? '-'}</dd>
               </div>
             </dl>
+            {selectedLead.score_detalle_json?.length ? (
+              <section className="lead-score-panel">
+                <h3>Factores del score</h3>
+                <div>
+                  {selectedLead.score_detalle_json.map((factor, index) => (
+                    <span key={`${factor.factor}-${index}`}>
+                      {factor.factor} {Number(factor.puntos) > 0 ? '+' : ''}{factor.puntos}
+                    </span>
+                  ))}
+                </div>
+              </section>
+            ) : null}
             <section className="lead-notes-panel">
               <h3>Notas internas</h3>
               <p>{selectedLead.notas || 'Sin notas internas.'}</p>

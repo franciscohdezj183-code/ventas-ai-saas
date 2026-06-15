@@ -7,8 +7,10 @@ export function EmptyState({
   action
 }) {
   return (
-    <div className="state-card empty-state-card">
-      <Icon size={24} aria-hidden="true" />
+    <div className="state-card empty-state-card card bg-base-100 border border-base-300 shadow-sm">
+      <span className="state-card-icon">
+        <Icon size={24} aria-hidden="true" />
+      </span>
       <strong>{title}</strong>
       <p>{description}</p>
       {action ? <div>{action}</div> : null}

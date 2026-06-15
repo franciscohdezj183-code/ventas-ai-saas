@@ -1,5 +1,6 @@
 import { query } from '../config/database.js';
 import { mcpClient } from '../mcp/mcpClient.js';
+import { getBotResponseProfile } from '../modules/bot-prompts/bot-prompts.service.js';
 import { logger } from '../utils/logger.js';
 
 const HANDOFF_TIMEOUT_MS = 4 * 60 * 1000;
@@ -7,6 +8,19 @@ const EXPIRATION_JOB_INTERVAL_MS = 30 * 1000;
 const ACTIVE_STATES = ['PENDING_OWNER', 'HUMAN_TAKEOVER'];
 let expirationJob = null;
 let tableReadyPromise = null;
+
+async function getHandoffConfig(empresaId) {
+  const profile = await getBotResponseProfile(empresaId).catch(() => null);
+  const timeoutMinutes = Number(profile?.handoff?.timeout_minutos ?? 4);
+
+  return {
+    timeoutMinutes: Number.isInteger(timeoutMinutes) && timeoutMinutes > 0 ? Math.min(timeoutMinutes, 120) : 4,
+    mensajeTomar: profile?.handoff?.mensaje_tomar || 'Listo, un asesor continuara contigo por aqui',
+    mensajeDeclinar: profile?.handoff?.mensaje_declinar || 'Por ahora el asesor no esta disponible, pero yo puedo seguir ayudandote',
+    mensajeExpirado: profile?.handoff?.mensaje_expirado || 'Por ahora el asesor no esta disponible, pero puedo seguir ayudandote por aqui',
+    mensajeReactivar: profile?.handoff?.mensaje_reactivar || 'Voy a continuar apoyandote por aqui. Que otra duda tienes?'
+  };
+}
 
 function normalizePhone(value) {
   return String(value ?? '')
@@ -181,6 +195,7 @@ export async function requestHandoff({
   mcpClientInstance = mcpClient
 }) {
   await ensureHumanHandoffTable();
+  const handoffConfig = await getHandoffConfig(empresaId);
   const customerPhone = normalizePhone(telefonoCliente);
   const activeHandoff = await findActiveHandoff({ empresaId, phone: customerPhone });
 
@@ -188,7 +203,7 @@ export async function requestHandoff({
     await query(
       `UPDATE human_handoffs
        SET last_activity_at = NOW(),
-           expires_at = DATE_ADD(NOW(), INTERVAL 4 MINUTE),
+           expires_at = DATE_ADD(NOW(), INTERVAL ${handoffConfig.timeoutMinutes} MINUTE),
            mensaje_cliente = COALESCE(?, mensaje_cliente),
            whatsapp_chat_id = COALESCE(?, whatsapp_chat_id)
        WHERE id = ?`,
@@ -212,7 +227,7 @@ export async function requestHandoff({
     `INSERT INTO human_handoffs
       (empresa_id, conversation_id, telefono_cliente, telefono_dueno, estado, motivo,
        mensaje_cliente, whatsapp_chat_id, producto_id, servicio_id, owner_notified_at, expires_at, last_activity_at)
-     VALUES (?, ?, ?, ?, 'PENDING_OWNER', ?, ?, ?, ?, ?, NOW(), DATE_ADD(NOW(), INTERVAL 4 MINUTE), NOW())`,
+     VALUES (?, ?, ?, ?, 'PENDING_OWNER', ?, ?, ?, ?, ?, NOW(), DATE_ADD(NOW(), INTERVAL ${handoffConfig.timeoutMinutes} MINUTE), NOW())`,
     [
       empresaId,
       conversationId ?? null,
@@ -260,6 +275,7 @@ export async function requestHandoff({
 
 export async function handleOwnerResponse({ empresa_id: empresaId, telefono_dueno: telefonoDueno, mensaje }) {
   await ensureHumanHandoffTable();
+  const handoffConfig = await getHandoffConfig(empresaId);
   const ownerPhone = normalizePhone(telefonoDueno);
   const responseKind = ownerResponseKind(mensaje);
   const [rows] = await query(
@@ -290,7 +306,7 @@ export async function handleOwnerResponse({ empresa_id: empresaId, telefono_duen
        SET estado = 'HUMAN_TAKEOVER',
            owner_responded_at = NOW(),
            last_activity_at = NOW(),
-           expires_at = DATE_ADD(NOW(), INTERVAL 4 MINUTE)
+           expires_at = DATE_ADD(NOW(), INTERVAL ${handoffConfig.timeoutMinutes} MINUTE)
        WHERE id = ?`,
       [handoff.id]
     );
@@ -306,7 +322,7 @@ export async function handleOwnerResponse({ empresa_id: empresaId, telefono_duen
       action: 'ACCEPTED',
       telefono_cliente: handoff.telefono_cliente,
       whatsapp_chat_id: handoff.whatsapp_chat_id,
-      mensaje_cliente: 'Listo, un asesor continuara contigo por aqui'
+      mensaje_cliente: handoffConfig.mensajeTomar
     };
   }
 
@@ -331,7 +347,7 @@ export async function handleOwnerResponse({ empresa_id: empresaId, telefono_duen
       action: 'DECLINED',
       telefono_cliente: handoff.telefono_cliente,
       whatsapp_chat_id: handoff.whatsapp_chat_id,
-      mensaje_cliente: 'Por ahora el asesor no esta disponible, pero yo puedo seguir ayudandote'
+      mensaje_cliente: handoffConfig.mensajeDeclinar
     };
   }
 
@@ -361,11 +377,12 @@ export async function isBotPausedForCustomer({ empresa_id: empresaId, telefono_c
 
 export async function markCustomerActivity({ empresa_id: empresaId, telefono_cliente: telefonoCliente }) {
   await ensureHumanHandoffTable();
+  const handoffConfig = await getHandoffConfig(empresaId);
   await query(
     `UPDATE human_handoffs
      SET last_activity_at = NOW(),
          expires_at = CASE
-           WHEN estado = 'HUMAN_TAKEOVER' THEN DATE_ADD(NOW(), INTERVAL 4 MINUTE)
+           WHEN estado = 'HUMAN_TAKEOVER' THEN DATE_ADD(NOW(), INTERVAL ${handoffConfig.timeoutMinutes} MINUTE)
            ELSE expires_at
          END
      WHERE empresa_id = ?
@@ -438,7 +455,7 @@ export async function expirePendingHandoffs() {
     await sendWhatsappText(
       handoff.empresa_id,
       handoff.telefono_cliente,
-      'Por ahora el asesor no esta disponible, pero puedo seguir ayudandote por aqui'
+      (await getHandoffConfig(handoff.empresa_id)).mensajeExpirado
     ).catch((error) => logger.error('human_handoff_pending_expire_message_error', { error, handoffId: handoff.id }));
 
     logger.info('human_handoff_pending_expired', {
@@ -457,6 +474,7 @@ export async function expireInactiveTakeovers() {
     `SELECT *
      FROM human_handoffs
      WHERE estado = 'HUMAN_TAKEOVER'
+       AND (motivo IS NULL OR motivo <> 'PAUSA_MANUAL')
        AND last_activity_at <= DATE_SUB(NOW(), INTERVAL 4 MINUTE)`
   );
 
@@ -472,7 +490,7 @@ export async function expireInactiveTakeovers() {
     await sendWhatsappText(
       handoff.empresa_id,
       handoff.telefono_cliente,
-      'Voy a continuar apoyandote por aqui. Que otra duda tienes?'
+      (await getHandoffConfig(handoff.empresa_id)).mensajeReactivar
     ).catch((error) => logger.error('human_handoff_takeover_expire_message_error', { error, handoffId: handoff.id }));
 
     logger.info('human_handoff_takeover_expired', {

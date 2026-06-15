@@ -56,6 +56,10 @@ function addTextTokenConditions(conditions, params, tokens) {
   }
 }
 
+function booleanFullTextQuery(tokens) {
+  return tokens.map((token) => `${token}*`).join(' ');
+}
+
 function normalizeOffset(value) {
   if (value === null || value === undefined || value === '') {
     return 0;
@@ -96,13 +100,29 @@ function validateBuscarProductos(args, auth) {
 async function executeBuscarProductos(args, auth) {
   const input = validateBuscarProductos(args, auth);
   const params = [input.empresaId];
+  const selectParams = [];
   const conditions = ["p.empresa_id = ?", "p.estado = 'ACTIVO'"];
+  const hasFullText = input.textTokens.length > 0;
+  const fullTextQuery = hasFullText ? booleanFullTextQuery(input.textTokens) : '';
 
-  if (input.textTokens.length > 0) {
-    addTextTokenConditions(conditions, params, input.textTokens);
+  if (hasFullText) {
+    selectParams.push(fullTextQuery);
+    const tokenConditions = [];
+
+    for (const token of input.textTokens) {
+      const term = likeTerm(token);
+      tokenConditions.push('(p.nombre LIKE ? OR p.descripcion LIKE ? OR c.nombre LIKE ?)');
+      params.push(term, term, term);
+    }
+
+    conditions.push(`(MATCH(p.nombre, p.descripcion, p.sku) AGAINST (? IN BOOLEAN MODE) OR ${tokenConditions.join(' OR ')})`);
+    params.splice(1, 0, fullTextQuery);
   } else if (input.text) {
+    selectParams.push('');
     conditions.push('(p.nombre LIKE ? OR p.descripcion LIKE ? OR c.nombre LIKE ?)');
     params.push(input.text, input.text, input.text);
+  } else {
+    selectParams.push('');
   }
 
   if (input.category) {
@@ -135,14 +155,25 @@ async function executeBuscarProductos(args, auth) {
   }
 
   const [rows] = await query(
-    `SELECT p.id, p.nombre, p.descripcion, p.precio, p.stock, p.imagen, c.nombre AS categoria
+    `SELECT
+       p.id,
+       p.nombre,
+       p.descripcion,
+       p.precio,
+       p.stock,
+       p.imagen,
+       c.nombre AS categoria,
+       CASE
+         WHEN ? = '' THEN 0
+         ELSE MATCH(p.nombre, p.descripcion, p.sku) AGAINST (? IN BOOLEAN MODE)
+       END AS relevancia
      FROM productos p
      LEFT JOIN categorias c ON c.empresa_id = p.empresa_id AND c.id = p.categoria_id
      WHERE ${conditions.join(' AND ')}
-     ORDER BY p.stock DESC, p.precio ASC, p.nombre ASC
+     ORDER BY relevancia DESC, p.stock DESC, p.precio ASC, p.nombre ASC
      LIMIT ${MAX_RESULTS + 1}
      OFFSET ?`,
-    [...params, input.offset]
+    [selectParams[0], selectParams[0], ...params, input.offset]
   );
 
   const products = rows.slice(0, MAX_RESULTS);

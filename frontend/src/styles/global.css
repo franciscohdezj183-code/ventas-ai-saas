@@ -1,3 +1,8 @@
+@import "tailwindcss";
+@plugin "daisyui" {
+  themes: light --default, dark --prefersdark;
+}
+
 :root {
   --color-bg: #f4f7fb;
   --color-surface: #ffffff;
@@ -5,6 +10,7 @@
   --color-border: #dbe5ef;
   --color-border-strong: #c8d5e1;
   --color-text: #172026;
+  --color-heading: #172026;
   --color-muted: #64748b;
   --color-blue: #1877f2;
   --color-blue-dark: #0f5fc7;
@@ -26,6 +32,30 @@
     sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-bg: #0b1118;
+  --color-surface: #111a24;
+  --color-surface-soft: #162231;
+  --color-border: #263445;
+  --color-border-strong: #35465b;
+  --color-text: #ecf4ff;
+  --color-heading: #f7fbff;
+  --color-muted: #9fb0c3;
+  --color-blue: #5aa2ff;
+  --color-blue-dark: #8fc1ff;
+  --color-blue-soft: rgba(90, 162, 255, 0.16);
+  --color-green: #4ed88d;
+  --color-green-dark: #86e9b0;
+  --color-green-soft: rgba(78, 216, 141, 0.16);
+  --color-danger: #ff8a7a;
+  --color-danger-soft: rgba(255, 138, 122, 0.15);
+  --color-warning: #ffd166;
+  --color-warning-soft: rgba(255, 209, 102, 0.15);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.22), 0 14px 34px rgba(0, 0, 0, 0.18);
+  --shadow-md: 0 22px 60px rgba(0, 0, 0, 0.38);
 }
 
 * {
@@ -6628,5 +6658,1264 @@ tbody tr:last-child td {
   .admin-shell.sidebar-collapsed .nav-item {
     justify-content: center;
     padding-inline: 0;
+  }
+}
+
+/* Login dark mode: preserves the original light design and only adapts when the app theme is dark. */
+:root[data-theme="dark"] .login-page {
+  background:
+    radial-gradient(circle at 78% 16%, rgba(90, 162, 255, 0.12), transparent 280px),
+    linear-gradient(135deg, rgba(90, 162, 255, 0.08), rgba(78, 216, 141, 0.06)),
+    var(--color-bg);
+}
+
+:root[data-theme="dark"] .login-panel {
+  background:
+    radial-gradient(circle at 72% 28%, rgba(90, 162, 255, 0.1), transparent 260px),
+    transparent;
+}
+
+:root[data-theme="dark"] .login-form {
+  border-color: var(--color-border);
+  background: rgba(17, 26, 36, 0.94);
+  color: var(--color-text);
+  box-shadow:
+    0 28px 76px rgba(0, 0, 0, 0.42),
+    0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+}
+
+:root[data-theme="dark"] .login-heading h1,
+:root[data-theme="dark"] .field-group,
+:root[data-theme="dark"] .login-security-note {
+  color: var(--color-heading);
+}
+
+:root[data-theme="dark"] .login-heading p:not(.eyebrow),
+:root[data-theme="dark"] .login-security-note span {
+  color: var(--color-muted);
+}
+
+:root[data-theme="dark"] .input-shell {
+  border-color: var(--color-border);
+  background: var(--color-surface-soft);
+  color: var(--color-muted);
+}
+
+:root[data-theme="dark"] .input-shell:focus-within {
+  border-color: var(--color-blue);
+  background: var(--color-surface);
+  box-shadow: 0 0 0 3px rgba(90, 162, 255, 0.16);
+}
+
+:root[data-theme="dark"] .input-shell input {
+  color: var(--color-text);
+}
+
+:root[data-theme="dark"] .input-shell input::placeholder {
+  color: color-mix(in srgb, var(--color-muted) 72%, transparent);
+}
+
+:root[data-theme="dark"] .input-shell input:-webkit-autofill,
+:root[data-theme="dark"] .input-shell input:-webkit-autofill:hover,
+:root[data-theme="dark"] .input-shell input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--color-text);
+  box-shadow: 0 0 0 1000px var(--color-surface-soft) inset;
+}
+
+:root[data-theme="dark"] .login-button {
+  background: var(--color-blue);
+  color: #07111f;
+  box-shadow: 0 14px 28px rgba(90, 162, 255, 0.2);
+}
+
+:root[data-theme="dark"] .login-button:hover:not(:disabled) {
+  background: var(--color-blue-dark);
+}
+
+:root[data-theme="dark"] .login-alert {
+  border-color: color-mix(in srgb, var(--color-danger) 36%, var(--color-border));
+  background: color-mix(in srgb, var(--color-danger) 12%, var(--color-surface));
+  color: var(--color-danger);
+}
+
+:root[data-theme="dark"] .icon-button {
+  color: var(--color-muted);
+}
+
+:root[data-theme="dark"] .icon-button:hover {
+  background: color-mix(in srgb, var(--color-blue) 10%, var(--color-surface));
+  color: var(--color-blue-dark);
+}
+
+/* Global dark-mode repair layer. Keeps the original light styles untouched. */
+:root[data-theme="dark"] body {
+  background:
+    linear-gradient(180deg, #101a26 0%, var(--color-bg) 320px),
+    var(--color-bg);
+  color: var(--color-text);
+}
+
+:root[data-theme="dark"] .app-shell,
+:root[data-theme="dark"] .admin-shell,
+:root[data-theme="dark"] .admin-workspace,
+:root[data-theme="dark"] .main-content,
+:root[data-theme="dark"] .content-shell,
+:root[data-theme="dark"] .resource-page,
+:root[data-theme="dark"] .commercial-dashboard,
+:root[data-theme="dark"] .enterprise-dashboard {
+  background: transparent;
+  color: var(--color-text);
+}
+
+:root[data-theme="dark"] .sidebar,
+:root[data-theme="dark"] .topbar,
+:root[data-theme="dark"] .section-card,
+:root[data-theme="dark"] .state-card,
+:root[data-theme="dark"] .metric-card,
+:root[data-theme="dark"] .stat-card,
+:root[data-theme="dark"] .panel-section,
+:root[data-theme="dark"] .dashboard-hero,
+:root[data-theme="dark"] .enterprise-hero,
+:root[data-theme="dark"] .enterprise-metric,
+:root[data-theme="dark"] .dashboard-list-item,
+:root[data-theme="dark"] .data-table-shell,
+:root[data-theme="dark"] .table-wrap,
+:root[data-theme="dark"] .table-message,
+:root[data-theme="dark"] .commercial-loading,
+:root[data-theme="dark"] .crm-unified-header,
+:root[data-theme="dark"] .crm-summary-card,
+:root[data-theme="dark"] .crm-lead-card,
+:root[data-theme="dark"] .crm-kanban-column,
+:root[data-theme="dark"] .inbox-unified-header,
+:root[data-theme="dark"] .inbox-panel,
+:root[data-theme="dark"] .inbox-layout,
+:root[data-theme="dark"] .inbox-sidebar,
+:root[data-theme="dark"] .inbox-thread,
+:root[data-theme="dark"] .inbox-chat-panel,
+:root[data-theme="dark"] .inbox-chat-header,
+:root[data-theme="dark"] .inbox-message-list,
+:root[data-theme="dark"] .inbox-reply-box,
+:root[data-theme="dark"] .products-unified-header,
+:root[data-theme="dark"] .product-card,
+:root[data-theme="dark"] .catalog-modal,
+:root[data-theme="dark"] .product-detail-modal,
+:root[data-theme="dark"] .companies-unified-header,
+:root[data-theme="dark"] .company-summary-card,
+:root[data-theme="dark"] .company-detail-modal,
+:root[data-theme="dark"] .users-unified-header,
+:root[data-theme="dark"] .user-summary-card,
+:root[data-theme="dark"] .categories-unified-header,
+:root[data-theme="dark"] .category-summary-card,
+:root[data-theme="dark"] .services-unified-header,
+:root[data-theme="dark"] .service-summary-card,
+:root[data-theme="dark"] .service-card,
+:root[data-theme="dark"] .settings-unified-header,
+:root[data-theme="dark"] .settings-section,
+:root[data-theme="dark"] .settings-section-body,
+:root[data-theme="dark"] .settings-preview-card,
+:root[data-theme="dark"] .bot-prompts-summary-card,
+:root[data-theme="dark"] .bot-prompts-panel,
+:root[data-theme="dark"] .bot-prompts-list-row,
+:root[data-theme="dark"] .bot-prompts-preview-box,
+:root[data-theme="dark"] .whatsapp-main-card,
+:root[data-theme="dark"] .whatsapp-detail-card,
+:root[data-theme="dark"] .whatsapp-qr-card,
+:root[data-theme="dark"] .whatsapp-status-card,
+:root[data-theme="dark"] .confirm-modal,
+:root[data-theme="dark"] .user-dropdown {
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-sm);
+}
+
+:root[data-theme="dark"] .topbar {
+  background: rgba(17, 26, 36, 0.9);
+  backdrop-filter: blur(16px);
+}
+
+:root[data-theme="dark"] .sidebar {
+  background: #0f1822;
+}
+
+:root[data-theme="dark"] h1,
+:root[data-theme="dark"] h2,
+:root[data-theme="dark"] h3,
+:root[data-theme="dark"] strong,
+:root[data-theme="dark"] .topbar-title,
+:root[data-theme="dark"] .user-menu-trigger strong,
+:root[data-theme="dark"] .topbar-company-pill strong,
+:root[data-theme="dark"] .brand-name strong,
+:root[data-theme="dark"] .brand-name em,
+:root[data-theme="dark"] .section-card-header h2,
+:root[data-theme="dark"] .companies-unified-header h1,
+:root[data-theme="dark"] .users-unified-header h1,
+:root[data-theme="dark"] .categories-unified-header h1,
+:root[data-theme="dark"] .services-unified-header h1,
+:root[data-theme="dark"] .products-unified-header h1,
+:root[data-theme="dark"] .crm-unified-header h1,
+:root[data-theme="dark"] .inbox-unified-header h1,
+:root[data-theme="dark"] .settings-unified-header h1 {
+  color: var(--color-heading);
+}
+
+:root[data-theme="dark"] p,
+:root[data-theme="dark"] small,
+:root[data-theme="dark"] dt,
+:root[data-theme="dark"] .eyebrow,
+:root[data-theme="dark"] .muted-cell,
+:root[data-theme="dark"] .section-card-header p,
+:root[data-theme="dark"] [class*="-unified-header"] p:not(.eyebrow),
+:root[data-theme="dark"] [class*="-summary-card"] p,
+:root[data-theme="dark"] [class*="-summary-card"] span,
+:root[data-theme="dark"] .topbar-company-pill span,
+:root[data-theme="dark"] .brand small,
+:root[data-theme="dark"] .user-dropdown-header small,
+:root[data-theme="dark"] .dashboard-list-item p,
+:root[data-theme="dark"] .inbox-thread p,
+:root[data-theme="dark"] .inbox-thread small,
+:root[data-theme="dark"] .whatsapp-main-meta span,
+:root[data-theme="dark"] .whatsapp-detail-card dt,
+:root[data-theme="dark"] .whatsapp-status-card small {
+  color: var(--color-muted);
+}
+
+:root[data-theme="dark"] .dashboard-filters,
+:root[data-theme="dark"] .enterprise-filters,
+:root[data-theme="dark"] .crm-toolbar,
+:root[data-theme="dark"] .inbox-toolbar,
+:root[data-theme="dark"] .products-toolbar,
+:root[data-theme="dark"] .product-inventory-toolbar,
+:root[data-theme="dark"] .companies-toolbar,
+:root[data-theme="dark"] .users-toolbar,
+:root[data-theme="dark"] .categories-toolbar,
+:root[data-theme="dark"] .services-toolbar,
+:root[data-theme="dark"] .product-search,
+:root[data-theme="dark"] .search-box,
+:root[data-theme="dark"] .search-input,
+:root[data-theme="dark"] .product-filter-group,
+:root[data-theme="dark"] .company-filter-group,
+:root[data-theme="dark"] .user-filter-group,
+:root[data-theme="dark"] .category-filter-group,
+:root[data-theme="dark"] .service-filter-group,
+:root[data-theme="dark"] .crm-filter-group,
+:root[data-theme="dark"] .crm-date-filters,
+:root[data-theme="dark"] .inbox-company-filter,
+:root[data-theme="dark"] .topbar-company-pill,
+:root[data-theme="dark"] .user-menu-trigger {
+  border-color: var(--color-border);
+  background: var(--color-surface-soft);
+  color: var(--color-text);
+}
+
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] select,
+:root[data-theme="dark"] textarea,
+:root[data-theme="dark"] .field-group input,
+:root[data-theme="dark"] .field-group select,
+:root[data-theme="dark"] .field-group textarea,
+:root[data-theme="dark"] .product-search input,
+:root[data-theme="dark"] .search-input input,
+:root[data-theme="dark"] .company-filter-group select,
+:root[data-theme="dark"] .user-filter-group select,
+:root[data-theme="dark"] .category-filter-group select,
+:root[data-theme="dark"] .service-filter-group select,
+:root[data-theme="dark"] .product-filter-group select,
+:root[data-theme="dark"] .crm-filter-group select {
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+:root[data-theme="dark"] input::placeholder,
+:root[data-theme="dark"] textarea::placeholder {
+  color: color-mix(in srgb, var(--color-muted) 72%, transparent);
+}
+
+:root[data-theme="dark"] table,
+:root[data-theme="dark"] thead,
+:root[data-theme="dark"] tbody,
+:root[data-theme="dark"] tr,
+:root[data-theme="dark"] td,
+:root[data-theme="dark"] th {
+  border-color: var(--color-border);
+}
+
+:root[data-theme="dark"] th,
+:root[data-theme="dark"] .data-table th {
+  background: var(--color-surface-soft);
+  color: var(--color-muted);
+}
+
+:root[data-theme="dark"] td,
+:root[data-theme="dark"] .data-table td {
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+:root[data-theme="dark"] tbody tr:hover td,
+:root[data-theme="dark"] .data-table tbody tr:hover td {
+  background: color-mix(in srgb, var(--color-blue) 8%, var(--color-surface));
+}
+
+:root[data-theme="dark"] .primary-button,
+:root[data-theme="dark"] .login-button {
+  border-color: color-mix(in srgb, var(--color-blue) 70%, transparent);
+  background: var(--color-blue);
+  color: #07111f;
+}
+
+:root[data-theme="dark"] .secondary-button,
+:root[data-theme="dark"] .icon-button,
+:root[data-theme="dark"] .table-actions button,
+:root[data-theme="dark"] .modal-close,
+:root[data-theme="dark"] .topbar-menu,
+:root[data-theme="dark"] .topbar-icon-button,
+:root[data-theme="dark"] .theme-toggle {
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-sm);
+}
+
+:root[data-theme="dark"] .secondary-button:hover,
+:root[data-theme="dark"] .icon-button:hover,
+:root[data-theme="dark"] .table-actions button:hover,
+:root[data-theme="dark"] .modal-close:hover,
+:root[data-theme="dark"] .topbar-menu:hover,
+:root[data-theme="dark"] .topbar-icon-button:hover,
+:root[data-theme="dark"] .theme-toggle:hover {
+  border-color: color-mix(in srgb, var(--color-blue) 32%, var(--color-border));
+  background: color-mix(in srgb, var(--color-blue) 10%, var(--color-surface));
+  color: var(--color-blue-dark);
+}
+
+:root[data-theme="dark"] .status-badge,
+:root[data-theme="dark"] .stock-badge,
+:root[data-theme="dark"] .priority-badge,
+:root[data-theme="dark"] .channel-badge,
+:root[data-theme="dark"] .plan-badge,
+:root[data-theme="dark"] .role-pill,
+:root[data-theme="dark"] .category-type-badge,
+:root[data-theme="dark"] .service-duration-badge {
+  border-color: color-mix(in srgb, currentColor 24%, var(--color-border));
+  background: color-mix(in srgb, currentColor 12%, var(--color-surface));
+}
+
+:root[data-theme="dark"] .modal-backdrop,
+:root[data-theme="dark"] .sidebar-backdrop {
+  background: rgba(0, 0, 0, 0.68);
+}
+
+:root[data-theme="dark"] .chat-bubble.customer {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+:root[data-theme="dark"] .chat-bubble.agent {
+  border: 1px solid color-mix(in srgb, var(--color-blue) 24%, var(--color-border));
+  background: color-mix(in srgb, var(--color-blue) 13%, var(--color-surface));
+  color: var(--color-text);
+}
+
+/* Topbar controls added during the DaisyUI transition. */
+.topbar-icon-button,
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-sm);
+}
+
+.topbar-sidebar-toggle {
+  width: 42px;
+  padding: 0;
+  border-radius: 12px;
+}
+
+.theme-toggle {
+  gap: 9px;
+  padding: 0 12px 0 8px;
+}
+
+.theme-toggle-track {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 42px;
+  height: 24px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-border-strong) 50%, var(--color-surface));
+}
+
+.theme-toggle-thumb {
+  display: inline-grid;
+  width: 20px;
+  height: 20px;
+  margin-left: 2px;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-blue);
+  box-shadow: 0 4px 10px rgba(16, 24, 32, 0.18);
+  transform: translateX(0);
+  transition: transform 180ms ease, color 180ms ease;
+}
+
+.theme-toggle[aria-pressed="true"] .theme-toggle-track {
+  background: color-mix(in srgb, var(--color-green) 42%, var(--color-surface-soft));
+}
+
+.theme-toggle[aria-pressed="true"] .theme-toggle-thumb {
+  color: var(--color-green);
+  transform: translateX(18px);
+}
+
+.theme-toggle-label {
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+/* Module restoration layer: keeps the newer sections professional in both themes. */
+.executive-intelligence-panel,
+.crm-command-center,
+.catalog-intelligence-grid,
+.saas-command-grid,
+.onboarding-summary-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.executive-intelligence-panel {
+  grid-template-columns: 1fr;
+  margin: 18px 0;
+}
+
+.executive-overview-row {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.45fr) minmax(420px, 1fr);
+  gap: 14px;
+  align-items: stretch;
+}
+
+.business-health-card,
+.executive-focus-grid article,
+.executive-risk-list,
+.crm-command-center article,
+.crm-priority-strip,
+.catalog-health-card,
+.catalog-advisor-list,
+.catalog-priority-products,
+.catalog-intelligence-grid article,
+.saas-metric,
+.saas-panel,
+.onboarding-hero,
+.onboarding-next-step,
+.onboarding-summary-grid article,
+.onboarding-step {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-sm);
+}
+
+.business-health-card {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  padding: 18px;
+}
+
+.business-health-card > span,
+.crm-command-center article > span,
+.catalog-health-card > span,
+.saas-metric > span,
+.onboarding-summary-grid article > span,
+.onboarding-step-icon {
+  display: inline-grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: var(--radius);
+  background: var(--color-blue-soft);
+  color: var(--color-blue);
+}
+
+.business-health-card.healthy > span,
+.onboarding-step.done .onboarding-step-icon {
+  background: var(--color-green-soft);
+  color: var(--color-green-dark);
+}
+
+.business-health-card.attention > span {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+}
+
+.business-health-card.risk > span {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.business-health-card strong {
+  display: block;
+  margin: 4px 0;
+  font-size: 2.1rem;
+  line-height: 1;
+}
+
+.business-health-card small,
+.executive-focus-grid small,
+.executive-risk-list small,
+.crm-command-center small,
+.crm-priority-chip small,
+.catalog-advisor-list p,
+.catalog-priority-products small,
+.saas-metric small,
+.onboarding-summary-grid small,
+.onboarding-step p {
+  color: var(--color-muted);
+}
+
+.executive-focus-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.executive-focus-grid article {
+  position: relative;
+  display: grid;
+  gap: 5px;
+  min-height: 118px;
+  padding: 16px;
+}
+
+.executive-focus-grid strong {
+  font-size: 1.45rem;
+  line-height: 1;
+}
+
+.executive-focus-grid span {
+  font-weight: 900;
+}
+
+.executive-focus-grid em {
+  justify-self: start;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-style: normal;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.executive-focus-grid em.good {
+  background: var(--color-green-soft);
+  color: var(--color-green-dark);
+}
+
+.executive-focus-grid em.review {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+}
+
+.executive-risk-list {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+:root[data-theme="dark"] .commercial-dashboard {
+  --dashboard-border: rgba(148, 163, 184, 0.18);
+  --dashboard-border-soft: rgba(148, 163, 184, 0.14);
+  --dashboard-divider: rgba(148, 163, 184, 0.22);
+  --dashboard-row: color-mix(in srgb, var(--color-surface-soft) 70%, #0b1118);
+}
+
+:root[data-theme="dark"] .commercial-dashboard .dashboard-hero,
+:root[data-theme="dark"] .commercial-dashboard .dashboard-filters,
+:root[data-theme="dark"] .commercial-dashboard .enterprise-metric,
+:root[data-theme="dark"] .commercial-dashboard .section-card,
+:root[data-theme="dark"] .commercial-dashboard .business-health-card,
+:root[data-theme="dark"] .commercial-dashboard .executive-focus-grid article,
+:root[data-theme="dark"] .commercial-dashboard .executive-risk-list,
+:root[data-theme="dark"] .commercial-dashboard .executive-risk-list article,
+:root[data-theme="dark"] .commercial-dashboard .dashboard-list-item {
+  border-color: var(--dashboard-border);
+  background: color-mix(in srgb, var(--color-surface) 92%, #0b1118);
+  box-shadow: none;
+}
+
+:root[data-theme="dark"] .commercial-dashboard .dashboard-hero {
+  background:
+    linear-gradient(135deg, rgba(90, 162, 255, 0.08), rgba(78, 216, 141, 0.05)),
+    color-mix(in srgb, var(--color-surface) 88%, #0b1118);
+}
+
+:root[data-theme="dark"] .commercial-dashboard .dashboard-filters,
+:root[data-theme="dark"] .commercial-dashboard .section-card-header,
+:root[data-theme="dark"] .commercial-dashboard .lead-funnel-bars,
+:root[data-theme="dark"] .commercial-dashboard .dashboard-bar-list,
+:root[data-theme="dark"] .commercial-dashboard .dashboard-list-item,
+:root[data-theme="dark"] .commercial-dashboard .activity-item {
+  border-color: var(--dashboard-border-soft);
+}
+
+:root[data-theme="dark"] .commercial-dashboard .section-card-header {
+  border-bottom: 1px solid var(--dashboard-divider);
+  background: color-mix(in srgb, var(--color-surface) 94%, #0b1118);
+}
+
+:root[data-theme="dark"] .commercial-dashboard .state-card,
+:root[data-theme="dark"] .commercial-dashboard .empty-state-card,
+:root[data-theme="dark"] .commercial-dashboard .table-message,
+:root[data-theme="dark"] .commercial-dashboard .card {
+  border-color: var(--dashboard-border) !important;
+  background: color-mix(in srgb, var(--color-surface) 90%, #0b1118) !important;
+  color: var(--color-text);
+  box-shadow: none;
+}
+
+:root[data-theme="dark"] .commercial-dashboard .section-card-body > .empty-state-card,
+:root[data-theme="dark"] .commercial-dashboard .section-card-body > .state-card {
+  border-top: 0 !important;
+  border-right: 0 !important;
+  border-bottom: 0 !important;
+  border-left: 0 !important;
+  border-radius: 0;
+}
+
+:root[data-theme="dark"] .commercial-dashboard .daily-bars {
+  border-bottom-color: var(--dashboard-divider);
+}
+
+:root[data-theme="dark"] .commercial-dashboard .lead-funnel-row,
+:root[data-theme="dark"] .commercial-dashboard .dashboard-bar-row {
+  color: var(--color-text);
+}
+
+:root[data-theme="dark"] .commercial-dashboard .bar-track,
+:root[data-theme="dark"] .commercial-dashboard .lead-funnel-row > div {
+  background: rgba(226, 238, 250, 0.12);
+}
+
+:root[data-theme="dark"] .commercial-dashboard .executive-risk-list article {
+  background: color-mix(in srgb, var(--color-surface-soft) 82%, #0b1118);
+}
+
+:root[data-theme="dark"] .commercial-dashboard .dashboard-list,
+:root[data-theme="dark"] .commercial-dashboard .activity-list {
+  gap: 8px;
+  padding: 12px;
+}
+
+:root[data-theme="dark"] .commercial-dashboard .dashboard-list-item,
+:root[data-theme="dark"] .commercial-dashboard .activity-item {
+  border-bottom: 0;
+  border-radius: var(--radius);
+  background: var(--dashboard-row);
+}
+
+:root[data-theme="dark"] .commercial-dashboard .dashboard-list-item + .dashboard-list-item,
+:root[data-theme="dark"] .commercial-dashboard .activity-item + .activity-item {
+  border-top: 0;
+}
+
+:root[data-theme="dark"] .commercial-dashboard .activity-item > span {
+  background: var(--color-green-soft);
+  color: var(--color-green-dark);
+}
+
+:root[data-theme="dark"] .commercial-dashboard .activity-item p {
+  color: var(--color-muted);
+}
+
+:root[data-theme="dark"] .commercial-dashboard .section-card {
+  overflow: hidden;
+}
+
+/* Dashboard dark polish: force table-like graphite separators, never bright lines. */
+:root[data-theme="dark"] .commercial-dashboard {
+  --dashboard-border: #223044;
+  --dashboard-border-soft: #1c2939;
+  --dashboard-divider: #263548;
+}
+
+:root[data-theme="dark"] .commercial-dashboard .section-card,
+:root[data-theme="dark"] .commercial-dashboard .panel-section,
+:root[data-theme="dark"] .commercial-dashboard .chart-panel,
+:root[data-theme="dark"] .commercial-dashboard .activity-chart-panel,
+:root[data-theme="dark"] .commercial-dashboard .dashboard-hero,
+:root[data-theme="dark"] .commercial-dashboard .dashboard-filters,
+:root[data-theme="dark"] .commercial-dashboard .enterprise-metric,
+:root[data-theme="dark"] .commercial-dashboard .business-health-card,
+:root[data-theme="dark"] .commercial-dashboard .executive-focus-grid article,
+:root[data-theme="dark"] .commercial-dashboard .executive-risk-list,
+:root[data-theme="dark"] .commercial-dashboard .state-card,
+:root[data-theme="dark"] .commercial-dashboard .empty-state-card,
+:root[data-theme="dark"] .commercial-dashboard .card {
+  border-color: var(--dashboard-border) !important;
+}
+
+:root[data-theme="dark"] .commercial-dashboard .section-card-header {
+  border-top: 0 !important;
+  border-right: 0 !important;
+  border-bottom: 0 !important;
+  border-left: 0 !important;
+  background: #111b27 !important;
+}
+
+:root[data-theme="dark"] .commercial-dashboard .section-header,
+:root[data-theme="dark"] .commercial-dashboard .dashboard-section-header {
+  position: relative;
+  border-bottom: 0 !important;
+  border-left: 4px solid #5aa2ff !important;
+  background: #111b27 !important;
+}
+
+:root[data-theme="dark"] .commercial-dashboard .dashboard-section-header {
+  padding-left: 16px;
+}
+
+:root[data-theme="dark"] .commercial-dashboard .dashboard-section-header h2,
+:root[data-theme="dark"] .commercial-dashboard .section-header h2 {
+  position: relative;
+  display: block;
+  margin-bottom: 7px;
+  color: #f7fbff;
+  font-size: 1rem;
+  font-weight: 950;
+  letter-spacing: 0;
+}
+
+:root[data-theme="dark"] .commercial-dashboard .dashboard-section-header h2::before,
+:root[data-theme="dark"] .commercial-dashboard .section-header h2::before {
+  content: none;
+}
+
+:root[data-theme="dark"] .commercial-dashboard .dashboard-section-header p,
+:root[data-theme="dark"] .commercial-dashboard .section-header p {
+  color: #9fb0c3;
+  font-weight: 700;
+}
+
+:root[data-theme="dark"] .commercial-dashboard .dashboard-section-header > svg {
+  color: #6fb0ff;
+  filter: drop-shadow(0 0 8px rgba(90, 162, 255, 0.2));
+}
+
+.commercial-dashboard .enterprise-filters {
+  grid-template-columns: minmax(150px, 150px) minmax(150px, 150px) max-content;
+  justify-content: start;
+  max-width: max-content;
+  padding: 12px;
+}
+
+.commercial-dashboard .enterprise-filters .primary-button {
+  width: auto;
+  min-width: 128px;
+  justify-content: center;
+  padding-inline: 18px;
+}
+
+.commercial-dashboard .executive-intelligence-panel {
+  gap: 10px;
+  margin: 10px 0 14px;
+}
+
+.commercial-dashboard .executive-overview-row {
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.commercial-dashboard .business-health-card {
+  min-height: 104px;
+  padding: 14px;
+}
+
+.commercial-dashboard .business-health-card > span {
+  width: 36px;
+  height: 36px;
+}
+
+.commercial-dashboard .business-health-card strong {
+  font-size: 1.65rem;
+}
+
+.commercial-dashboard .executive-risk-list {
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 18px;
+  align-items: center;
+  min-height: 104px;
+  padding: 14px;
+}
+
+.commercial-dashboard .executive-risk-list > div:first-child {
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.commercial-dashboard .executive-risk-list article {
+  min-height: 64px;
+  padding: 10px 12px;
+}
+
+
+:root[data-theme="dark"] .commercial-dashboard .section-card-body,
+:root[data-theme="dark"] .commercial-dashboard .daily-activity-chart,
+:root[data-theme="dark"] .commercial-dashboard .lead-funnel-bars,
+:root[data-theme="dark"] .commercial-dashboard .dashboard-bar-list,
+:root[data-theme="dark"] .commercial-dashboard .dashboard-list,
+:root[data-theme="dark"] .commercial-dashboard .activity-list {
+  border-color: var(--dashboard-border-soft) !important;
+  background: #101923 !important;
+}
+
+:root[data-theme="dark"] .commercial-dashboard .daily-bars,
+:root[data-theme="dark"] .commercial-dashboard .bar-track {
+  border-color: var(--dashboard-border-soft) !important;
+}
+
+:root[data-theme="dark"] .commercial-dashboard .dashboard-list-item,
+:root[data-theme="dark"] .commercial-dashboard .activity-item {
+  border: 0 !important;
+  background: #121d29 !important;
+}
+
+:root[data-theme="dark"] .commercial-dashboard .empty-state-card {
+  border: 0 !important;
+  background: #101923 !important;
+}
+
+:root[data-theme="dark"] .commercial-dashboard .section-card-header + .section-card-body,
+:root[data-theme="dark"] .commercial-dashboard .section-card-header + .daily-activity-chart,
+:root[data-theme="dark"] .commercial-dashboard .section-card-header + .lead-funnel-bars,
+:root[data-theme="dark"] .commercial-dashboard .section-card-header + .dashboard-bar-list,
+:root[data-theme="dark"] .commercial-dashboard .section-card-header + .dashboard-list,
+:root[data-theme="dark"] .commercial-dashboard .section-card-header + .activity-list {
+  border-top: 0 !important;
+}
+
+.executive-risk-list h3,
+.crm-priority-strip h2,
+.onboarding-hero h1,
+.onboarding-next-step h2 {
+  margin: 0;
+}
+
+.executive-risk-list article {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface-soft);
+}
+
+.executive-risk-list article > span {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.crm-command-center,
+.saas-command-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 18px 0;
+}
+
+.crm-command-center article,
+.saas-metric {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  min-height: 92px;
+  padding: 16px;
+}
+
+.crm-command-center strong,
+.saas-metric strong {
+  display: block;
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.crm-command-center small,
+.saas-metric small {
+  display: block;
+  margin-top: 5px;
+  font-weight: 800;
+}
+
+.crm-priority-strip {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.55fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 18px;
+  padding: 16px;
+}
+
+.crm-priority-strip > div:last-child {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.crm-priority-chip {
+  display: grid;
+  grid-template-columns: 38px minmax(120px, 1fr);
+  gap: 8px 10px;
+  align-items: center;
+  min-width: 210px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface-soft);
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.crm-priority-chip > span {
+  grid-row: span 2;
+  display: inline-grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: var(--radius);
+  background: var(--color-blue-soft);
+  color: var(--color-blue-dark);
+  font-weight: 900;
+}
+
+.crm-priority-empty {
+  display: inline-flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius);
+  color: var(--color-muted);
+  font-weight: 800;
+}
+
+.catalog-intelligence-grid {
+  grid-template-columns: minmax(260px, 1.2fr) repeat(4, minmax(150px, 0.7fr));
+  margin: 18px 0;
+}
+
+.catalog-health-card,
+.catalog-intelligence-grid article {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  min-height: 96px;
+  padding: 16px;
+}
+
+.catalog-health-card strong,
+.catalog-intelligence-grid article strong {
+  display: block;
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.catalog-health-card small,
+.catalog-intelligence-grid article small {
+  display: block;
+  margin-top: 5px;
+  color: var(--color-muted);
+  font-weight: 800;
+}
+
+.catalog-advisor-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.85fr);
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.catalog-advisor-list,
+.catalog-priority-products {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 16px;
+}
+
+.catalog-advisor-list article {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface-soft);
+}
+
+.catalog-priority-products button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface-soft);
+  color: var(--color-text);
+  text-align: left;
+}
+
+.catalog-empty-advice {
+  padding: 18px;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius);
+  color: var(--color-muted);
+  text-align: center;
+}
+
+.saas-command-grid {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.saas-ops-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.8fr);
+  gap: 16px;
+  margin: 18px 0;
+}
+
+.saas-panel {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 16px;
+}
+
+.saas-company-card-list,
+.saas-company-signals,
+.saas-audit-list {
+  display: grid;
+  gap: 10px;
+}
+
+.saas-company-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface-soft);
+}
+
+.saas-company-health {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  height: 32px;
+  border-radius: 999px;
+  background: var(--color-green-soft);
+  color: var(--color-green-dark);
+  font-weight: 900;
+}
+
+.onboarding-page {
+  display: grid;
+  gap: 18px;
+}
+
+.onboarding-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  padding: 22px;
+}
+
+.onboarding-progress-ring {
+  display: grid;
+  width: 132px;
+  aspect-ratio: 1;
+  place-items: center;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at center, var(--color-surface) 55%, transparent 56%),
+    conic-gradient(var(--color-blue) var(--progress, 0%), var(--color-border) 0);
+}
+
+.onboarding-progress-ring strong {
+  font-size: 1.7rem;
+}
+
+.onboarding-summary-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.onboarding-summary-grid article {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 16px;
+}
+
+.onboarding-next-step {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border-left: 4px solid var(--color-blue);
+}
+
+.onboarding-next-step.ready {
+  border-left-color: var(--color-green);
+}
+
+.onboarding-steps {
+  display: grid;
+  gap: 12px;
+}
+
+.onboarding-step {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 16px;
+}
+
+.onboarding-step h3,
+.onboarding-step p {
+  margin: 0;
+}
+
+.inbox-chat-panel {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.inbox-message-group {
+  grid-template-columns: 1fr;
+}
+
+.inbox-message-actions {
+  justify-self: center;
+}
+
+.inbox-reply-box {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+  padding: 14px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.inbox-reply-box label {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface-soft);
+  color: var(--color-muted);
+}
+
+.inbox-reply-box textarea {
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  resize: vertical;
+  outline: none;
+}
+
+:root[data-theme="dark"] .bot-prompts-header,
+:root[data-theme="dark"] .bot-prompts-header-metric,
+:root[data-theme="dark"] .settings-save-bar,
+:root[data-theme="dark"] .whatsapp-main-meta div,
+:root[data-theme="dark"] .whatsapp-qr-card img,
+:root[data-theme="dark"] .whatsapp-empty-note {
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+:root[data-theme="dark"] .settings-save-bar {
+  background: rgba(17, 26, 36, 0.94);
+}
+
+:root[data-theme="dark"] .whatsapp-main-meta div,
+:root[data-theme="dark"] .whatsapp-empty-note,
+:root[data-theme="dark"] .inbox-thread.active,
+:root[data-theme="dark"] .inbox-thread:hover {
+  background: var(--color-surface-soft);
+}
+
+@media (max-width: 1280px) {
+  .executive-intelligence-panel,
+  .executive-overview-row,
+  .catalog-advisor-panel,
+  .saas-ops-grid,
+  .crm-priority-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .catalog-intelligence-grid,
+  .saas-command-grid,
+  .executive-focus-grid,
+  .crm-command-center {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .executive-focus-grid,
+  .catalog-intelligence-grid,
+  .saas-command-grid,
+  .crm-command-center,
+  .onboarding-summary-grid,
+  .onboarding-hero,
+  .onboarding-step,
+  .inbox-reply-box {
+    grid-template-columns: 1fr;
+  }
+
+  .onboarding-progress-ring {
+    justify-self: start;
+  }
+
+  .commercial-dashboard .enterprise-filters {
+    max-width: none;
+  }
+
+  .commercial-dashboard .executive-risk-list {
+    grid-template-columns: 1fr;
   }
 }

@@ -20,9 +20,9 @@ export function DataTable({
   }
 
   return (
-    <div className={`data-table-shell ${className}`}>
+    <div className={`data-table-shell overflow-x-auto ${className}`}>
       <div className="table-wrap">
-        <table>
+        <table className="table table-zebra">
           <thead>
             <tr>
               {columns.map((column) => (

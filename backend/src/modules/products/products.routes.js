@@ -4,6 +4,7 @@ import { attachCompanyScope } from '../../middlewares/company-scope.middleware.j
 import { authorizeRoles } from '../../middlewares/roles.middleware.js';
 import { uploadProductImage, uploadProductsXlsx } from '../../middlewares/upload.middleware.js';
 import {
+  catalogInsights,
   getProduct,
   importProductsFromExcel,
   listProducts,
@@ -17,6 +18,7 @@ export const productsRouter = Router();
 productsRouter.use(authenticate, authorizeRoles('SUPER_ADMIN', 'OWNER'), attachCompanyScope);
 
 productsRouter.get('/', listProducts);
+productsRouter.get('/insights', catalogInsights);
 productsRouter.post('/import', uploadProductsXlsx, importProductsFromExcel);
 productsRouter.post('/', uploadProductImage, storeProduct);
 productsRouter.get('/:id', getProduct);

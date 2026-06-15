@@ -19,7 +19,7 @@ const AUTH_USER_COLUMNS = `
   e.estado AS empresa_estado
 `;
 
-function sanitizeUser(user) {
+export function sanitizeUser(user) {
   return {
     id: user.id,
     empresaId: user.empresa_id,
@@ -37,7 +37,7 @@ function sanitizeUser(user) {
   };
 }
 
-function createToken(user) {
+export function createToken(user) {
   const jti = crypto.randomUUID();
 
   const token = jwt.sign(

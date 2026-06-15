@@ -3,6 +3,7 @@ import {
   deleteProduct,
   findProductById,
   findProducts,
+  getCatalogInsights,
   importProducts,
   updateProduct
 } from './products.service.js';
@@ -12,7 +13,28 @@ import { auditFromRequest } from '../audit/audit.service.js';
 
 export async function listProducts(req, res, next) {
   try {
-    res.json({ data: await findProducts(req.auth) });
+    const result = await findProducts(req.auth, {
+      page: req.query.page,
+      pageSize: req.query.page_size,
+      search: req.query.search,
+      categoria_id: req.query.categoria_id,
+      estado: req.query.estado
+    });
+
+    if (Array.isArray(result)) {
+      res.json({ data: result });
+      return;
+    }
+
+    res.json({ data: result.items, meta: result.meta });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function catalogInsights(req, res, next) {
+  try {
+    res.json({ data: await getCatalogInsights(req.auth) });
   } catch (error) {
     next(error);
   }

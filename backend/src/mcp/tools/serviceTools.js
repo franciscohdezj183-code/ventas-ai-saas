@@ -8,12 +8,31 @@ import {
 } from './utils.js';
 import { createHttpError } from '../../utils/http-error.js';
 
+const SEARCH_STOP_WORDS = new Set(['a', 'al', 'con', 'de', 'del', 'el', 'en', 'la', 'las', 'los', 'para', 'por', 'que']);
+
+function normalizeSearchTokens(value) {
+  return String(value ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 1 && !SEARCH_STOP_WORDS.has(token))
+    .slice(0, 6);
+}
+
+function booleanFullTextQuery(tokens) {
+  return tokens.map((token) => `${token}*`).join(' ');
+}
+
 function validateBuscarServicios(args, auth) {
   assertAllowedArgs(args, ['empresa_id', 'texto']);
 
   return {
     empresaId: normalizeEmpresaId(args.empresa_id, auth),
-    text: likeTerm(args.texto)
+    text: likeTerm(args.texto),
+    textTokens: normalizeSearchTokens(args.texto)
   };
 }
 
@@ -21,20 +40,43 @@ async function executeBuscarServicios(args, auth) {
   const input = validateBuscarServicios(args, auth);
   const params = [input.empresaId];
   const conditions = ["s.empresa_id = ?", "s.estado = 'ACTIVO'"];
+  const fullTextQuery = input.textTokens.length > 0 ? booleanFullTextQuery(input.textTokens) : '';
 
-  if (input.text) {
+  if (fullTextQuery) {
+    const tokenConditions = [];
+
+    for (const token of input.textTokens) {
+      const term = likeTerm(token);
+      tokenConditions.push('(s.nombre LIKE ? OR s.descripcion LIKE ? OR c.nombre LIKE ?)');
+      params.push(term, term, term);
+    }
+
+    conditions.push(`(MATCH(s.nombre, s.descripcion) AGAINST (? IN BOOLEAN MODE) OR ${tokenConditions.join(' OR ')})`);
+    params.splice(1, 0, fullTextQuery);
+  } else if (input.text) {
     conditions.push('(s.nombre LIKE ? OR s.descripcion LIKE ? OR c.nombre LIKE ?)');
     params.push(input.text, input.text, input.text);
   }
 
   const [rows] = await query(
-    `SELECT s.id, s.nombre, s.descripcion, s.precio, s.tipo_precio, s.duracion_minutos AS duracion, c.nombre AS categoria
+    `SELECT
+       s.id,
+       s.nombre,
+       s.descripcion,
+       s.precio,
+       s.tipo_precio,
+       s.duracion_minutos AS duracion,
+       c.nombre AS categoria,
+       CASE
+         WHEN ? = '' THEN 0
+         ELSE MATCH(s.nombre, s.descripcion) AGAINST (? IN BOOLEAN MODE)
+       END AS relevancia
      FROM servicios s
      LEFT JOIN categorias c ON c.empresa_id = s.empresa_id AND c.id = s.categoria_id
      WHERE ${conditions.join(' AND ')}
-     ORDER BY s.precio ASC, s.nombre ASC
+     ORDER BY relevancia DESC, s.precio ASC, s.nombre ASC
      LIMIT ${MAX_RESULTS}`,
-    params
+    [fullTextQuery, fullTextQuery, ...params]
   );
 
   return { servicios: rows };

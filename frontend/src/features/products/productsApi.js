@@ -12,8 +12,16 @@ function toProductFormData(payload) {
   return formData;
 }
 
-export async function fetchProducts() {
-  const response = await api.get('/products');
+export async function fetchProducts(params = {}) {
+  const response = await api.get('/products', { params });
+  return {
+    data: response.data.data,
+    meta: response.data.meta
+  };
+}
+
+export async function fetchCatalogInsights() {
+  const response = await api.get('/products/insights');
   return response.data.data;
 }
 

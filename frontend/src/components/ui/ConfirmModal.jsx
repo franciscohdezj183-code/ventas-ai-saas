@@ -15,9 +15,9 @@ export function ConfirmModal({
   }
 
   return (
-    <div className="modal-backdrop" role="presentation">
-      <div className="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
-        <button className="icon-button modal-close" aria-label="Cerrar" onClick={onCancel} type="button">
+    <div className="modal-backdrop modal modal-open" role="presentation">
+      <div className="confirm-modal modal-box" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+        <button className="icon-button modal-close btn btn-ghost btn-circle" aria-label="Cerrar" onClick={onCancel} type="button">
           <X size={18} aria-hidden="true" />
         </button>
         <div className={destructive ? 'modal-icon danger' : 'modal-icon'}>
@@ -25,12 +25,12 @@ export function ConfirmModal({
         </div>
         <h2 id="confirm-title">{title}</h2>
         <p>{description}</p>
-        <div className="modal-actions">
-          <button className="secondary-button" onClick={onCancel} type="button">
+        <div className="modal-actions modal-action">
+          <button className="secondary-button btn btn-ghost" onClick={onCancel} type="button">
             {cancelLabel}
           </button>
           <button
-            className={destructive ? 'danger-button' : 'primary-button'}
+            className={destructive ? 'danger-button btn btn-error' : 'primary-button btn btn-primary'}
             onClick={onConfirm}
             type="button"
           >

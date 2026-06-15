@@ -17,7 +17,20 @@ function normalizePhone(value) {
     .replace(/\D/g, '');
 }
 
-function normalizarTextoBusqueda(value) {
+function configuredSynonymEntries(synonyms) {
+  if (!synonyms || typeof synonyms !== 'object' || Array.isArray(synonyms)) {
+    return [];
+  }
+
+  return Object.entries(synonyms)
+    .flatMap(([target, aliases]) => {
+      const values = Array.isArray(aliases) ? aliases : [aliases];
+      return values.map((alias) => [String(alias ?? '').trim(), String(target ?? '').trim()]);
+    })
+    .filter(([alias, target]) => alias && target);
+}
+
+function normalizarTextoBusqueda(value, synonyms = null) {
   const replacements = new Map([
     ['ke', 'que'],
     ['q', 'que'],
@@ -54,6 +67,13 @@ function normalizarTextoBusqueda(value) {
     ['mezas', 'mesas']
   ]);
 
+  for (const [alias, target] of configuredSynonymEntries(synonyms)) {
+    replacements.set(
+      alias.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''),
+      target.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    );
+  }
+
   return String(value ?? '')
     .toLowerCase()
     .normalize('NFD')
@@ -68,6 +88,11 @@ function normalizarTextoBusqueda(value) {
 
 function responseEmoji(profile, key, fallback = '') {
   return profile?.usar_emojis === false ? '' : profile?.emojis?.[key] ?? fallback;
+}
+
+function configuredText(profile, key, fallback) {
+  const value = String(profile?.[key] ?? '').trim();
+  return value || fallback;
 }
 
 function applyResponseTemplate(template, replacements) {
@@ -258,9 +283,10 @@ function buildLeadResponse(intent, result) {
 }
 
 function buildStaticResponse(intent, companyContext = {}) {
+  const profile = companyContext.response_profile ?? {};
   const responses = {
-    SALUDO: companyContext.mensaje_bienvenida || 'Hola, gracias por escribirnos. Dime que producto o servicio buscas y te ayudo a revisarlo.',
-    DESPEDIDA: 'Gracias por escribirnos. Cuando necesites algo mas, aqui te ayudamos.',
+    SALUDO: configuredText(profile, 'saludo_personalizado', companyContext.mensaje_bienvenida || 'Hola, gracias por escribirnos. Dime que producto o servicio buscas y te ayudo a revisarlo.'),
+    DESPEDIDA: configuredText(profile, 'despedida_personalizada', 'Gracias por escribirnos. Cuando necesites algo mas, aqui te ayudamos.'),
     AGRADECIMIENTO: 'Con gusto. Te puedo mostrar mas opciones o pasarte con un asesor.',
     AYUDA: 'Puedo ayudarte a buscar productos, revisar precios, confirmar disponibilidad o pasarte con un asesor.',
     FUERA_DE_TEMA: 'Puedo ayudarte con productos, servicios y atencion comercial. Dime que estas buscando.',
@@ -304,7 +330,7 @@ function buildMedia(intent, toolResult, response) {
 
 function buildToolArgs(toolName, { empresaId, phone, message, normalizedMessage, intent, conversationContext }) {
   const params = intent.parametros ?? {};
-  const searchText = params.texto ? normalizarTextoBusqueda(params.texto) : normalizedMessage;
+  const searchText = params.texto ? normalizarTextoBusqueda(params.texto, intent.sinonimos) : normalizedMessage;
 
   switch (toolName) {
     case 'buscar_productos':
@@ -727,9 +753,9 @@ export async function orchestrateIncomingMessage({
   }
 }) {
   const cleanPhone = normalizePhone(phone);
-  const normalizedMessage = normalizarTextoBusqueda(message);
   const conversationContext = await contextStore.find({ empresaId, phone: cleanPhone });
   const contextoEmpresa = contexto ?? (await getMinimalCompanyContext(empresaId, mcpClient));
+  const normalizedMessage = normalizarTextoBusqueda(message, contextoEmpresa.response_profile?.sinonimos);
   const contextoCompleto = {
     ...contextoEmpresa,
     conversacion_contexto: conversationContext
@@ -748,6 +774,7 @@ export async function orchestrateIncomingMessage({
     contexto: contextoCompleto
   });
   const intent = applyConversationContext(validateIntentJson(interpretedIntent), normalizedMessage, conversationContext);
+  intent.sinonimos = contextoEmpresa.response_profile?.sinonimos ?? null;
   let toolResult = null;
   let notificationResult = null;
   let responseIntent = intent;

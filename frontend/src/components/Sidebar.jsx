@@ -1,4 +1,4 @@
-import { ChevronsLeft, ChevronsRight, Sparkles } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import logo from '../../Logo.png';
 
@@ -38,18 +38,9 @@ function SidebarItem({ item, onNavigate }) {
   );
 }
 
-export function Sidebar({ companyName = 'Nexus IA', isCollapsed = false, items, onNavigate, onToggleCollapse }) {
+export function Sidebar({ companyName = 'Nexus IA', isCollapsed = false, items, onNavigate }) {
   return (
     <aside className="sidebar" aria-label="Menu principal">
-      <button
-        aria-label={isCollapsed ? 'Expandir menu' : 'Colapsar menu'}
-        className="sidebar-collapse-button"
-        onClick={onToggleCollapse}
-        type="button"
-      >
-        {isCollapsed ? <ChevronsRight size={17} aria-hidden="true" /> : <ChevronsLeft size={17} aria-hidden="true" />}
-      </button>
-
       <NexusBrand companyName={companyName} isCollapsed={isCollapsed} />
 
       <div className="sidebar-section-label">

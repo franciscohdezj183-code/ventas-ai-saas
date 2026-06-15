@@ -1,6 +1,6 @@
 import { checkDatabaseConnection } from '../../config/database.js';
 import { env } from '../../config/env.js';
-import { listWhatsappStatuses } from '../whatsapp/whatsapp.service.js';
+import { listWhatsappStatusSnapshots } from '../whatsapp/whatsapp.service.js';
 
 export async function getHealth(req, res, next) {
   const checks = {
@@ -19,7 +19,7 @@ export async function getHealth(req, res, next) {
   }
 
   try {
-    const statuses = listWhatsappStatuses();
+    const statuses = await listWhatsappStatusSnapshots();
     checks.whatsapp = {
       total_sessions: statuses.length,
       connected_sessions: statuses.filter((status) => status.status === 'CONNECTED').length

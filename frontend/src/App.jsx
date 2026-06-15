@@ -5,6 +5,7 @@ import {
   CompaniesPage,
   ConversationsPage,
   LeadsPage,
+  OnboardingPage,
   ProductsPage,
   ServicesPage,
   SettingsPage,
@@ -14,7 +15,7 @@ import {
 import { LoginPage } from './features/auth/LoginPage.jsx';
 import { AdminLayout } from './layouts/AdminLayout.jsx';
 import { DashboardPage } from './pages/DashboardPage.jsx';
-import { ProtectedRoute } from './routes/ProtectedRoute.jsx';
+import { ProtectedRoute, RoleRoute } from './routes/ProtectedRoute.jsx';
 
 export function App() {
   return (
@@ -29,6 +30,7 @@ export function App() {
         }
       >
         <Route index element={<DashboardPage />} />
+        <Route path="inicio-guiado" element={<OnboardingPage />} />
         <Route path="empresas" element={<CompaniesPage />} />
         <Route path="usuarios" element={<UsersPage />} />
         <Route path="categorias" element={<CategoriesPage />} />
@@ -38,7 +40,14 @@ export function App() {
         <Route path="conversaciones" element={<ConversationsPage />} />
         <Route path="whatsapp" element={<WhatsAppPage />} />
         <Route path="configuracion" element={<SettingsPage />} />
-        <Route path="prompts-bot" element={<BotPromptsPage />} />
+        <Route
+          path="prompts-bot"
+          element={
+            <RoleRoute roles={['SUPER_ADMIN']}>
+              <BotPromptsPage />
+            </RoleRoute>
+          }
+        />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

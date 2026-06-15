@@ -151,10 +151,6 @@ export function UsersManager() {
           </div>
         </div>
         <div>
-          <div className="users-header-metric">
-            <strong>{stats.total}</strong>
-            <span>usuarios registrados</span>
-          </div>
           <button
             className="primary-button"
             onClick={() => {

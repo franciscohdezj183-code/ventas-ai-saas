@@ -1,12 +1,29 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Building2, Eye, Filter, Plus, Search } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import {
+  Activity,
+  Bot,
+  Building2,
+  Eye,
+  Filter,
+  LogIn,
+  MessageCircle,
+  Plus,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  TriangleAlert
+} from 'lucide-react';
 import { ConfirmModal, ErrorState, StatusBadge } from '../../components/ui/index.js';
+import { useAuth } from '../../context/AuthContext.jsx';
 import { CompanyForm } from './CompanyForm.jsx';
 import { CompanyTable } from './CompanyTable.jsx';
 import {
   createCompany,
   deleteCompany,
   fetchCompanies,
+  fetchSaasGlobalOverview,
+  impersonateCompanyOwner,
   updateCompany
 } from './companiesApi.js';
 
@@ -20,7 +37,112 @@ const initialFilters = {
   plan: ''
 };
 
+const emptySaasOverview = {
+  resumen: {
+    empresas: 0,
+    activas: 0,
+    inactivas: 0,
+    whatsapp_conectadas: 0,
+    ia_activas: 0,
+    leads_30d: 0,
+    conversaciones_30d: 0,
+    errores: 0,
+    plantillas_asignadas: 0,
+    salud_promedio: 0
+  },
+  empresas: [],
+  auditoria_reciente: []
+};
+
+function SaaSMetric({ icon: Icon, label, value, detail, tone = 'blue' }) {
+  return (
+    <article className={`saas-metric ${tone}`}>
+      <span><Icon size={18} aria-hidden="true" /></span>
+      <div>
+        <strong>{value}</strong>
+        <small>{label}</small>
+        <p>{detail}</p>
+      </div>
+    </article>
+  );
+}
+
+function CompanyOpsCard({ company, onView }) {
+  const whatsappConnected = company.whatsapp_status === 'CONNECTED';
+
+  return (
+    <button className="saas-company-card" onClick={() => onView(company)} type="button">
+      <div>
+        <strong>{company.nombre}</strong>
+        <span>{company.tipo_negocio || 'General'} - {company.plan}</span>
+      </div>
+      <div className="saas-company-health">
+        <span>{company.salud_saas}%</span>
+        <small>salud</small>
+      </div>
+      <div className="saas-company-signals">
+        <span className={whatsappConnected ? 'good' : 'bad'}>WA {whatsappConnected ? 'ON' : 'OFF'}</span>
+        <span className={company.activo_ia ? 'good' : 'warn'}>IA {company.activo_ia ? 'ON' : 'OFF'}</span>
+        <span>{company.template_nombre || 'Sin plantilla'}</span>
+      </div>
+      <p>{company.leads_30d} leads - {company.conversaciones_30d} conversaciones - {company.usuarios_activos} usuarios</p>
+    </button>
+  );
+}
+
+function SaaSGlobalPanel({ overview, onViewCompany }) {
+  const summary = overview.resumen ?? emptySaasOverview.resumen;
+  const riskyCompanies = [...(overview.empresas ?? [])]
+    .sort((first, second) => Number(first.salud_saas ?? 0) - Number(second.salud_saas ?? 0))
+    .slice(0, 5);
+
+  return (
+    <>
+      <section className="saas-command-grid" aria-label="Metricas globales SaaS">
+        <SaaSMetric icon={Building2} label="Empresas" value={summary.empresas} detail={`${summary.activas} activas / ${summary.inactivas} inactivas`} />
+        <SaaSMetric icon={MessageCircle} label="WhatsApp conectado" value={`${summary.whatsapp_conectadas}/${summary.empresas}`} detail="Sesiones listas para operar" tone="green" />
+        <SaaSMetric icon={Bot} label="IA activa" value={summary.ia_activas} detail="Empresas con asistente habilitado" tone="purple" />
+        <SaaSMetric icon={Sparkles} label="Plantillas" value={summary.plantillas_asignadas} detail="Empresas con prompt asignado" tone="amber" />
+        <SaaSMetric icon={TriangleAlert} label="Errores" value={summary.errores} detail="Empresas con error reciente" tone="red" />
+        <SaaSMetric icon={Activity} label="Salud promedio" value={`${summary.salud_promedio}%`} detail="Estado global de operacion" />
+      </section>
+
+      <section className="saas-ops-grid">
+        <article className="saas-panel">
+          <div>
+            <p className="eyebrow">Operacion global</p>
+            <h2>Empresas que requieren atencion</h2>
+          </div>
+          <div className="saas-company-card-list">
+            {riskyCompanies.map((company) => (
+              <CompanyOpsCard company={company} key={company.id} onView={onViewCompany} />
+            ))}
+          </div>
+        </article>
+
+        <article className="saas-panel">
+          <div>
+            <p className="eyebrow">Auditoria</p>
+            <h2>Actividad reciente</h2>
+          </div>
+          <div className="saas-audit-list">
+            {(overview.auditoria_reciente ?? []).map((event) => (
+              <article key={event.id}>
+                <strong>{event.descripcion || `${event.accion} en ${event.modulo}`}</strong>
+                <span>{event.usuario_nombre || 'Sistema'} - {event.empresa_nombre || 'Global'}</span>
+              </article>
+            ))}
+          </div>
+        </article>
+      </section>
+    </>
+  );
+}
+
 export function CompaniesManager() {
+  const { assumeSession, user } = useAuth();
+  const navigate = useNavigate();
+  const isSuperAdmin = user?.rol === 'SUPER_ADMIN';
   const [companies, setCompanies] = useState([]);
   const [editingCompany, setEditingCompany] = useState(null);
   const [viewingCompany, setViewingCompany] = useState(null);
@@ -30,6 +152,7 @@ export function CompaniesManager() {
   const [isSaving, setIsSaving] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [pendingToggle, setPendingToggle] = useState(null);
+  const [saasOverview, setSaasOverview] = useState(emptySaasOverview);
   const [error, setError] = useState('');
 
   const stats = useMemo(() => {
@@ -70,7 +193,12 @@ export function CompaniesManager() {
     try {
       setIsLoading(true);
       setError('');
-      setCompanies(await fetchCompanies());
+      const [nextCompanies, nextOverview] = await Promise.all([
+        isSuperAdmin ? Promise.resolve([]) : fetchCompanies(),
+        isSuperAdmin ? fetchSaasGlobalOverview() : Promise.resolve(emptySaasOverview)
+      ]);
+      setCompanies(isSuperAdmin ? nextOverview.empresas ?? [] : nextCompanies);
+      setSaasOverview(nextOverview);
     } catch (requestError) {
       setError(getApiError(requestError));
     } finally {
@@ -80,7 +208,7 @@ export function CompaniesManager() {
 
   useEffect(() => {
     loadCompanies();
-  }, []);
+  }, [isSuperAdmin]);
 
   async function handleSubmit(payload) {
     try {
@@ -136,6 +264,17 @@ export function CompaniesManager() {
     }
   }
 
+  async function handleImpersonate(company) {
+    try {
+      setError('');
+      const session = await impersonateCompanyOwner(company.id);
+      assumeSession(session);
+      navigate('/', { replace: true });
+    } catch (requestError) {
+      setError(getApiError(requestError));
+    }
+  }
+
   return (
     <div className="resource-page companies-page">
       <div className="companies-unified-header">
@@ -145,15 +284,11 @@ export function CompaniesManager() {
           </span>
           <div>
             <p className="eyebrow">Administracion</p>
-            <h1>Empresas</h1>
-            <p>Gestiona negocios, planes y estado operativo del entorno multiempresa.</p>
+            <h1>{isSuperAdmin ? 'Administracion' : 'Empresas'}</h1>
+            <p>{isSuperAdmin ? 'Opera empresas, WhatsApp, IA, plantillas, errores y auditoria desde una consola global.' : 'Gestiona negocios, planes y estado operativo del entorno multiempresa.'}</p>
           </div>
         </div>
         <div>
-          <div className="companies-header-metric">
-            <strong>{stats.total}</strong>
-            <span>empresas registradas</span>
-          </div>
           <button
             className="primary-button"
             onClick={() => {
@@ -163,12 +298,14 @@ export function CompaniesManager() {
             type="button"
           >
             <Plus size={18} aria-hidden="true" />
-            Nueva empresa
+            {isSuperAdmin ? 'Crear empresa con wizard' : 'Nueva empresa'}
           </button>
         </div>
       </div>
 
       {error ? <ErrorState message={error} onRetry={loadCompanies} /> : null}
+
+      {isSuperAdmin ? <SaaSGlobalPanel overview={saasOverview} onViewCompany={setViewingCompany} /> : null}
 
       <div className="companies-summary-grid">
         <article className="company-summary-card">
@@ -265,8 +402,8 @@ export function CompaniesManager() {
               </span>
               <div>
                 <p className="eyebrow">Empresa</p>
-                <h2 id="company-form-title">{editingCompany ? 'Editar empresa' : 'Nueva empresa'}</h2>
-                <p>Configura los datos comerciales y el plan de la empresa.</p>
+                <h2 id="company-form-title">{editingCompany ? 'Editar empresa' : 'Wizard de nueva empresa'}</h2>
+                <p>{editingCompany ? 'Configura los datos comerciales y el plan de la empresa.' : 'Alta guiada para crear la empresa base del tenant SaaS.'}</p>
               </div>
             </div>
             <CompanyForm
@@ -318,7 +455,51 @@ export function CompaniesManager() {
                 <dt>Direccion</dt>
                 <dd>{viewingCompany.direccion || '-'}</dd>
               </div>
+              {isSuperAdmin ? (
+                <>
+                  <div>
+                    <dt>WhatsApp</dt>
+                    <dd>{viewingCompany.whatsapp_status || 'Sin sesion'}</dd>
+                  </div>
+                  <div>
+                    <dt>IA</dt>
+                    <dd>{viewingCompany.activo_ia ? 'Activa' : 'Pausada'}</dd>
+                  </div>
+                  <div>
+                    <dt>Plantilla</dt>
+                    <dd>{viewingCompany.template_nombre || 'Sin asignar'}</dd>
+                  </div>
+                  <div>
+                    <dt>Leads 30d</dt>
+                    <dd>{viewingCompany.leads_30d ?? 0}</dd>
+                  </div>
+                  <div>
+                    <dt>Conversaciones 30d</dt>
+                    <dd>{viewingCompany.conversaciones_30d ?? 0}</dd>
+                  </div>
+                  <div>
+                    <dt>Ultimo error</dt>
+                    <dd>{viewingCompany.ultimo_error || 'Sin errores recientes'}</dd>
+                  </div>
+                </>
+              ) : null}
             </dl>
+            {isSuperAdmin ? (
+              <div className="modal-actions">
+                <button className="secondary-button" onClick={() => handleImpersonate(viewingCompany)} type="button">
+                  <LogIn size={17} aria-hidden="true" />
+                  Ver como OWNER
+                </button>
+                <button className="primary-button" onClick={() => {
+                  setEditingCompany(viewingCompany);
+                  setViewingCompany(null);
+                  setIsFormOpen(true);
+                }} type="button">
+                  <ShieldCheck size={17} aria-hidden="true" />
+                  Administrar tenant
+                </button>
+              </div>
+            ) : null}
           </article>
         </div>
       ) : null}

@@ -10,3 +10,17 @@ export function ProtectedRoute({ children }) {
 
   return children;
 }
+
+export function RoleRoute({ children, roles }) {
+  const { user } = useAuth();
+
+  if (!user) {
+    return null;
+  }
+
+  if (!roles.includes(user.rol)) {
+    return <Navigate to="/" replace />;
+  }
+
+  return children;
+}

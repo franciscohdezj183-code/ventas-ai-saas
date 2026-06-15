@@ -15,7 +15,9 @@ const server = app.listen(env.port, () => {
   });
 });
 
-startHumanHandoffExpirationJob();
+if (process.env.HANDOFF_JOB_ENABLED !== 'false') {
+  startHumanHandoffExpirationJob();
+}
 
 let shuttingDown = false;
 
@@ -35,7 +37,9 @@ async function shutdown(signal) {
     }
 
     try {
-      stopHumanHandoffExpirationJob();
+      if (process.env.HANDOFF_JOB_ENABLED !== 'false') {
+        stopHumanHandoffExpirationJob();
+      }
       await shutdownWhatsappSessions();
       await closeDatabase();
       logger.info('server_shutdown_completed');

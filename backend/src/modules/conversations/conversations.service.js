@@ -1,5 +1,7 @@
 import { query } from '../../config/database.js';
-import { appendCompanyScope, companyScopeCondition, resolveScopedEmpresaId } from '../../middlewares/company-scope.middleware.js';
+import { appendCompanyScope, companyScopeCondition, getAuthenticatedEmpresaId, isSuperAdmin, resolveScopedEmpresaId } from '../../middlewares/company-scope.middleware.js';
+import { resumeBotForCustomer, isBotPausedForCustomer } from '../../bot/humanHandoffManager.js';
+import { sendWhatsappMessage } from '../whatsapp/whatsapp.service.js';
 import { createHttpError } from '../../utils/http-error.js';
 
 const CONVERSATION_COLUMNS = `
@@ -49,6 +51,52 @@ function mapDatabaseError(error) {
   throw error;
 }
 
+function normalizePhone(value) {
+  return String(value ?? '')
+    .replace('@c.us', '')
+    .replace(/\D/g, '');
+}
+
+function normalizeInboxFilters(auth, filters = {}) {
+  const empresaId = isSuperAdmin(auth)
+    ? resolveScopedEmpresaId(auth, filters.empresa_id, { requiredForSuperAdmin: false })
+    : getAuthenticatedEmpresaId(auth);
+
+  return {
+    empresaId,
+    telefono: normalizePhone(filters.telefono_cliente ?? filters.telefono ?? filters.query),
+    search: String(filters.search ?? filters.query ?? '').trim(),
+    estado: String(filters.estado ?? '').trim().toUpperCase(),
+    limit: Math.min(Math.max(Number(filters.limit) || 40, 1), 100),
+    offset: Math.max(Number(filters.offset) || 0, 0)
+  };
+}
+
+function buildInboxWhere(auth, filters = {}, alias = 'c') {
+  const input = normalizeInboxFilters(auth, filters);
+  const conditions = [];
+  const params = [];
+
+  if (input.empresaId) {
+    conditions.push(`${alias}.empresa_id = ?`);
+    params.push(input.empresaId);
+  }
+
+  if (input.telefono) {
+    conditions.push(`${alias}.telefono_cliente LIKE ?`);
+    params.push(`%${input.telefono}%`);
+  } else if (input.search) {
+    conditions.push(`(${alias}.telefono_cliente LIKE ? OR ${alias}.mensaje LIKE ? OR ${alias}.respuesta LIKE ?)`);
+    params.push(`%${input.search}%`, `%${input.search}%`, `%${input.search}%`);
+  }
+
+  return {
+    clause: conditions.length ? `WHERE ${conditions.join(' AND ')}` : '',
+    params,
+    input
+  };
+}
+
 export async function findConversations(auth, filters = {}) {
   const params = [];
   const conditions = [];
@@ -79,6 +127,149 @@ export async function findConversations(auth, filters = {}) {
   );
 
   return rows;
+}
+
+export async function findInboxThreads(auth, filters = {}) {
+  const where = buildInboxWhere(auth, filters, 'c');
+  const [rows] = await query(
+    `SELECT
+       latest.empresa_id,
+       latest.telefono_cliente,
+       latest.empresa_nombre,
+       latest.ultimo_mensaje,
+       latest.ultima_respuesta,
+       latest.ultima_fecha,
+       latest.total_mensajes,
+       latest.mensajes_sin_respuesta,
+       hh.estado AS handoff_estado
+     FROM (
+       SELECT
+         c.empresa_id,
+         c.telefono_cliente,
+         e.nombre AS empresa_nombre,
+         SUBSTRING_INDEX(GROUP_CONCAT(c.mensaje ORDER BY c.fecha DESC, c.id DESC SEPARATOR '\n---\n'), '\n---\n', 1) AS ultimo_mensaje,
+         SUBSTRING_INDEX(GROUP_CONCAT(COALESCE(c.respuesta, '') ORDER BY c.fecha DESC, c.id DESC SEPARATOR '\n---\n'), '\n---\n', 1) AS ultima_respuesta,
+         MAX(c.fecha) AS ultima_fecha,
+         COUNT(*) AS total_mensajes,
+         SUM(CASE WHEN c.respuesta IS NULL OR c.respuesta = '' THEN 1 ELSE 0 END) AS mensajes_sin_respuesta
+       FROM conversaciones c
+       INNER JOIN empresas e ON e.id = c.empresa_id
+       ${where.clause}
+       GROUP BY c.empresa_id, c.telefono_cliente, e.nombre
+     ) latest
+     LEFT JOIN human_handoffs hh
+       ON hh.empresa_id = latest.empresa_id
+      AND hh.telefono_cliente = latest.telefono_cliente
+      AND hh.estado IN ('PENDING_OWNER', 'HUMAN_TAKEOVER')
+     ORDER BY latest.ultima_fecha DESC
+     LIMIT ?
+     OFFSET ?`,
+    [...where.params, where.input.limit, where.input.offset]
+  );
+
+  return rows
+    .filter((thread) => {
+      if (!where.input.estado) return true;
+      const status = thread.handoff_estado === 'HUMAN_TAKEOVER'
+        ? 'HUMANO'
+        : Number(thread.mensajes_sin_respuesta) > 0
+          ? 'ABIERTA'
+          : 'BOT';
+      return status === where.input.estado;
+    })
+    .map((thread) => ({
+      ...thread,
+      total_mensajes: Number(thread.total_mensajes ?? 0),
+      mensajes_sin_respuesta: Number(thread.mensajes_sin_respuesta ?? 0),
+      estado_inbox: thread.handoff_estado === 'HUMAN_TAKEOVER'
+        ? 'HUMANO'
+        : Number(thread.mensajes_sin_respuesta) > 0
+          ? 'ABIERTA'
+          : 'BOT'
+    }));
+}
+
+export async function findInboxThread(auth, { empresaId, telefono }) {
+  const scopedEmpresaId = resolveScopedEmpresaId(auth, empresaId);
+  const cleanPhone = normalizePhone(telefono);
+
+  if (!cleanPhone) {
+    throw createHttpError(400, 'El telefono del cliente es requerido');
+  }
+
+  const [messages] = await query(
+    `SELECT ${CONVERSATION_COLUMNS}
+     FROM conversaciones c
+     INNER JOIN empresas e ON e.id = c.empresa_id
+     WHERE c.empresa_id = ?
+       AND c.telefono_cliente = ?
+     ORDER BY c.fecha ASC, c.id ASC`,
+    [scopedEmpresaId, cleanPhone]
+  );
+
+  const [handoffs] = await query(
+    `SELECT id, estado, motivo, owner_notified_at, owner_responded_at, expires_at, last_activity_at
+     FROM human_handoffs
+     WHERE empresa_id = ?
+       AND telefono_cliente = ?
+     ORDER BY updated_at DESC
+     LIMIT 5`,
+    [scopedEmpresaId, cleanPhone]
+  );
+
+  return {
+    empresa_id: scopedEmpresaId,
+    telefono_cliente: cleanPhone,
+    bot_pausado: await isBotPausedForCustomer({ empresa_id: scopedEmpresaId, telefono_cliente: cleanPhone }).catch(() => false),
+    handoff_activo: handoffs.find((handoff) => ['PENDING_OWNER', 'HUMAN_TAKEOVER'].includes(handoff.estado)) ?? null,
+    handoffs,
+    mensajes: messages
+  };
+}
+
+export async function pauseBotForThread(auth, { empresaId, telefono }) {
+  const scopedEmpresaId = resolveScopedEmpresaId(auth, empresaId);
+  const cleanPhone = normalizePhone(telefono);
+
+  if (!cleanPhone) {
+    throw createHttpError(400, 'El telefono del cliente es requerido');
+  }
+
+  await query(
+    `INSERT INTO human_handoffs
+      (empresa_id, telefono_cliente, estado, motivo, expires_at, last_activity_at)
+     VALUES (?, ?, 'HUMAN_TAKEOVER', 'PAUSA_MANUAL', DATE_ADD(NOW(), INTERVAL 4 MINUTE), NOW())`,
+    [scopedEmpresaId, cleanPhone]
+  );
+
+  return findInboxThread(auth, { empresaId: scopedEmpresaId, telefono: cleanPhone });
+}
+
+export async function resumeBotForThread(auth, { empresaId, telefono }) {
+  const scopedEmpresaId = resolveScopedEmpresaId(auth, empresaId);
+  const cleanPhone = normalizePhone(telefono);
+
+  await resumeBotForCustomer({ empresa_id: scopedEmpresaId, telefono_cliente: cleanPhone });
+  return findInboxThread(auth, { empresaId: scopedEmpresaId, telefono: cleanPhone });
+}
+
+export async function sendThreadReply(auth, { empresaId, telefono, mensaje }) {
+  const scopedEmpresaId = resolveScopedEmpresaId(auth, empresaId);
+  const cleanPhone = normalizePhone(telefono);
+  const cleanMessage = String(mensaje ?? '').trim();
+
+  if (!cleanPhone || !cleanMessage) {
+    throw createHttpError(400, 'Telefono y mensaje son requeridos');
+  }
+
+  await sendWhatsappMessage(scopedEmpresaId, cleanPhone, cleanMessage);
+  await query(
+    `INSERT INTO conversaciones (empresa_id, telefono_cliente, mensaje, respuesta, fecha)
+     VALUES (?, ?, ?, ?, NOW())`,
+    [scopedEmpresaId, cleanPhone, '[Respuesta manual desde inbox]', cleanMessage]
+  );
+
+  return findInboxThread(auth, { empresaId: scopedEmpresaId, telefono: cleanPhone });
 }
 
 export async function findConversationById(conversationId, auth) {

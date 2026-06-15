@@ -1,18 +1,50 @@
-import { Building2, ChevronDown, LogOut, Menu, ShieldCheck } from 'lucide-react';
+import {
+  Building2,
+  ChevronDown,
+  LogOut,
+  Menu,
+  Moon,
+  PanelLeftClose,
+  PanelLeftOpen,
+  ShieldCheck,
+  Sun
+} from 'lucide-react';
 import { useState } from 'react';
 
-export function Topbar({ companyName = 'Nexus IA', onLogout, onMenuClick, title = 'Dashboard', user }) {
+export function Topbar({
+  companyName = 'Nexus IA',
+  isSidebarCollapsed = false,
+  onLogout,
+  onMenuClick,
+  onThemeToggle,
+  onToggleSidebar,
+  theme = 'light',
+  title = 'Dashboard',
+  user
+}) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const role = user?.rol ?? 'OWNER';
   const userName = user?.nombre ?? 'Administrador';
   const userEmail = user?.email ?? user?.correo ?? 'Sesion activa';
   const userInitial = userName.trim().charAt(0).toUpperCase() || 'N';
+  const isDarkTheme = theme === 'dark';
+  const SidebarIcon = isSidebarCollapsed ? PanelLeftOpen : PanelLeftClose;
+  const ThemeIcon = isDarkTheme ? Sun : Moon;
 
   return (
     <header className="topbar">
       <div className="topbar-heading">
         <button className="topbar-menu" onClick={onMenuClick} type="button" aria-label="Abrir menu">
           <Menu size={20} aria-hidden="true" />
+        </button>
+        <button
+          aria-label={isSidebarCollapsed ? 'Expandir menu' : 'Colapsar menu'}
+          className="topbar-icon-button topbar-sidebar-toggle btn btn-ghost btn-circle"
+          onClick={onToggleSidebar}
+          title={isSidebarCollapsed ? 'Expandir menu' : 'Colapsar menu'}
+          type="button"
+        >
+          <SidebarIcon size={19} aria-hidden="true" />
         </button>
         <div>
           <p className="eyebrow">Panel Nexus IA</p>
@@ -28,6 +60,22 @@ export function Topbar({ companyName = 'Nexus IA', onLogout, onMenuClick, title 
             <strong>{companyName}</strong>
           </div>
         </div>
+
+        <button
+          aria-label={isDarkTheme ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}
+          aria-pressed={isDarkTheme}
+          className="theme-toggle btn btn-ghost"
+          onClick={onThemeToggle}
+          title={isDarkTheme ? 'Tema claro' : 'Tema oscuro'}
+          type="button"
+        >
+          <span className="theme-toggle-track" aria-hidden="true">
+            <span className="theme-toggle-thumb">
+              <ThemeIcon size={15} aria-hidden="true" />
+            </span>
+          </span>
+          <span className="theme-toggle-label">{isDarkTheme ? 'Oscuro' : 'Claro'}</span>
+        </button>
 
         <div className="user-menu">
           <button

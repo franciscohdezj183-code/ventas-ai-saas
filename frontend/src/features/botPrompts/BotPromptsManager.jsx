@@ -40,7 +40,13 @@ const emptySettings = {
   mensaje_sin_resultados: '',
   mensaje_asesor: '',
   mensaje_fuera_horario: '',
-  reglas_adicionales: ''
+  reglas_adicionales: '',
+  sinonimos_json: '',
+  handoff_timeout_minutos: 4,
+  handoff_mensaje_tomar: '',
+  handoff_mensaje_declinar: '',
+  handoff_mensaje_expirado: '',
+  handoff_mensaje_reactivar: ''
 };
 
 function getApiError(error) {
@@ -103,7 +109,10 @@ export function BotPromptsManager() {
     setSettingsForm({
       ...emptySettings,
       ...selectedSettings,
-      template_id: selectedSettings.template_id ?? ''
+      template_id: selectedSettings.template_id ?? '',
+      sinonimos_json: selectedSettings.sinonimos_json
+        ? JSON.stringify(selectedSettings.sinonimos_json, null, 2)
+        : ''
     });
   }, [selectedSettings?.id]);
 
@@ -184,16 +193,6 @@ export function BotPromptsManager() {
             <p className="eyebrow">Personalidad</p>
             <h1>Prompts del Bot</h1>
             <p>Controla plantillas, tonos, emojis y respuestas por tipo de negocio.</p>
-          </div>
-        </div>
-        <div>
-          <div className="bot-prompts-header-metric">
-            <strong>{stats.templates}</strong>
-            <span>plantillas</span>
-          </div>
-          <div className="bot-prompts-header-metric">
-            <strong>{stats.assigned}</strong>
-            <span>empresas configuradas</span>
           </div>
         </div>
       </div>
@@ -371,6 +370,34 @@ export function BotPromptsManager() {
               <label className="field-group">
                 <span>Mensaje asesor</span>
                 <textarea rows={3} value={settingsForm.mensaje_asesor ?? ''} onChange={(event) => setSettingsForm({ ...settingsForm, mensaje_asesor: event.target.value })} />
+              </label>
+              <div className="bot-prompts-form-grid compact">
+                <label className="field-group">
+                  <span>Tiempo handoff (min)</span>
+                  <input
+                    min="1"
+                    type="number"
+                    value={settingsForm.handoff_timeout_minutos ?? 4}
+                    onChange={(event) => setSettingsForm({ ...settingsForm, handoff_timeout_minutos: event.target.value })}
+                  />
+                </label>
+                <label className="field-group">
+                  <span>Mensaje asesor acepta</span>
+                  <input value={settingsForm.handoff_mensaje_tomar ?? ''} onChange={(event) => setSettingsForm({ ...settingsForm, handoff_mensaje_tomar: event.target.value })} />
+                </label>
+              </div>
+              <label className="field-group">
+                <span>Mensaje asesor no disponible</span>
+                <textarea rows={2} value={settingsForm.handoff_mensaje_declinar ?? ''} onChange={(event) => setSettingsForm({ ...settingsForm, handoff_mensaje_declinar: event.target.value })} />
+              </label>
+              <label className="field-group">
+                <span>Sinónimos por negocio (JSON)</span>
+                <textarea
+                  rows={5}
+                  placeholder={'{\n  "rotulacion": ["rotulación", "vinil", "rotular"],\n  "diseno": ["diseño", "arte"]\n}'}
+                  value={settingsForm.sinonimos_json ?? ''}
+                  onChange={(event) => setSettingsForm({ ...settingsForm, sinonimos_json: event.target.value })}
+                />
               </label>
               <button className="primary-button" disabled={isSaving || !settingsForm.empresa_id} type="submit">
                 <Bot size={18} aria-hidden="true" />

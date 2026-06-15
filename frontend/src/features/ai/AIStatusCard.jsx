@@ -19,7 +19,7 @@ export function AIStatusCard() {
   }, []);
 
   return (
-    <article className="whatsapp-status-card">
+    <article className="whatsapp-status-card ai-status-card">
       <Bot size={22} aria-hidden="true" />
       <div>
         <span>IA comercial</span>
@@ -29,8 +29,7 @@ export function AIStatusCard() {
           </StatusBadge>
         </strong>
         <small>
-          Modelo {status?.model ?? '...'} - Auto-respuesta{' '}
-          {status?.auto_reply ? 'activa' : 'desactivada'}
+          Modelo {status?.model ?? '...'} - Auto-respuesta {status?.auto_reply ? 'activa' : 'desactivada'}
         </small>
       </div>
     </article>

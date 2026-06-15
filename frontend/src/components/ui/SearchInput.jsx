@@ -2,7 +2,7 @@ import { Search, X } from 'lucide-react';
 
 export function SearchInput({ value, onChange, placeholder = 'Buscar...', id = 'search-input' }) {
   return (
-    <label className="search-input" htmlFor={id}>
+    <label className="search-input input input-bordered" htmlFor={id}>
       <Search size={18} aria-hidden="true" />
       <input
         id={id}
@@ -12,7 +12,7 @@ export function SearchInput({ value, onChange, placeholder = 'Buscar...', id = '
         value={value}
       />
       {value ? (
-        <button aria-label="Limpiar busqueda" onClick={() => onChange?.('')} type="button">
+        <button className="btn btn-ghost btn-xs btn-circle" aria-label="Limpiar busqueda" onClick={() => onChange?.('')} type="button">
           <X size={16} aria-hidden="true" />
         </button>
       ) : null}

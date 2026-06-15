@@ -22,6 +22,16 @@ export function AuthProvider({ children }) {
     return session;
   }, []);
 
+  const assumeSession = useCallback((session) => {
+    const accessToken = session.accessToken.token;
+
+    setStoredToken(accessToken);
+    setToken(accessToken);
+    setUser(session.user);
+
+    return session;
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       if (getStoredToken()) {
@@ -70,9 +80,10 @@ export function AuthProvider({ children }) {
       token,
       user,
       login,
-      logout
+      logout,
+      assumeSession
     }),
-    [isAuthenticated, login, logout, token, user]
+    [assumeSession, isAuthenticated, login, logout, token, user]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

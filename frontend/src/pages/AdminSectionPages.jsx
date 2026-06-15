@@ -4,6 +4,7 @@ import { CompaniesManager } from '../features/companies/CompaniesManager.jsx';
 import { CompanySettingsManager } from '../features/companySettings/CompanySettingsManager.jsx';
 import { ConversationsManager } from '../features/conversations/ConversationsManager.jsx';
 import { LeadsManager } from '../features/leads/LeadsManager.jsx';
+import { OnboardingManager } from '../features/onboarding/OnboardingManager.jsx';
 import { ProductsManager } from '../features/products/ProductsManager.jsx';
 import { ServicesManager } from '../features/services/ServicesManager.jsx';
 import { UsersManager } from '../features/users/UsersManager.jsx';
@@ -26,6 +27,10 @@ function SectionPage({ title, description, actions, children }) {
 
 export function CompaniesPage() {
   return <CompaniesManager />;
+}
+
+export function OnboardingPage() {
+  return <OnboardingManager />;
 }
 
 export function UsersPage() {

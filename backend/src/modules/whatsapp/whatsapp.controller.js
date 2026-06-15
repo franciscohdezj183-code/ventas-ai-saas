@@ -1,7 +1,7 @@
 import {
   disconnectWhatsappSession,
-  getWhatsappStatus,
-  listWhatsappStatuses,
+  getWhatsappStatusSnapshot,
+  listWhatsappStatusSnapshots,
   startWhatsappSession
 } from './whatsapp.service.js';
 import { resolveScopedEmpresaId } from '../../middlewares/company-scope.middleware.js';
@@ -27,17 +27,17 @@ export async function startSession(req, res, next) {
   }
 }
 
-export function getStatus(req, res, next) {
+export async function getStatus(req, res, next) {
   try {
-    res.json({ data: getWhatsappStatus(resolveCompanyId(req)) });
+    res.json({ data: await getWhatsappStatusSnapshot(resolveCompanyId(req)) });
   } catch (error) {
     next(error);
   }
 }
 
-export function getQr(req, res, next) {
+export async function getQr(req, res, next) {
   try {
-    const status = getWhatsappStatus(resolveCompanyId(req));
+    const status = await getWhatsappStatusSnapshot(resolveCompanyId(req));
     res.json({
       data: {
         empresa_id: status.empresa_id,
@@ -52,13 +52,17 @@ export function getQr(req, res, next) {
   }
 }
 
-export function listStatuses(req, res) {
-  if (req.auth.user.rol !== 'SUPER_ADMIN') {
-    res.json({ data: [getWhatsappStatus(req.auth.user.empresaId)] });
-    return;
-  }
+export async function listStatuses(req, res, next) {
+  try {
+    if (req.auth.user.rol !== 'SUPER_ADMIN') {
+      res.json({ data: [await getWhatsappStatusSnapshot(req.auth.user.empresaId)] });
+      return;
+    }
 
-  res.json({ data: listWhatsappStatuses() });
+    res.json({ data: await listWhatsappStatusSnapshots() });
+  } catch (error) {
+    next(error);
+  }
 }
 
 export async function disconnectSession(req, res, next) {

@@ -3,6 +3,11 @@ import {
   deleteConversation,
   findConversationById,
   findConversations,
+  findInboxThread,
+  findInboxThreads,
+  pauseBotForThread,
+  resumeBotForThread,
+  sendThreadReply,
   updateConversation
 } from './conversations.service.js';
 import { auditFromRequest } from '../audit/audit.service.js';
@@ -10,6 +15,67 @@ import { auditFromRequest } from '../audit/audit.service.js';
 export async function listConversations(req, res, next) {
   try {
     res.json({ data: await findConversations(req.auth, req.query) });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function listInboxThreads(req, res, next) {
+  try {
+    res.json({ data: await findInboxThreads(req.auth, req.query) });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getInboxThread(req, res, next) {
+  try {
+    res.json({
+      data: await findInboxThread(req.auth, {
+        empresaId: req.params.empresaId,
+        telefono: req.params.telefono
+      })
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function pauseInboxThread(req, res, next) {
+  try {
+    res.json({
+      data: await pauseBotForThread(req.auth, {
+        empresaId: req.params.empresaId,
+        telefono: req.params.telefono
+      })
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function resumeInboxThread(req, res, next) {
+  try {
+    res.json({
+      data: await resumeBotForThread(req.auth, {
+        empresaId: req.params.empresaId,
+        telefono: req.params.telefono
+      })
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function sendInboxReply(req, res, next) {
+  try {
+    res.json({
+      data: await sendThreadReply(req.auth, {
+        empresaId: req.params.empresaId,
+        telefono: req.params.telefono,
+        mensaje: req.body.mensaje
+      })
+    });
   } catch (error) {
     next(error);
   }

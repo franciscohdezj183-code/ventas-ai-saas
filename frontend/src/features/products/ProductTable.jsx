@@ -15,6 +15,26 @@ export function getStockStatus(product) {
   return { label: 'Disponible', tone: 'success' };
 }
 
+function getCatalogSignal(product) {
+  if (Number(product.stock ?? 0) <= 0) {
+    return { label: 'Resurtir', tone: 'danger' };
+  }
+
+  if (Number(product.stock ?? 0) <= 5) {
+    return { label: 'Vigilar stock', tone: 'warning' };
+  }
+
+  if (!product.descripcion) {
+    return { label: 'Falta descripcion', tone: 'warning' };
+  }
+
+  if (!product.imagen) {
+    return { label: 'Falta imagen', tone: 'info' };
+  }
+
+  return { label: 'Listo para vender', tone: 'success' };
+}
+
 function formatPrice(value) {
   return Number(value ?? 0).toLocaleString('es-MX', {
     currency: 'MXN',
@@ -88,7 +108,12 @@ function ProductCards({ onDeactivate, onEdit, onView, products }) {
                 </div>
               </div>
 
-              <span className={`stock-badge ${stockStatus.tone}`}>{stockStatus.label}</span>
+              <div className="product-intelligence-row">
+                <span className={`stock-badge ${stockStatus.tone}`}>{stockStatus.label}</span>
+                <span className={`catalog-signal ${getCatalogSignal(product).tone}`}>
+                  {getCatalogSignal(product).label}
+                </span>
+              </div>
             </div>
 
             <ProductActions
@@ -143,6 +168,14 @@ export function ProductTable({
       }
     },
     { key: 'estado', header: 'Estado', render: (product) => <StatusBadge status={product.estado}>{product.estado}</StatusBadge> },
+    {
+      key: 'senal',
+      header: 'Senal',
+      render: (product) => {
+        const signal = getCatalogSignal(product);
+        return <span className={`catalog-signal ${signal.tone}`}>{signal.label}</span>;
+      }
+    },
     {
       key: 'acciones',
       header: 'Acciones',

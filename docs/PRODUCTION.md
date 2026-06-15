@@ -47,6 +47,12 @@ RATE_LIMIT_MAX=300
 AUTH_RATE_LIMIT_MAX=20
 WHATSAPP_SESSION_PATH=/var/lib/ventas-ai/whatsapp
 WHATSAPP_HEADLESS=true
+WHATSAPP_RECONNECT_BASE_DELAY_MS=5000
+WHATSAPP_RECONNECT_MAX_DELAY_MS=60000
+WHATSAPP_RECONNECT_MAX_ATTEMPTS=8
+WHATSAPP_WORKER_MONITOR_INTERVAL_MS=60000
+WHATSAPP_WORKER_START_STAGGER_MS=3000
+HANDOFF_JOB_ENABLED=true
 OPENAI_AUTO_REPLY=false
 ```
 
@@ -66,9 +72,12 @@ El proyecto usa JWT Bearer. Para una version productiva con varias instancias:
 - Usar un volumen persistente para `WHATSAPP_SESSION_PATH`.
 - No versionar sesiones.
 - Confirmar que `.gitignore` cubre `backend/storage/whatsapp`, `.wwebjs_auth` y `.wwebjs_cache`.
-- Ejecutar WhatsApp en un worker o servicio separado si hay muchas empresas.
-- Agregar backoff de reconexion.
-- Monitorear estado de cada sesion.
+- Ejecutar WhatsApp en un worker o servicio separado con `npm run worker:whatsapp -w backend`.
+- El worker inicia empresas activas con WhatsApp habilitado y monitorea sesiones cada `WHATSAPP_WORKER_MONITOR_INTERVAL_MS`.
+- Las sesiones tienen lock por empresa, backoff exponencial y limpieza de locks locales de Chromium (`SingletonLock`, `SingletonSocket`, `SingletonCookie`).
+- El estado de sesiones se persiste en `whatsapp_session_status`, por lo que `/api/health` y el panel pueden ver snapshots aunque WhatsApp viva en el worker.
+- Ajustar `WHATSAPP_RECONNECT_BASE_DELAY_MS`, `WHATSAPP_RECONNECT_MAX_DELAY_MS` y `WHATSAPP_RECONNECT_MAX_ATTEMPTS` segun estabilidad del servidor.
+- Si el worker es el responsable de WhatsApp, ejecuta la API con `HANDOFF_JOB_ENABLED=false` y deja el worker con `HANDOFF_JOB_ENABLED=true` para evitar jobs duplicados.
 
 ## OpenAI
 
@@ -101,6 +110,7 @@ Para imagenes y Excel:
 - Hacer backups periodicos.
 - Usar pool de conexiones con limites adecuados.
 - Ejecutar migraciones SQL nuevas antes de arrancar la version nueva.
+- Ejecutar `npm run migrate -w backend` antes de levantar la API cuando exista una version nueva.
 
 ## Observabilidad
 
@@ -136,7 +146,15 @@ Backend:
 ```bash
 cd backend
 npm ci --omit=dev
+npm run migrate
 NODE_ENV=production npm start
+```
+
+Worker WhatsApp:
+
+```bash
+cd backend
+NODE_ENV=production npm run worker:whatsapp
 ```
 
 Frontend:

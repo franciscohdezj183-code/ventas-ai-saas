@@ -3,10 +3,10 @@ import {
   deleteTemplate,
   listResponseSettings,
   listTemplates,
-  previewBotResponse,
   saveResponseSettings,
   saveTemplate
 } from './bot-prompts.service.js';
+import { previewBotResponse } from './bot-preview.service.js';
 
 export async function getPromptCatalog(req, res, next) {
   try {

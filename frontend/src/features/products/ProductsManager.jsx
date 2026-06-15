@@ -1,11 +1,26 @@
 import { useEffect, useMemo, useState } from 'react';
-import { FileSpreadsheet, Grid2X2, List, PackagePlus, PackageSearch, Search, SlidersHorizontal } from 'lucide-react';
+import {
+  AlertTriangle,
+  BarChart3,
+  CheckCircle2,
+  FileSpreadsheet,
+  Grid2X2,
+  ImageOff,
+  Layers3,
+  List,
+  PackagePlus,
+  PackageSearch,
+  Search,
+  SlidersHorizontal,
+  Sparkles
+} from 'lucide-react';
 import { ConfirmModal, ErrorState, StatusBadge } from '../../components/ui/index.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { fetchCategories } from '../categories/categoriesApi.js';
 import { fetchCompanies } from '../companies/companiesApi.js';
 import {
   createProduct,
+  fetchCatalogInsights,
   fetchProducts,
   importProducts,
   updateProduct
@@ -22,6 +37,121 @@ function formatPrice(value) {
   return Number(value ?? 0).toFixed(2);
 }
 
+const emptyInsights = {
+  resumen: {
+    salud_catalogo: 0,
+    total_productos: 0,
+    productos_activos: 0,
+    sin_stock: 0,
+    bajo_stock: 0,
+    sin_descripcion: 0,
+    sin_imagen: 0,
+    total_servicios: 0,
+    servicios_sin_descripcion: 0
+  },
+  recomendaciones: [],
+  productos_prioritarios: [],
+  salud_por_categoria: []
+};
+
+function getProductSignal(product) {
+  if (Number(product.stock ?? 0) <= 0) return 'SIN_STOCK';
+  if (Number(product.stock ?? 0) <= 5) return 'BAJO_STOCK';
+  if (!product.descripcion) return 'SIN_DESCRIPCION';
+  if (!product.imagen) return 'SIN_IMAGEN';
+  return 'LISTO';
+}
+
+function CatalogHealth({ insights }) {
+  const summary = insights.resumen ?? emptyInsights.resumen;
+  const health = Number(summary.salud_catalogo ?? 0);
+
+  return (
+    <section className="catalog-intelligence-grid" aria-label="Inteligencia del catalogo">
+      <article className="catalog-health-card">
+        <span><Sparkles size={20} aria-hidden="true" /></span>
+        <div>
+          <p className="eyebrow">Salud del catalogo</p>
+          <strong>{health}%</strong>
+          <small>{summary.total_productos} productos evaluados</small>
+        </div>
+      </article>
+      <article>
+        <span><AlertTriangle size={18} aria-hidden="true" /></span>
+        <div>
+          <strong>{summary.sin_stock}</strong>
+          <small>agotados</small>
+        </div>
+      </article>
+      <article>
+        <span><BarChart3 size={18} aria-hidden="true" /></span>
+        <div>
+          <strong>{summary.bajo_stock}</strong>
+          <small>bajo stock</small>
+        </div>
+      </article>
+      <article>
+        <span><ImageOff size={18} aria-hidden="true" /></span>
+        <div>
+          <strong>{summary.sin_imagen}</strong>
+          <small>sin imagen</small>
+        </div>
+      </article>
+      <article>
+        <span><Layers3 size={18} aria-hidden="true" /></span>
+        <div>
+          <strong>{summary.total_servicios}</strong>
+          <small>servicios</small>
+        </div>
+      </article>
+    </section>
+  );
+}
+
+function CatalogRecommendations({ insights, onOpenProduct }) {
+  const recommendations = insights.recomendaciones ?? [];
+  const priorityProducts = insights.productos_prioritarios ?? [];
+
+  return (
+    <section className="catalog-advisor-panel">
+      <div className="catalog-advisor-list">
+        <div>
+          <p className="eyebrow">Asistente de catalogo</p>
+          <h2>Acciones recomendadas</h2>
+        </div>
+        {recommendations.map((recommendation) => (
+          <article key={recommendation.titulo}>
+            <span>{recommendation.prioridad}</span>
+            <div>
+              <strong>{recommendation.titulo}</strong>
+              <p>{recommendation.detalle}</p>
+              <small>{recommendation.accion}</small>
+            </div>
+          </article>
+        ))}
+      </div>
+      <div className="catalog-priority-products">
+        <div>
+          <p className="eyebrow">Prioridad operativa</p>
+          <h2>Productos a revisar</h2>
+        </div>
+        {priorityProducts.length ? priorityProducts.map((product) => (
+          <button key={product.id} onClick={() => onOpenProduct(product)} type="button">
+            <span className={`stock-badge ${getStockStatus(product).tone}`}>{getStockStatus(product).label}</span>
+            <strong>{product.nombre}</strong>
+            <small>{product.categoria_nombre || 'Sin categoria'} - Stock {product.stock}</small>
+          </button>
+        )) : (
+          <div className="catalog-empty-advice">
+            <CheckCircle2 size={20} aria-hidden="true" />
+            Catalogo sin alertas prioritarias.
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export function ProductsManager() {
   const { user } = useAuth();
   const canSelectCompany = user?.rol === 'SUPER_ADMIN';
@@ -29,14 +159,17 @@ export function ProductsManager() {
   const [companies, setCompanies] = useState([]);
   const [editingProduct, setEditingProduct] = useState(null);
   const [error, setError] = useState('');
-  const [filters, setFilters] = useState({ categoria: '', estado: '', query: '' });
+  const [filters, setFilters] = useState({ categoria: '', estado: '', query: '', signal: '' });
   const [importResult, setImportResult] = useState(null);
+  const [insights, setInsights] = useState(emptyInsights);
   const [isImporting, setIsImporting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [pendingDeactivate, setPendingDeactivate] = useState(null);
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ page: 1, pageSize: 24, total: 0, totalPages: 1 });
   const [products, setProducts] = useState([]);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [viewMode, setViewMode] = useState('cards');
@@ -44,42 +177,40 @@ export function ProductsManager() {
   const productCategories = useMemo(() => {
     const seen = new Map();
 
-    products.forEach((product) => {
-      if (product.categoria_id && product.categoria_nombre) {
-        seen.set(String(product.categoria_id), product.categoria_nombre);
+    categories.forEach((category) => {
+      if (category.tipo === 'PRODUCTO' && category.estado === 'ACTIVA') {
+        seen.set(String(category.id), category.nombre);
       }
     });
 
     return Array.from(seen, ([id, nombre]) => ({ id, nombre }));
-  }, [products]);
+  }, [categories]);
 
   const filteredProducts = useMemo(() => {
-    const query = filters.query.trim().toLowerCase();
-
-    return products.filter((product) => {
-      const matchesQuery =
-        !query ||
-        product.nombre?.toLowerCase().includes(query) ||
-        product.sku?.toLowerCase().includes(query);
-      const matchesCategory = !filters.categoria || String(product.categoria_id ?? '') === filters.categoria;
-      const matchesStatus = !filters.estado || product.estado === filters.estado;
-
-      return matchesQuery && matchesCategory && matchesStatus;
-    });
-  }, [filters, products]);
+    return products.filter((product) => !filters.signal || getProductSignal(product) === filters.signal);
+  }, [filters.signal, products]);
 
   async function loadData() {
     try {
       setIsLoading(true);
       setError('');
-      const [nextProducts, nextCategories, nextCompanies] = await Promise.all([
-        fetchProducts(),
+      const [productsResponse, nextCategories, nextCompanies, nextInsights] = await Promise.all([
+        fetchProducts({
+          page,
+          page_size: pagination.pageSize,
+          search: filters.query.trim() || undefined,
+          categoria_id: filters.categoria || undefined,
+          estado: filters.estado || undefined
+        }),
         fetchCategories(),
-        canSelectCompany ? fetchCompanies() : Promise.resolve([])
+        canSelectCompany ? fetchCompanies() : Promise.resolve([]),
+        fetchCatalogInsights()
       ]);
-      setProducts(nextProducts);
+      setProducts(productsResponse.data);
+      setPagination(productsResponse.meta ?? { page, pageSize: 24, total: productsResponse.data.length, totalPages: 1 });
       setCategories(nextCategories);
       setCompanies(nextCompanies);
+      setInsights({ ...emptyInsights, ...nextInsights });
     } catch (requestError) {
       setError(getApiError(requestError));
     } finally {
@@ -89,7 +220,12 @@ export function ProductsManager() {
 
   useEffect(() => {
     loadData();
-  }, [canSelectCompany]);
+  }, [canSelectCompany, filters, page]);
+
+  function updateFilters(nextFilter) {
+    setFilters((current) => ({ ...current, ...nextFilter }));
+    setPage(1);
+  }
 
   async function handleSubmit(payload) {
     try {
@@ -163,10 +299,6 @@ export function ProductsManager() {
           </div>
         </div>
         <div>
-          <div className="products-header-metric">
-            <strong>{products.length}</strong>
-            <span>productos registrados</span>
-          </div>
           <button
             className="secondary-button"
             onClick={() => setIsImportModalOpen(true)}
@@ -191,14 +323,19 @@ export function ProductsManager() {
 
       {error ? <ErrorState message={error} onRetry={loadData} /> : null}
 
+      <CatalogHealth insights={insights} />
+      <CatalogRecommendations insights={insights} onOpenProduct={setSelectedProduct} />
+
       <section className="panel-section products-inventory-panel">
         <div className="product-inventory-toolbar">
-          <span className="products-visible-count">{filteredProducts.length} de {products.length} visibles</span>
+          <span className="products-visible-count">
+            {filteredProducts.length} de {pagination.total} visibles
+          </span>
           <label className="product-search" htmlFor="product-search">
             <Search size={18} aria-hidden="true" />
             <input
               id="product-search"
-              onChange={(event) => setFilters((current) => ({ ...current, query: event.target.value }))}
+              onChange={(event) => updateFilters({ query: event.target.value })}
               placeholder="Buscar por nombre o SKU"
               type="search"
               value={filters.query}
@@ -209,7 +346,7 @@ export function ProductsManager() {
             <SlidersHorizontal size={18} aria-hidden="true" />
             <select
               aria-label="Filtrar por categoria"
-              onChange={(event) => setFilters((current) => ({ ...current, categoria: event.target.value }))}
+              onChange={(event) => updateFilters({ categoria: event.target.value })}
               value={filters.categoria}
             >
               <option value="">Todas las categorias</option>
@@ -221,12 +358,24 @@ export function ProductsManager() {
             </select>
             <select
               aria-label="Filtrar por estado"
-              onChange={(event) => setFilters((current) => ({ ...current, estado: event.target.value }))}
+              onChange={(event) => updateFilters({ estado: event.target.value })}
               value={filters.estado}
             >
               <option value="">Todos los estados</option>
               <option value="ACTIVO">Activo</option>
               <option value="INACTIVO">Inactivo</option>
+            </select>
+            <select
+              aria-label="Filtrar por senal"
+              onChange={(event) => updateFilters({ signal: event.target.value })}
+              value={filters.signal}
+            >
+              <option value="">Todas las senales</option>
+              <option value="SIN_STOCK">Sin stock</option>
+              <option value="BAJO_STOCK">Bajo stock</option>
+              <option value="SIN_DESCRIPCION">Sin descripcion</option>
+              <option value="SIN_IMAGEN">Sin imagen</option>
+              <option value="LISTO">Listo para vender</option>
             </select>
           </div>
 
@@ -253,6 +402,30 @@ export function ProductsManager() {
           products={filteredProducts}
           viewMode={viewMode}
         />
+
+        <div className="pagination-bar">
+          <span>
+            Pagina {pagination.page} de {pagination.totalPages}
+          </span>
+          <div>
+            <button
+              className="secondary-button"
+              disabled={pagination.page <= 1 || isLoading}
+              onClick={() => setPage((currentPage) => Math.max(currentPage - 1, 1))}
+              type="button"
+            >
+              Anterior
+            </button>
+            <button
+              className="secondary-button"
+              disabled={pagination.page >= pagination.totalPages || isLoading}
+              onClick={() => setPage((currentPage) => currentPage + 1)}
+              type="button"
+            >
+              Siguiente
+            </button>
+          </div>
+        </div>
       </section>
 
       <ConfirmModal

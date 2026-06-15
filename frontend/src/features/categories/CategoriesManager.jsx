@@ -162,10 +162,6 @@ export function CategoriesManager() {
           </div>
         </div>
         <div>
-          <div className="categories-header-metric">
-            <strong>{stats.total}</strong>
-            <span>categorias registradas</span>
-          </div>
           <button
             className="primary-button"
             onClick={() => {

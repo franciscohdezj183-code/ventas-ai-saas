@@ -200,10 +200,6 @@ export function ServicesManager() {
           </div>
         </div>
         <div>
-          <div className="services-header-metric">
-            <strong>{stats.total}</strong>
-            <span>servicios registrados</span>
-          </div>
           <button
             className="primary-button"
             onClick={() => {

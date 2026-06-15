@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   CircleOff,
   Clock3,
+  Flame,
   MessageSquareText,
   PackageCheck,
   PackageSearch,
@@ -53,19 +54,54 @@ const emptyDashboard = {
     }
   },
   lead_states: [],
+  scoring_leads: [],
   daily_activity: [],
   productos_mas_consultados: [],
   servicios_mas_consultados: [],
+  oportunidades_prioritarias: [],
+  optimizacion_industria: [],
+  recomendaciones: [],
   leads_recientes: [],
   actividad_reciente: [],
   errores_recientes: []
 };
 
+const emptyIntelligence = {
+  salud_negocio: 0,
+  estado: 'RIESGO',
+  conversaciones: {
+    tasa_respuesta: 0,
+    conversaciones_sin_respuesta: 0,
+    clientes_unicos: 0
+  },
+  catalogo: {
+    salud_catalogo: 0,
+    productos_sin_stock: 0,
+    productos_bajo_stock: 0
+  },
+  pipeline: {
+    leads_abiertos: 0,
+    leads_abiertos_2d: 0,
+    leads_abiertos_7d: 0
+  },
+  riesgos: [],
+  focos: []
+};
+
 const leadStateLabels = {
   NUEVO: 'Nuevos',
   EN_PROCESO: 'En proceso',
+  CONTACTADO: 'Contactados',
+  COTIZADO: 'Cotizados',
   GANADO: 'Ganados',
   PERDIDO: 'Perdidos'
+};
+
+const priorityLabels = {
+  CRITICA: 'Critica',
+  ALTA: 'Alta',
+  MEDIA: 'Media',
+  BAJA: 'Baja'
 };
 
 function formatDateTime(value) {
@@ -212,6 +248,144 @@ function RecentActivity({ items }) {
   );
 }
 
+function ExecutiveIntelligence({ intelligence }) {
+  const data = { ...emptyIntelligence, ...(intelligence ?? {}) };
+  const healthTone = data.estado === 'SALUDABLE' ? 'healthy' : data.estado === 'ATENCION' ? 'attention' : 'risk';
+
+  return (
+    <section className="executive-intelligence-panel" aria-label="Inteligencia ejecutiva">
+      <div className="executive-overview-row">
+        <article className={`business-health-card ${healthTone}`}>
+          <span><Flame size={22} aria-hidden="true" /></span>
+          <div>
+            <p className="eyebrow">Inteligencia Nexus IA</p>
+            <strong>{data.salud_negocio}%</strong>
+            <small>{data.estado}</small>
+          </div>
+        </article>
+
+        <div className="executive-risk-list">
+          <div>
+            <p className="eyebrow">Riesgos y accion</p>
+            <h3>Prioridades operativas</h3>
+          </div>
+          {data.riesgos.map((risk) => (
+            <article key={`${risk.area}-${risk.titulo}`}>
+              <span className={risk.nivel.toLowerCase()}>{risk.nivel}</span>
+              <div>
+                <strong>{risk.titulo}</strong>
+                <p>{risk.detalle}</p>
+                <small>{risk.accion}</small>
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
+
+      <div className="executive-focus-grid">
+        {data.focos.map((focus) => (
+          <article key={focus.titulo}>
+            <strong>{focus.valor}</strong>
+            <span>{focus.titulo}</span>
+            <small>{focus.detalle}</small>
+            <em className={focus.estado === 'BUENO' ? 'good' : 'review'}>{focus.estado}</em>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function RecommendationList({ items }) {
+  if (!items.length) {
+    return <EmptyState description="Cuando haya mas datos, Nexus IA sugerira acciones comerciales." title="Sin recomendaciones" />;
+  }
+
+  return (
+    <div className="activity-list">
+      {items.map((item) => (
+        <article className="activity-item recommendation-item" key={`${item.tipo}-${item.titulo}`}>
+          <span>
+            <TrendingUp size={16} aria-hidden="true" />
+          </span>
+          <div>
+            <strong>{item.titulo}</strong>
+            <p>{item.detalle}</p>
+            <small>{item.accion}</small>
+          </div>
+          <em>{priorityLabels[item.prioridad] ?? item.prioridad}</em>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function LeadOpportunities({ leads }) {
+  if (!leads.length) {
+    return <EmptyState description="Los leads con score alto apareceran aqui." title="Sin oportunidades priorizadas" />;
+  }
+
+  return (
+    <div className="dashboard-list">
+      {leads.map((lead) => (
+        <article className="dashboard-list-item scored-lead" key={lead.id}>
+          <span className="list-avatar">{lead.score}</span>
+          <div>
+            <strong>{lead.nombre_cliente}</strong>
+            <p>{lead.interes ?? lead.telefono ?? 'Sin interes registrado'}</p>
+          </div>
+          <span className={`status-badge ${lead.prioridad === 'CRITICA' ? 'danger' : 'info'}`}>
+            {priorityLabels[lead.prioridad] ?? lead.prioridad}
+          </span>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function ScoreSummary({ items }) {
+  const total = items.reduce((sum, item) => sum + Number(item.total ?? 0), 0);
+
+  if (!total) {
+    return <EmptyState description="Aun no hay leads con score en el periodo." title="Sin scoring comercial" />;
+  }
+
+  return (
+    <div className="lead-funnel-bars">
+      {items.map((item) => (
+        <div className="lead-funnel-row" key={item.prioridad}>
+          <span>{priorityLabels[item.prioridad] ?? item.prioridad}</span>
+          <div className="bar-track">
+            <div className="bar-fill" style={{ width: `${(item.total / total) * 100}%` }} />
+          </div>
+          <strong>{item.total}</strong>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function IndustryOptimization({ items }) {
+  if (!items.length) {
+    return <EmptyState description="No hay datos suficientes por industria." title="Sin optimizacion por industria" />;
+  }
+
+  return (
+    <div className="dashboard-list">
+      {items.slice(0, 5).map((item) => (
+        <article className="dashboard-list-item" key={item.tipo_negocio}>
+          <span className="list-avatar">{Math.round(item.score_promedio)}</span>
+          <div>
+            <strong>{item.tipo_negocio}</strong>
+            <p>{item.leads} leads · {item.tasa_conversion}% conversion</p>
+          </div>
+          <span className="status-badge info">{item.empresas} emp.</span>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 export function CommercialDashboard() {
   const [dashboard, setDashboard] = useState(emptyDashboard);
   const [filters, setFilters] = useState({
@@ -222,6 +396,7 @@ export function CommercialDashboard() {
   const [isLoading, setIsLoading] = useState(true);
 
   const metrics = dashboard.metrics ?? emptyDashboard.metrics;
+  const intelligence = dashboard.inteligencia ?? emptyIntelligence;
   const whatsapp = metrics.whatsapp ?? emptyDashboard.metrics.whatsapp;
   const whatsappConnected = whatsapp.estado === 'CONNECTED' || Number(whatsapp.conectadas ?? 0) > 0;
   const totalConsultations = useMemo(
@@ -267,8 +442,8 @@ export function CommercialDashboard() {
       <div className="dashboard-hero enterprise-hero">
         <div>
           <p className="eyebrow">Panel empresarial</p>
-          <h2>Resumen operativo en tiempo real</h2>
-          <p>Monitorea leads, conversaciones, catalogo activo y actividad comercial desde una sola vista.</p>
+          <h2>Centro de control</h2>
+          <p>Salud, ventas, WhatsApp y riesgos del negocio.</p>
         </div>
         <div className={whatsappConnected ? 'whatsapp-pill connected' : 'whatsapp-pill disconnected'}>
           {whatsappConnected ? <CheckCircle2 size={18} aria-hidden="true" /> : <CircleOff size={18} aria-hidden="true" />}
@@ -305,6 +480,8 @@ export function CommercialDashboard() {
       </form>
 
       {isLoading ? <LoadingState message="Cargando indicadores del negocio..." /> : null}
+
+      <ExecutiveIntelligence intelligence={intelligence} />
 
       <div className="enterprise-metrics-grid">
         <MetricTile icon={Users} label="Leads del dia" value={metrics.leads_hoy} detail="Nuevos contactos hoy" />
@@ -349,7 +526,7 @@ export function CommercialDashboard() {
           <div className="section-header dashboard-section-header">
             <div>
               <h2>Actividad diaria</h2>
-              <p>Leads y conversaciones del periodo.</p>
+              <p>Movimiento del periodo.</p>
             </div>
             <BarChart3 size={22} aria-hidden="true" />
           </div>
@@ -365,6 +542,54 @@ export function CommercialDashboard() {
             <Users size={22} aria-hidden="true" />
           </div>
           <LeadStateChart states={dashboard.lead_states} />
+        </article>
+      </div>
+
+      <div className="enterprise-dashboard-grid">
+        <article className="panel-section chart-panel">
+          <div className="section-header dashboard-section-header">
+            <div>
+              <h2>Recomendaciones comerciales</h2>
+              <p>Prioridades accionables.</p>
+            </div>
+            <TrendingUp size={22} aria-hidden="true" />
+          </div>
+          <RecommendationList items={dashboard.recomendaciones} />
+        </article>
+
+        <article className="panel-section chart-panel">
+          <div className="section-header dashboard-section-header">
+            <div>
+              <h2>Oportunidades prioritarias</h2>
+              <p>Mayor probabilidad comercial.</p>
+            </div>
+            <Users size={22} aria-hidden="true" />
+          </div>
+          <LeadOpportunities leads={dashboard.oportunidades_prioritarias} />
+        </article>
+      </div>
+
+      <div className="enterprise-dashboard-grid">
+        <article className="panel-section chart-panel">
+          <div className="section-header dashboard-section-header">
+            <div>
+              <h2>Scoring de leads</h2>
+              <p>Distribucion de prioridad en el periodo.</p>
+            </div>
+            <BarChart3 size={22} aria-hidden="true" />
+          </div>
+          <ScoreSummary items={dashboard.scoring_leads} />
+        </article>
+
+        <article className="panel-section chart-panel">
+          <div className="section-header dashboard-section-header">
+            <div>
+              <h2>Optimizacion por industria</h2>
+              <p>Rendimiento por tipo de negocio.</p>
+            </div>
+            <Activity size={22} aria-hidden="true" />
+          </div>
+          <IndustryOptimization items={dashboard.optimizacion_industria} />
         </article>
       </div>
 

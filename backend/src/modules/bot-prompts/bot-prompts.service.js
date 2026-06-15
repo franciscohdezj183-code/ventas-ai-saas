@@ -24,6 +24,14 @@ const DEFAULT_FORMAT = [
 ].join('\n');
 
 const DEFAULT_NO_RESULTS = '{emoji_principal} Por ahora no encontre ese producto exacto.\nPuedo ayudarte a buscar algo similar o pasarte con un asesor.';
+const DEFAULT_EMOJIS = {
+  principal: '\u2728',
+  producto: '\u2022',
+  precio: '\u{1F4B0}',
+  stock: '\u{1F4E6}',
+  asesor: '\u{1F9D1}\u200D\u{1F4BC}',
+  pago: '\u{1F4B3}'
+};
 
 function cleanText(value, fallback = null) {
   const text = String(value ?? '').trim();
@@ -86,6 +94,12 @@ async function ensureTables() {
           mensaje_asesor TEXT NULL,
           mensaje_fuera_horario TEXT NULL,
           reglas_adicionales TEXT NULL,
+          sinonimos_json JSON NULL,
+          handoff_timeout_minutos INT UNSIGNED NULL,
+          handoff_mensaje_tomar TEXT NULL,
+          handoff_mensaje_declinar TEXT NULL,
+          handoff_mensaje_expirado TEXT NULL,
+          handoff_mensaje_reactivar TEXT NULL,
           created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           PRIMARY KEY (id),
@@ -101,6 +115,28 @@ async function ensureTables() {
             ON UPDATE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
       );
+
+      const [columns] = await query(
+        `SELECT COLUMN_NAME
+         FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = 'bot_response_settings'`
+      );
+      const columnNames = new Set(columns.map((column) => column.COLUMN_NAME));
+      const alterStatements = [
+        ['sinonimos_json', 'ALTER TABLE bot_response_settings ADD COLUMN sinonimos_json JSON NULL AFTER reglas_adicionales'],
+        ['handoff_timeout_minutos', 'ALTER TABLE bot_response_settings ADD COLUMN handoff_timeout_minutos INT UNSIGNED NULL AFTER sinonimos_json'],
+        ['handoff_mensaje_tomar', 'ALTER TABLE bot_response_settings ADD COLUMN handoff_mensaje_tomar TEXT NULL AFTER handoff_timeout_minutos'],
+        ['handoff_mensaje_declinar', 'ALTER TABLE bot_response_settings ADD COLUMN handoff_mensaje_declinar TEXT NULL AFTER handoff_mensaje_tomar'],
+        ['handoff_mensaje_expirado', 'ALTER TABLE bot_response_settings ADD COLUMN handoff_mensaje_expirado TEXT NULL AFTER handoff_mensaje_declinar'],
+        ['handoff_mensaje_reactivar', 'ALTER TABLE bot_response_settings ADD COLUMN handoff_mensaje_reactivar TEXT NULL AFTER handoff_mensaje_expirado']
+      ];
+
+      for (const [columnName, statement] of alterStatements) {
+        if (!columnNames.has(columnName)) {
+          await query(statement);
+        }
+      }
     })();
   }
 
@@ -123,6 +159,27 @@ function parseJson(value) {
   }
 }
 
+function normalizeJsonPayload(value) {
+  if (!value) {
+    return null;
+  }
+
+  if (typeof value === 'object') {
+    return JSON.stringify(value);
+  }
+
+  try {
+    return JSON.stringify(JSON.parse(value));
+  } catch {
+    return null;
+  }
+}
+
+function positiveIntegerOrNull(value) {
+  const numberValue = Number(value);
+  return Number.isInteger(numberValue) && numberValue > 0 ? numberValue : null;
+}
+
 function mapTemplate(row) {
   return row
     ? {
@@ -139,6 +196,7 @@ function mapSettings(row) {
     ? {
         ...row,
         usar_emojis: Boolean(row.usar_emojis),
+        sinonimos_json: parseJson(row.sinonimos_json),
         template: row.template_id
           ? {
               id: row.template_id,
@@ -275,8 +333,10 @@ export async function saveResponseSettings(payload) {
       (empresa_id, template_id, nombre_asistente, tono_respuesta, usar_emojis,
        emoji_principal, emoji_producto, emoji_precio, emoji_stock, emoji_asesor, emoji_pago,
        saludo_personalizado, despedida_personalizada, mensaje_sin_resultados,
-       mensaje_asesor, mensaje_fuera_horario, reglas_adicionales)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       mensaje_asesor, mensaje_fuera_horario, reglas_adicionales, sinonimos_json,
+       handoff_timeout_minutos, handoff_mensaje_tomar, handoff_mensaje_declinar,
+       handoff_mensaje_expirado, handoff_mensaje_reactivar)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        template_id = VALUES(template_id),
        nombre_asistente = VALUES(nombre_asistente),
@@ -293,7 +353,13 @@ export async function saveResponseSettings(payload) {
        mensaje_sin_resultados = VALUES(mensaje_sin_resultados),
        mensaje_asesor = VALUES(mensaje_asesor),
        mensaje_fuera_horario = VALUES(mensaje_fuera_horario),
-       reglas_adicionales = VALUES(reglas_adicionales)`,
+       reglas_adicionales = VALUES(reglas_adicionales),
+       sinonimos_json = VALUES(sinonimos_json),
+       handoff_timeout_minutos = VALUES(handoff_timeout_minutos),
+       handoff_mensaje_tomar = VALUES(handoff_mensaje_tomar),
+       handoff_mensaje_declinar = VALUES(handoff_mensaje_declinar),
+       handoff_mensaje_expirado = VALUES(handoff_mensaje_expirado),
+       handoff_mensaje_reactivar = VALUES(handoff_mensaje_reactivar)`,
     [
       empresaId,
       payload.template_id ? Number(payload.template_id) : null,
@@ -311,7 +377,13 @@ export async function saveResponseSettings(payload) {
       cleanText(payload.mensaje_sin_resultados),
       cleanText(payload.mensaje_asesor),
       cleanText(payload.mensaje_fuera_horario),
-      cleanText(payload.reglas_adicionales)
+      cleanText(payload.reglas_adicionales),
+      normalizeJsonPayload(payload.sinonimos_json),
+      positiveIntegerOrNull(payload.handoff_timeout_minutos),
+      cleanText(payload.handoff_mensaje_tomar),
+      cleanText(payload.handoff_mensaje_declinar),
+      cleanText(payload.handoff_mensaje_expirado),
+      cleanText(payload.handoff_mensaje_reactivar)
     ]
   );
 
@@ -364,6 +436,14 @@ export async function getBotResponseProfile(empresaId) {
     mensaje_asesor: settings?.mensaje_asesor,
     mensaje_fuera_horario: settings?.mensaje_fuera_horario,
     reglas_adicionales: settings?.reglas_adicionales,
+    sinonimos: settings?.sinonimos_json ?? null,
+    handoff: {
+      timeout_minutos: positiveIntegerOrNull(settings?.handoff_timeout_minutos) ?? 4,
+      mensaje_tomar: settings?.handoff_mensaje_tomar,
+      mensaje_declinar: settings?.handoff_mensaje_declinar,
+      mensaje_expirado: settings?.handoff_mensaje_expirado,
+      mensaje_reactivar: settings?.handoff_mensaje_reactivar
+    },
     formato_respuesta: settings?.template?.formato_respuesta ?? DEFAULT_FORMAT
   };
 }
