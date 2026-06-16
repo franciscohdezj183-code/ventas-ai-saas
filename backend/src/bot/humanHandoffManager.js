@@ -1,6 +1,7 @@
 import { query } from '../config/database.js';
 import { mcpClient } from '../mcp/mcpClient.js';
 import { getBotResponseProfile } from '../modules/bot-prompts/bot-prompts.service.js';
+import { CONVERSATION_STATES, markThreadState } from '../modules/conversations/conversation-status.service.js';
 import { logger } from '../utils/logger.js';
 
 const HANDOFF_TIMEOUT_MS = 4 * 60 * 1000;
@@ -241,6 +242,12 @@ export async function requestHandoff({
     ]
   );
 
+  await markThreadState({
+    empresaId,
+    telefonoCliente: customerPhone,
+    estado: CONVERSATION_STATES.REQUIRES_HUMAN
+  });
+
   if (ownerPhone) {
     try {
       await sendWhatsappText(
@@ -311,6 +318,12 @@ export async function handleOwnerResponse({ empresa_id: empresaId, telefono_duen
       [handoff.id]
     );
 
+    await markThreadState({
+      empresaId,
+      telefonoCliente: handoff.telefono_cliente,
+      estado: CONVERSATION_STATES.HUMAN_ACTIVE
+    });
+
     logger.info('human_handoff_accepted', {
       empresaId,
       handoffId: handoff.id,
@@ -335,6 +348,12 @@ export async function handleOwnerResponse({ empresa_id: empresaId, telefono_duen
        WHERE id = ?`,
       [handoff.id]
     );
+
+    await markThreadState({
+      empresaId,
+      telefonoCliente: handoff.telefono_cliente,
+      estado: CONVERSATION_STATES.BOT_ACTIVE
+    });
 
     logger.info('human_handoff_declined', {
       empresaId,
@@ -412,6 +431,13 @@ export async function notifyOwnerOfCustomerMessage({ empresa_id: empresaId, tele
   }
 
   await markCustomerActivity({ empresa_id: empresaId, telefono_cliente: cleanPhone });
+  await query(
+    `INSERT INTO conversaciones
+      (empresa_id, telefono_cliente, mensaje, respuesta, estado, tipo_mensaje, fecha)
+     VALUES (?, ?, ?, NULL, 'human_active', 'customer', NOW())`,
+    [empresaId, cleanPhone, String(mensaje ?? '').trim()]
+  );
+
   await sendWhatsappText(
     empresaId,
     handoff.telefono_dueno,
@@ -423,6 +449,7 @@ export async function notifyOwnerOfCustomerMessage({ empresa_id: empresaId, tele
 
 export async function resumeBotForCustomer({ empresa_id: empresaId, telefono_cliente: telefonoCliente }) {
   await ensureHumanHandoffTable();
+  const cleanPhone = normalizePhone(telefonoCliente);
   await query(
     `UPDATE human_handoffs
      SET estado = 'BOT_ACTIVE',
@@ -430,8 +457,14 @@ export async function resumeBotForCustomer({ empresa_id: empresaId, telefono_cli
      WHERE empresa_id = ?
        AND telefono_cliente = ?
        AND estado IN ('PENDING_OWNER', 'HUMAN_TAKEOVER')`,
-    [empresaId, normalizePhone(telefonoCliente)]
+    [empresaId, cleanPhone]
   );
+
+  await markThreadState({
+    empresaId,
+    telefonoCliente: cleanPhone,
+    estado: CONVERSATION_STATES.BOT_ACTIVE
+  });
 }
 
 export async function expirePendingHandoffs() {
@@ -451,6 +484,12 @@ export async function expirePendingHandoffs() {
        WHERE id = ? AND estado = 'PENDING_OWNER'`,
       [handoff.id]
     );
+
+    await markThreadState({
+      empresaId: handoff.empresa_id,
+      telefonoCliente: handoff.telefono_cliente,
+      estado: CONVERSATION_STATES.BOT_ACTIVE
+    });
 
     await sendWhatsappText(
       handoff.empresa_id,
@@ -486,6 +525,12 @@ export async function expireInactiveTakeovers() {
        WHERE id = ? AND estado = 'HUMAN_TAKEOVER'`,
       [handoff.id]
     );
+
+    await markThreadState({
+      empresaId: handoff.empresa_id,
+      telefonoCliente: handoff.telefono_cliente,
+      estado: CONVERSATION_STATES.BOT_ACTIVE
+    });
 
     await sendWhatsappText(
       handoff.empresa_id,

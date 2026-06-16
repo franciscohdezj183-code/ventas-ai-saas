@@ -1,4 +1,5 @@
 import { Eye, ImageIcon, Pencil, PowerOff } from 'lucide-react';
+import { Can } from '../../components/Can.jsx';
 import { DataTable, EmptyState, StatusBadge } from '../../components/ui/index.js';
 
 export function getStockStatus(product) {
@@ -58,12 +59,16 @@ function ProductActions({ onDeactivate, onEdit, onView, product }) {
       <button aria-label="Ver detalle" onClick={() => onView(product)} type="button">
         <Eye size={16} aria-hidden="true" />
       </button>
-      <button aria-label="Editar producto" onClick={() => onEdit(product)} type="button">
-        <Pencil size={16} aria-hidden="true" />
-      </button>
-      <button aria-label="Desactivar producto" onClick={() => onDeactivate(product)} type="button">
-        <PowerOff size={16} aria-hidden="true" />
-      </button>
+      <Can permission="products.manage">
+        <button aria-label="Editar producto" onClick={() => onEdit(product)} type="button">
+          <Pencil size={16} aria-hidden="true" />
+        </button>
+      </Can>
+      <Can permission="products.manage">
+        <button aria-label="Desactivar producto" onClick={() => onDeactivate(product)} type="button">
+          <PowerOff size={16} aria-hidden="true" />
+        </button>
+      </Can>
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Filter, FolderTree, Plus, Search } from 'lucide-react';
 import { ConfirmModal, ErrorState } from '../../components/ui/index.js';
 import { useAuth } from '../../context/AuthContext.jsx';
+import { isSuperAdminRole } from '../../config/permissions.js';
 import { fetchCompanies } from '../companies/companiesApi.js';
 import {
   createCategory,
@@ -25,7 +26,7 @@ const initialFilters = {
 
 export function CategoriesManager() {
   const { user } = useAuth();
-  const canSelectCompany = user?.rol === 'SUPER_ADMIN';
+  const canSelectCompany = isSuperAdminRole(user?.rol);
   const [categories, setCategories] = useState([]);
   const [companies, setCompanies] = useState([]);
   const [editingCategory, setEditingCategory] = useState(null);

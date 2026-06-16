@@ -30,6 +30,11 @@ export async function sendInboxReply({ empresaId, telefono, mensaje }) {
   return response.data.data;
 }
 
+export async function closeInboxThread({ empresaId, telefono }) {
+  const response = await api.post(`/conversations/inbox/threads/${empresaId}/${telefono}/close`);
+  return response.data.data;
+}
+
 export async function createConversation(payload) {
   const response = await api.post('/conversations', payload);
   return response.data.data;

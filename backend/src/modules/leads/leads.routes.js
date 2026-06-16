@@ -1,16 +1,14 @@
 import { Router } from 'express';
-import { authenticate } from '../../middlewares/auth.middleware.js';
-import { attachCompanyScope } from '../../middlewares/company-scope.middleware.js';
-import { authorizeRoles } from '../../middlewares/roles.middleware.js';
+import { attachTenantScope, requireAuth, requirePermission } from '../../middlewares/access-control.middleware.js';
 import { getLead, leadStats, listLeads, patchLead, removeLead, storeLead } from './leads.controller.js';
 
 export const leadsRouter = Router();
 
-leadsRouter.use(authenticate, authorizeRoles('SUPER_ADMIN', 'OWNER'), attachCompanyScope);
+leadsRouter.use(requireAuth, attachTenantScope);
 
-leadsRouter.get('/', listLeads);
-leadsRouter.get('/stats', leadStats);
-leadsRouter.post('/', storeLead);
-leadsRouter.get('/:id', getLead);
-leadsRouter.put('/:id', patchLead);
-leadsRouter.delete('/:id', removeLead);
+leadsRouter.get('/', requirePermission('customers.view'), listLeads);
+leadsRouter.get('/stats', requirePermission('reports.view'), leadStats);
+leadsRouter.post('/', requirePermission('customers.manage'), storeLead);
+leadsRouter.get('/:id', requirePermission('customers.view'), getLead);
+leadsRouter.put('/:id', requirePermission('customers.manage'), patchLead);
+leadsRouter.delete('/:id', requirePermission('customers.manage'), removeLead);

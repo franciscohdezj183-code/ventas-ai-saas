@@ -9,7 +9,8 @@ CREATE TABLE IF NOT EXISTS empresas (
   telefono VARCHAR(40) NULL,
   direccion VARCHAR(255) NULL,
   tipo_negocio VARCHAR(120) NULL,
-  plan ENUM('BASICO', 'PRO', 'ENTERPRISE') NOT NULL DEFAULT 'BASICO',
+  logo VARCHAR(255) NULL,
+  plan ENUM('BASICO','PRO','STARTER','BUSINESS','ENTERPRISE') NOT NULL DEFAULT 'STARTER',
   activo TINYINT(1) NOT NULL DEFAULT 1,
   estado ENUM('ACTIVA', 'INACTIVA') NOT NULL DEFAULT 'ACTIVA',
   fecha_creacion TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -27,7 +28,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
   nombre VARCHAR(150) NOT NULL,
   email VARCHAR(180) NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
-  rol ENUM('SUPER_ADMIN', 'OWNER') NOT NULL DEFAULT 'OWNER',
+  rol ENUM('SUPER_ADMIN','OWNER','super_admin','owner','seller','support','viewer') NOT NULL DEFAULT 'owner',
   estado ENUM('ACTIVO', 'INACTIVO') NOT NULL DEFAULT 'ACTIVO',
   fecha_creacion TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   fecha_actualizacion TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -147,15 +148,85 @@ CREATE TABLE IF NOT EXISTS conversaciones (
   telefono_cliente VARCHAR(40) NOT NULL,
   mensaje TEXT NOT NULL,
   respuesta TEXT NULL,
+  estado ENUM('open','bot_active','requires_human','human_active','closed') NOT NULL DEFAULT 'open',
+  tipo_mensaje ENUM('customer','bot','human','system') NOT NULL DEFAULT 'customer',
+  agente_usuario_id BIGINT UNSIGNED NULL,
   fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   fecha_creacion TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   fecha_actualizacion TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY conversaciones_empresa_id_index (empresa_id),
   KEY conversaciones_telefono_cliente_index (telefono_cliente),
+  KEY conversaciones_estado_index (estado),
+  KEY conversaciones_empresa_cliente_estado_index (empresa_id, telefono_cliente, estado),
+  KEY conversaciones_agente_usuario_index (agente_usuario_id),
   KEY conversaciones_fecha_index (fecha),
   CONSTRAINT conversaciones_empresa_id_foreign
     FOREIGN KEY (empresa_id) REFERENCES empresas (id)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE,
+  CONSTRAINT conversaciones_agente_usuario_foreign
+    FOREIGN KEY (agente_usuario_id) REFERENCES usuarios (id)
+    ON DELETE SET NULL
+    ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS pedidos (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  empresa_id BIGINT UNSIGNED NOT NULL,
+  cliente_nombre VARCHAR(150) NOT NULL,
+  telefono_cliente VARCHAR(40) NULL,
+  conversation_id BIGINT UNSIGNED NULL,
+  estado ENUM('NUEVO','CONFIRMADO','EN_PROCESO','ENTREGADO','CANCELADO') NOT NULL DEFAULT 'NUEVO',
+  total DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  notas TEXT NULL,
+  fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  fecha_creacion TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  fecha_actualizacion TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY pedidos_empresa_id_index (empresa_id),
+  KEY pedidos_empresa_id_id_index (empresa_id, id),
+  KEY pedidos_conversation_id_index (conversation_id),
+  KEY pedidos_estado_index (estado),
+  KEY pedidos_fecha_index (fecha),
+  CONSTRAINT pedidos_empresa_id_foreign
+    FOREIGN KEY (empresa_id) REFERENCES empresas (id)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE,
+  CONSTRAINT pedidos_conversation_id_foreign
+    FOREIGN KEY (conversation_id) REFERENCES conversaciones (id)
+    ON DELETE SET NULL
+    ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS ai_usage_logs (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  tenant_id BIGINT UNSIGNED NOT NULL,
+  user_id BIGINT UNSIGNED NULL,
+  conversation_id BIGINT UNSIGNED NULL,
+  tokens_input INT UNSIGNED NOT NULL DEFAULT 0,
+  tokens_output INT UNSIGNED NOT NULL DEFAULT 0,
+  total_tokens INT UNSIGNED NOT NULL DEFAULT 0,
+  costo_estimado DECIMAL(12,8) NOT NULL DEFAULT 0.00000000,
+  modelo_usado VARCHAR(120) NOT NULL,
+  fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY ai_usage_logs_tenant_fecha_index (tenant_id, fecha),
+  KEY ai_usage_logs_user_id_index (user_id),
+  KEY ai_usage_logs_conversation_id_index (conversation_id),
+  KEY ai_usage_logs_modelo_index (modelo_usado),
+  CONSTRAINT ai_usage_logs_tenant_foreign
+    FOREIGN KEY (tenant_id) REFERENCES empresas (id)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE,
+  CONSTRAINT ai_usage_logs_user_foreign
+    FOREIGN KEY (user_id) REFERENCES usuarios (id)
+    ON DELETE SET NULL
+    ON UPDATE CASCADE,
+  CONSTRAINT ai_usage_logs_conversation_foreign
+    FOREIGN KEY (conversation_id) REFERENCES conversaciones (id)
+    ON DELETE SET NULL
     ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -165,6 +236,12 @@ CREATE TABLE IF NOT EXISTS configuracion_empresas (
   tono_respuesta VARCHAR(80) NULL,
   mensaje_bienvenida TEXT NULL,
   mensaje_fuera_horario TEXT NULL,
+  instrucciones_negocio TEXT NULL,
+  temas_bloqueados TEXT NULL,
+  faq_personalizada TEXT NULL,
+  auto_pedidos TINYINT(1) NOT NULL DEFAULT 1,
+  envio_imagenes TINYINT(1) NOT NULL DEFAULT 1,
+  fallback_message TEXT NULL,
   telefono_dueno VARCHAR(40) NULL,
   direccion VARCHAR(255) NULL,
   horario_atencion TEXT NULL,

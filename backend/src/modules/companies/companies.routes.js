@@ -1,7 +1,6 @@
 import { Router } from 'express';
-import { authenticate } from '../../middlewares/auth.middleware.js';
-import { attachCompanyScope } from '../../middlewares/company-scope.middleware.js';
-import { authorizeRoles } from '../../middlewares/roles.middleware.js';
+import { attachTenantScope, requireAuth, requirePermission, requireRole } from '../../middlewares/access-control.middleware.js';
+import { uploadCompanyLogo } from '../../middlewares/upload.middleware.js';
 import {
   getCompany,
   impersonateOwner,
@@ -14,14 +13,14 @@ import {
 
 export const companiesRouter = Router();
 
-companiesRouter.use(authenticate, authorizeRoles('SUPER_ADMIN', 'OWNER'), attachCompanyScope);
+companiesRouter.use(requireAuth, attachTenantScope);
 
-companiesRouter.get('/', listCompanies);
-companiesRouter.get('/saas/global', authorizeRoles('SUPER_ADMIN'), saasGlobalOverview);
-companiesRouter.get('/:id', getCompany);
-companiesRouter.put('/:id', patchCompany);
+companiesRouter.get('/', requirePermission('tenants.view'), listCompanies);
+companiesRouter.get('/saas/global', requireRole('super_admin'), saasGlobalOverview);
+companiesRouter.get('/:id', requirePermission('tenants.view'), getCompany);
+companiesRouter.put('/:id', requirePermission('tenants.manage'), uploadCompanyLogo, patchCompany);
 
-companiesRouter.use(authorizeRoles('SUPER_ADMIN'));
+companiesRouter.use(requireRole('super_admin'));
 companiesRouter.post('/:id/impersonate', impersonateOwner);
-companiesRouter.post('/', storeCompany);
+companiesRouter.post('/', uploadCompanyLogo, storeCompany);
 companiesRouter.delete('/:id', removeCompany);

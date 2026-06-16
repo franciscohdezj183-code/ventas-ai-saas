@@ -1,7 +1,5 @@
 import { Router } from 'express';
-import { authenticate } from '../../middlewares/auth.middleware.js';
-import { attachCompanyScope } from '../../middlewares/company-scope.middleware.js';
-import { authorizeRoles } from '../../middlewares/roles.middleware.js';
+import { attachTenantScope, requireAuth, requirePermission } from '../../middlewares/access-control.middleware.js';
 import {
   disconnectSession,
   getQr,
@@ -12,14 +10,14 @@ import {
 
 export const whatsappRouter = Router();
 
-whatsappRouter.use(authenticate, authorizeRoles('SUPER_ADMIN', 'OWNER'), attachCompanyScope);
+whatsappRouter.use(requireAuth, attachTenantScope);
 
-whatsappRouter.get('/sessions', listStatuses);
-whatsappRouter.post('/sessions/:empresaId/start', startSession);
-whatsappRouter.get('/sessions/:empresaId/status', getStatus);
-whatsappRouter.get('/sessions/:empresaId/qr', getQr);
-whatsappRouter.post('/sessions/:empresaId/disconnect', disconnectSession);
-whatsappRouter.post('/session/start', startSession);
-whatsappRouter.get('/session/status', getStatus);
-whatsappRouter.get('/session/qr', getQr);
-whatsappRouter.post('/session/disconnect', disconnectSession);
+whatsappRouter.get('/sessions', requirePermission('whatsapp.view'), listStatuses);
+whatsappRouter.post('/sessions/:empresaId/start', requirePermission('whatsapp.manage'), startSession);
+whatsappRouter.get('/sessions/:empresaId/status', requirePermission('whatsapp.view'), getStatus);
+whatsappRouter.get('/sessions/:empresaId/qr', requirePermission('whatsapp.manage'), getQr);
+whatsappRouter.post('/sessions/:empresaId/disconnect', requirePermission('whatsapp.manage'), disconnectSession);
+whatsappRouter.post('/session/start', requirePermission('whatsapp.manage'), startSession);
+whatsappRouter.get('/session/status', requirePermission('whatsapp.view'), getStatus);
+whatsappRouter.get('/session/qr', requirePermission('whatsapp.manage'), getQr);
+whatsappRouter.post('/session/disconnect', requirePermission('whatsapp.manage'), disconnectSession);

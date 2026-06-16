@@ -1,4 +1,5 @@
 import { Edit3, Eye, Power, Trash2 } from 'lucide-react';
+import { Can } from '../../components/Can.jsx';
 import { DataTable, StatusBadge } from '../../components/ui/index.js';
 
 export function CompanyTable({ companies, isLoading, onDelete, onEdit, onToggle, onView }) {
@@ -37,20 +38,26 @@ export function CompanyTable({ companies, isLoading, onDelete, onEdit, onToggle,
           <button aria-label="Ver empresa" onClick={() => onView(company)} type="button" title="Ver detalle">
             <Eye size={16} aria-hidden="true" />
           </button>
-          <button aria-label="Editar empresa" onClick={() => onEdit(company)} type="button">
-            <Edit3 size={16} aria-hidden="true" />
-          </button>
-          <button
-            aria-label={company.activo ? 'Desactivar empresa' : 'Activar empresa'}
-            onClick={() => onToggle(company)}
-            type="button"
-            title={company.activo ? 'Desactivar' : 'Activar'}
-          >
-            <Power size={16} aria-hidden="true" />
-          </button>
-          <button aria-label="Eliminar empresa" onClick={() => onDelete(company)} type="button">
-            <Trash2 size={16} aria-hidden="true" />
-          </button>
+          <Can permission="tenants.manage">
+            <button aria-label="Editar empresa" onClick={() => onEdit(company)} type="button">
+              <Edit3 size={16} aria-hidden="true" />
+            </button>
+          </Can>
+          <Can permission="tenants.manage">
+            <button
+              aria-label={company.activo ? 'Desactivar empresa' : 'Activar empresa'}
+              onClick={() => onToggle(company)}
+              type="button"
+              title={company.activo ? 'Desactivar' : 'Activar'}
+            >
+              <Power size={16} aria-hidden="true" />
+            </button>
+          </Can>
+          <Can permission="tenants.manage">
+            <button aria-label="Eliminar empresa" onClick={() => onDelete(company)} type="button">
+              <Trash2 size={16} aria-hidden="true" />
+            </button>
+          </Can>
         </div>
       )
     }

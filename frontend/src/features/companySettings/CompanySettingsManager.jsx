@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Bot, Building2, MessageSquare, Smartphone } from 'lucide-react';
 import { ConfirmModal, ErrorState, LoadingState } from '../../components/ui/index.js';
 import { useAuth } from '../../context/AuthContext.jsx';
+import { isSuperAdminRole } from '../../config/permissions.js';
 import { fetchCompanies } from '../companies/companiesApi.js';
 import {
   deleteCompanySetting,
@@ -17,7 +18,7 @@ function getApiError(error) {
 
 export function CompanySettingsManager() {
   const { user } = useAuth();
-  const canSelectCompany = user?.rol === 'SUPER_ADMIN';
+  const canSelectCompany = isSuperAdminRole(user?.rol);
   const [companies, setCompanies] = useState([]);
   const [settingsList, setSettingsList] = useState([]);
   const [selectedEmpresaId, setSelectedEmpresaId] = useState('');

@@ -1,22 +1,34 @@
-# ventas-ai-saas
+# Nexus IA / ventas-ai-saas
 
-Plataforma SaaS multiempresa para negocios pequenos. Incluye API con Node.js,
-Express y MySQL, mas un panel administrativo con React y Vite.
+Plataforma SaaS multiempresa para ventas conversacionales por WhatsApp con IA.
+Incluye API con Node.js, Express y MySQL, mas un panel administrativo con React
+y Vite.
 
 ## Estado del proyecto
 
-El proyecto contiene una base funcional para:
+El proyecto contiene una base funcional avanzada para:
 
-- Autenticacion JWT con roles `SUPER_ADMIN` y `OWNER`.
-- Gestion multiempresa.
-- CRUD de empresas, usuarios, categorias, productos, servicios, leads y conversaciones.
+- Autenticacion JWT con roles `super_admin`, `owner`, `seller`, `support` y `viewer`.
+- Gestion multiempresa con aislamiento por `empresa_id` / `tenant_id`.
+- Matriz reutilizable de permisos backend/frontend.
+- CRUD de empresas, usuarios, categorias, productos, servicios, leads, conversaciones y pedidos.
 - Carga de imagenes para productos.
 - Importacion masiva de productos desde Excel.
-- Dashboard comercial.
+- Dashboard comercial distinto por rol.
+- Panel Super Admin.
+- Panel Owner.
+- Onboarding para nuevas empresas.
+- Planes SaaS y limites de uso.
+- Consumo IA mensual por tenant.
+- Reportes por empresa y globales.
+- Configuracion IA por empresa.
+- Modo atencion humana en conversaciones.
 - Integracion WhatsApp con `whatsapp-web.js`.
 - Integracion OpenAI como interprete de intenciones JSON.
 - Orquestador tipo MCP para consultar datos reales antes de responder.
-- Pruebas unitarias del interprete de intenciones.
+- Seguridad SaaS: tenant scope, permisos backend, sanitizacion, rate limiting,
+  auditoria y cifrado de campos sensibles de WhatsApp.
+- Pruebas unitarias e integracion con base de datos.
 
 ## Stack
 
@@ -107,6 +119,8 @@ npm run dev:backend
 npm run dev:frontend
 npm run build
 npm test -w backend
+npm run test:db -w backend
+npm run migrate -w backend
 npm start
 ```
 
@@ -115,6 +129,8 @@ npm start
 - `npm run dev:frontend`: levanta solo React/Vite.
 - `npm run build`: genera el build del frontend.
 - `npm test -w backend`: ejecuta pruebas del backend.
+- `npm run test:db -w backend`: ejecuta pruebas de integracion con MySQL.
+- `npm run migrate -w backend`: aplica migraciones SQL pendientes.
 - `npm start`: ejecuta el backend con Node.
 
 ## URLs locales
@@ -156,9 +172,15 @@ VALUES (1, 'Administrador', 'admin@demo.com', 'HASH_GENERADO', 'SUPER_ADMIN', 'A
 - `/productos`
 - `/servicios`
 - `/leads`
+- `/pedidos`
 - `/conversaciones`
+- `/reportes`
 - `/whatsapp`
 - `/configuracion`
+- `/mi-empresa`
+- `/super-admin`
+- `/inicio-guiado`
+- `/prompts-bot`
 
 ## Documentacion adicional
 
@@ -166,6 +188,8 @@ VALUES (1, 'Administrador', 'admin@demo.com', 'HASH_GENERADO', 'SUPER_ADMIN', 'A
 - [API](docs/API.md)
 - [Base de datos](docs/DATABASE.md)
 - [Guia de produccion](docs/PRODUCTION.md)
+- [Pruebas](docs/TESTING.md)
+- [Actualizacion 2026-06-16](docs/UPDATE_2026-06-16.md)
 
 ## Flujo IA + MCP
 
@@ -214,11 +238,16 @@ Fallback obligatorio cuando la IA no entiende o devuelve JSON invalido:
 Herramientas MCP disponibles:
 
 - `buscar_productos`
+- `obtener_producto`
 - `buscar_servicios`
+- `obtener_servicio`
 - `obtener_categorias`
 - `obtener_promociones`
 - `obtener_configuracion_empresa`
 - `crear_lead`
+- `registrar_intencion_compra`
+- `guardar_conversacion`
+- `crear_pedido`
 
 ## Pruebas
 
@@ -236,8 +265,9 @@ Las pruebas actuales validan que el interprete:
 ## Seguridad antes de subir a produccion
 
 - Cambiar `JWT_SECRET`.
+- Configurar `FIELD_ENCRYPTION_KEY`.
 - No usar usuario MySQL `root`.
 - Mantener `.env`, sesiones WhatsApp y uploads fuera del repositorio.
 - Revisar vulnerabilidades con `npm audit`.
 - Desactivar `OPENAI_AUTO_REPLY` hasta validar respuestas.
-- Agregar rate limiting y almacenamiento persistente para revocacion de tokens.
+- Usar almacenamiento persistente para revocacion de tokens si hay multiples instancias.

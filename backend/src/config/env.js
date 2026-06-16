@@ -88,7 +88,8 @@ export const env = {
     jsonLimit: process.env.JSON_BODY_LIMIT ?? '1mb',
     rateLimitWindowMs: numberEnv('RATE_LIMIT_WINDOW_MS', 15 * 60 * 1000),
     rateLimitMax: numberEnv('RATE_LIMIT_MAX', 300),
-    authRateLimitMax: numberEnv('AUTH_RATE_LIMIT_MAX', 20)
+    authRateLimitMax: numberEnv('AUTH_RATE_LIMIT_MAX', 20),
+    encryptionKey: process.env.FIELD_ENCRYPTION_KEY ?? process.env.JWT_SECRET ?? 'change_this_secret_in_production'
   },
   jwt: {
     secret: process.env.JWT_SECRET ?? 'change_this_secret_in_production',
@@ -101,7 +102,9 @@ export const env = {
   openai: {
     apiKey: process.env.OPENAI_API_KEY ?? '',
     model: process.env.OPENAI_MODEL ?? 'gpt-4.1-mini',
-    autoReply: booleanEnv('OPENAI_AUTO_REPLY', true)
+    autoReply: booleanEnv('OPENAI_AUTO_REPLY', true),
+    inputCostPerMillion: numberEnv('OPENAI_INPUT_COST_PER_MILLION', 0),
+    outputCostPerMillion: numberEnv('OPENAI_OUTPUT_COST_PER_MILLION', 0)
   },
   db: {
     host: process.env.DB_HOST ?? 'localhost',

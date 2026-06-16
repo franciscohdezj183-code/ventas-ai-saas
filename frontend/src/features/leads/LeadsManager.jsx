@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { ConfirmModal, ErrorState, StatusBadge } from '../../components/ui/index.js';
 import { useAuth } from '../../context/AuthContext.jsx';
+import { isSuperAdminRole } from '../../config/permissions.js';
 import { fetchCompanies } from '../companies/companiesApi.js';
 import { createLead, deleteLead, fetchLeads, fetchLeadStats, updateLead } from './leadsApi.js';
 import { LeadForm } from './LeadForm.jsx';
@@ -75,7 +76,7 @@ function buildTimeline(lead) {
 
 export function LeadsManager() {
   const { user } = useAuth();
-  const canSelectCompany = user?.rol === 'SUPER_ADMIN';
+  const canSelectCompany = isSuperAdminRole(user?.rol);
   const [companies, setCompanies] = useState([]);
   const [editingLead, setEditingLead] = useState(null);
   const [error, setError] = useState('');

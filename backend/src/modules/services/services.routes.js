@@ -1,7 +1,5 @@
 import { Router } from 'express';
-import { authenticate } from '../../middlewares/auth.middleware.js';
-import { attachCompanyScope } from '../../middlewares/company-scope.middleware.js';
-import { authorizeRoles } from '../../middlewares/roles.middleware.js';
+import { attachTenantScope, requireAuth, requirePermission } from '../../middlewares/access-control.middleware.js';
 import {
   getService,
   listServices,
@@ -12,10 +10,10 @@ import {
 
 export const servicesRouter = Router();
 
-servicesRouter.use(authenticate, authorizeRoles('SUPER_ADMIN', 'OWNER'), attachCompanyScope);
+servicesRouter.use(requireAuth, attachTenantScope);
 
-servicesRouter.get('/', listServices);
-servicesRouter.post('/', storeService);
-servicesRouter.get('/:id', getService);
-servicesRouter.put('/:id', patchService);
-servicesRouter.delete('/:id', removeService);
+servicesRouter.get('/', requirePermission('products.view'), listServices);
+servicesRouter.post('/', requirePermission('products.manage'), storeService);
+servicesRouter.get('/:id', requirePermission('products.view'), getService);
+servicesRouter.put('/:id', requirePermission('products.manage'), patchService);
+servicesRouter.delete('/:id', requirePermission('products.manage'), removeService);

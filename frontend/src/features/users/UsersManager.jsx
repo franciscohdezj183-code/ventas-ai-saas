@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Filter, Plus, Search, ShieldCheck, UserRound, Users } from 'lucide-react';
+import { Can } from '../../components/Can.jsx';
 import { ConfirmModal, ErrorState } from '../../components/ui/index.js';
+import { isSuperAdminRole, normalizeRole } from '../../config/permissions.js';
 import { fetchCompanies } from '../companies/companiesApi.js';
 import { createUser, deleteUser, fetchUsers, updateUser } from './usersApi.js';
 import { UserForm } from './UserForm.jsx';
@@ -31,7 +33,7 @@ export function UsersManager() {
 
   const stats = useMemo(() => {
     const active = users.filter((user) => user.estado === 'ACTIVO').length;
-    const admins = users.filter((user) => user.rol === 'SUPER_ADMIN').length;
+    const admins = users.filter((user) => isSuperAdminRole(user.rol)).length;
 
     return {
       total: users.length,
@@ -52,7 +54,7 @@ export function UsersManager() {
         email.toLowerCase().includes(query) ||
         user.empresa_nombre?.toLowerCase().includes(query);
       const matchesCompany = !filters.empresa_id || String(user.empresa_id) === String(filters.empresa_id);
-      const matchesRole = !filters.rol || user.rol === filters.rol;
+      const matchesRole = !filters.rol || normalizeRole(user.rol) === normalizeRole(filters.rol);
       const matchesStatus = !filters.estado || user.estado === filters.estado;
 
       return matchesQuery && matchesCompany && matchesRole && matchesStatus;
@@ -151,17 +153,19 @@ export function UsersManager() {
           </div>
         </div>
         <div>
-          <button
-            className="primary-button"
-            onClick={() => {
-              setEditingUser(null);
-              setIsFormOpen(true);
-            }}
-            type="button"
-          >
-            <Plus size={18} aria-hidden="true" />
-            Nuevo usuario
-          </button>
+          <Can permission="users.manage">
+            <button
+              className="primary-button"
+              onClick={() => {
+                setEditingUser(null);
+                setIsFormOpen(true);
+              }}
+              type="button"
+            >
+              <Plus size={18} aria-hidden="true" />
+              Nuevo usuario
+            </button>
+          </Can>
         </div>
       </div>
 
@@ -223,8 +227,11 @@ export function UsersManager() {
               value={filters.rol}
             >
               <option value="">Todos los roles</option>
-              <option value="SUPER_ADMIN">SUPER_ADMIN</option>
-              <option value="OWNER">OWNER</option>
+              <option value="super_admin">super_admin</option>
+              <option value="owner">owner</option>
+              <option value="seller">seller</option>
+              <option value="support">support</option>
+              <option value="viewer">viewer</option>
             </select>
             <select
               aria-label="Estado"
@@ -270,7 +277,7 @@ export function UsersManager() {
             </button>
             <div className="catalog-modal-header">
               <span>
-                {editingUser?.rol === 'SUPER_ADMIN' ? (
+                {isSuperAdminRole(editingUser?.rol) ? (
                   <ShieldCheck size={22} aria-hidden="true" />
                 ) : (
                   <UserRound size={22} aria-hidden="true" />

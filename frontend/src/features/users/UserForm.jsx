@@ -4,7 +4,7 @@ const initialForm = {
   nombre: '',
   correo: '',
   password: '',
-  rol: 'OWNER',
+  rol: 'owner',
   empresa_id: '',
   estado: 'ACTIVO'
 };
@@ -47,7 +47,7 @@ export function UserForm({ companies, isSaving, onCancel, onSubmit, user }) {
         nombre: user.nombre ?? '',
         correo: user.correo ?? '',
         password: '',
-        rol: user.rol ?? 'OWNER',
+        rol: user.rol ?? 'owner',
         empresa_id: String(user.empresa_id ?? ''),
         estado: user.estado ?? 'ACTIVO'
       });
@@ -132,8 +132,11 @@ export function UserForm({ companies, isSaving, onCancel, onSubmit, user }) {
         <label className="field-group" htmlFor="user-role">
           <span>Rol</span>
           <select id="user-role" name="rol" onChange={handleChange} value={form.rol}>
-            <option value="OWNER">OWNER</option>
-            <option value="SUPER_ADMIN">SUPER_ADMIN</option>
+            <option value="owner">owner</option>
+            <option value="seller">seller</option>
+            <option value="support">support</option>
+            <option value="viewer">viewer</option>
+            <option value="super_admin">super_admin</option>
           </select>
         </label>
 

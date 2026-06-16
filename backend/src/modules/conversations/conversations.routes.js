@@ -1,8 +1,7 @@
 import { Router } from 'express';
-import { authenticate } from '../../middlewares/auth.middleware.js';
-import { attachCompanyScope } from '../../middlewares/company-scope.middleware.js';
-import { authorizeRoles } from '../../middlewares/roles.middleware.js';
+import { attachTenantScope, requireAuth, requirePermission } from '../../middlewares/access-control.middleware.js';
 import {
+  closeInboxThread,
   getConversation,
   getInboxThread,
   listInboxThreads,
@@ -17,15 +16,16 @@ import {
 
 export const conversationsRouter = Router();
 
-conversationsRouter.use(authenticate, authorizeRoles('SUPER_ADMIN', 'OWNER'), attachCompanyScope);
+conversationsRouter.use(requireAuth, attachTenantScope);
 
-conversationsRouter.get('/inbox/threads', listInboxThreads);
-conversationsRouter.get('/inbox/threads/:empresaId/:telefono', getInboxThread);
-conversationsRouter.post('/inbox/threads/:empresaId/:telefono/pause', pauseInboxThread);
-conversationsRouter.post('/inbox/threads/:empresaId/:telefono/resume', resumeInboxThread);
-conversationsRouter.post('/inbox/threads/:empresaId/:telefono/reply', sendInboxReply);
-conversationsRouter.get('/', listConversations);
-conversationsRouter.post('/', storeConversation);
-conversationsRouter.get('/:id', getConversation);
-conversationsRouter.put('/:id', patchConversation);
-conversationsRouter.delete('/:id', removeConversation);
+conversationsRouter.get('/inbox/threads', requirePermission('conversations.view'), listInboxThreads);
+conversationsRouter.get('/inbox/threads/:empresaId/:telefono', requirePermission('conversations.view'), getInboxThread);
+conversationsRouter.post('/inbox/threads/:empresaId/:telefono/pause', requirePermission('conversations.manage'), pauseInboxThread);
+conversationsRouter.post('/inbox/threads/:empresaId/:telefono/resume', requirePermission('conversations.manage'), resumeInboxThread);
+conversationsRouter.post('/inbox/threads/:empresaId/:telefono/reply', requirePermission('conversations.manage'), sendInboxReply);
+conversationsRouter.post('/inbox/threads/:empresaId/:telefono/close', requirePermission('conversations.manage'), closeInboxThread);
+conversationsRouter.get('/', requirePermission('conversations.view'), listConversations);
+conversationsRouter.post('/', requirePermission('conversations.manage'), storeConversation);
+conversationsRouter.get('/:id', requirePermission('conversations.view'), getConversation);
+conversationsRouter.put('/:id', requirePermission('conversations.manage'), patchConversation);
+conversationsRouter.delete('/:id', requirePermission('conversations.manage'), removeConversation);

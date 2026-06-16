@@ -1,4 +1,5 @@
 import {
+  closeThread,
   createConversation,
   deleteConversation,
   findConversationById,
@@ -43,11 +44,18 @@ export async function getInboxThread(req, res, next) {
 
 export async function pauseInboxThread(req, res, next) {
   try {
+    const thread = await pauseBotForThread(req.auth, {
+      empresaId: req.params.empresaId,
+      telefono: req.params.telefono
+    });
+    await auditFromRequest(req, {
+      accion: 'PAUSAR_BOT',
+      modulo: 'conversaciones',
+      descripcion: `Bot pausado para telefono ${req.params.telefono}`,
+      empresaId: thread.empresa_id
+    });
     res.json({
-      data: await pauseBotForThread(req.auth, {
-        empresaId: req.params.empresaId,
-        telefono: req.params.telefono
-      })
+      data: thread
     });
   } catch (error) {
     next(error);
@@ -56,11 +64,18 @@ export async function pauseInboxThread(req, res, next) {
 
 export async function resumeInboxThread(req, res, next) {
   try {
+    const thread = await resumeBotForThread(req.auth, {
+      empresaId: req.params.empresaId,
+      telefono: req.params.telefono
+    });
+    await auditFromRequest(req, {
+      accion: 'REACTIVAR_BOT',
+      modulo: 'conversaciones',
+      descripcion: `Bot reactivado para telefono ${req.params.telefono}`,
+      empresaId: thread.empresa_id
+    });
     res.json({
-      data: await resumeBotForThread(req.auth, {
-        empresaId: req.params.empresaId,
-        telefono: req.params.telefono
-      })
+      data: thread
     });
   } catch (error) {
     next(error);
@@ -69,12 +84,39 @@ export async function resumeInboxThread(req, res, next) {
 
 export async function sendInboxReply(req, res, next) {
   try {
+    const thread = await sendThreadReply(req.auth, {
+      empresaId: req.params.empresaId,
+      telefono: req.params.telefono,
+      mensaje: req.body.mensaje
+    });
+    await auditFromRequest(req, {
+      accion: 'RESPONDER_MANUAL',
+      modulo: 'conversaciones',
+      descripcion: `Respuesta manual enviada a ${req.params.telefono}`,
+      empresaId: thread.empresa_id
+    });
     res.json({
-      data: await sendThreadReply(req.auth, {
-        empresaId: req.params.empresaId,
-        telefono: req.params.telefono,
-        mensaje: req.body.mensaje
-      })
+      data: thread
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function closeInboxThread(req, res, next) {
+  try {
+    const thread = await closeThread(req.auth, {
+      empresaId: req.params.empresaId,
+      telefono: req.params.telefono
+    });
+    await auditFromRequest(req, {
+      accion: 'CERRAR',
+      modulo: 'conversaciones',
+      descripcion: `Conversacion cerrada para telefono ${req.params.telefono}`,
+      empresaId: thread.empresa_id
+    });
+    res.json({
+      data: thread
     });
   } catch (error) {
     next(error);

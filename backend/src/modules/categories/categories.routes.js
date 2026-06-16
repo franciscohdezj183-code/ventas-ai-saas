@@ -1,7 +1,5 @@
 import { Router } from 'express';
-import { authenticate } from '../../middlewares/auth.middleware.js';
-import { attachCompanyScope } from '../../middlewares/company-scope.middleware.js';
-import { authorizeRoles } from '../../middlewares/roles.middleware.js';
+import { attachTenantScope, requireAuth, requirePermission } from '../../middlewares/access-control.middleware.js';
 import {
   getCategory,
   listCategories,
@@ -12,10 +10,10 @@ import {
 
 export const categoriesRouter = Router();
 
-categoriesRouter.use(authenticate, authorizeRoles('SUPER_ADMIN', 'OWNER'), attachCompanyScope);
+categoriesRouter.use(requireAuth, attachTenantScope);
 
-categoriesRouter.get('/', listCategories);
-categoriesRouter.post('/', storeCategory);
-categoriesRouter.get('/:id', getCategory);
-categoriesRouter.put('/:id', patchCategory);
-categoriesRouter.delete('/:id', removeCategory);
+categoriesRouter.get('/', requirePermission('products.view'), listCategories);
+categoriesRouter.post('/', requirePermission('products.manage'), storeCategory);
+categoriesRouter.get('/:id', requirePermission('products.view'), getCategory);
+categoriesRouter.put('/:id', requirePermission('products.manage'), patchCategory);
+categoriesRouter.delete('/:id', requirePermission('products.manage'), removeCategory);

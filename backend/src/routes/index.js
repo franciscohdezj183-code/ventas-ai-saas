@@ -8,12 +8,15 @@ import { productsRouter } from '../modules/products/products.routes.js';
 import { servicesRouter } from '../modules/services/services.routes.js';
 import { leadsRouter } from '../modules/leads/leads.routes.js';
 import { conversationsRouter } from '../modules/conversations/conversations.routes.js';
+import { ordersRouter } from '../modules/orders/orders.routes.js';
 import { dashboardRouter } from '../modules/dashboard/dashboard.routes.js';
 import { whatsappRouter } from '../modules/whatsapp/whatsapp.routes.js';
 import { aiRouter } from '../modules/ai/ai.routes.js';
 import { companySettingsRouter } from '../modules/company-settings/company-settings.routes.js';
 import { botPromptsRouter } from '../modules/bot-prompts/bot-prompts.routes.js';
 import { onboardingRouter } from '../modules/onboarding/onboarding.routes.js';
+import { plansRouter } from '../modules/plans/plans.routes.js';
+import { reportsRouter } from '../modules/reports/reports.routes.js';
 
 export const apiRouter = Router();
 
@@ -26,9 +29,12 @@ apiRouter.use('/products', productsRouter);
 apiRouter.use('/services', servicesRouter);
 apiRouter.use('/leads', leadsRouter);
 apiRouter.use('/conversations', conversationsRouter);
+apiRouter.use('/orders', ordersRouter);
 apiRouter.use('/dashboard', dashboardRouter);
 apiRouter.use('/whatsapp', whatsappRouter);
 apiRouter.use('/ai', aiRouter);
 apiRouter.use('/configuracion-empresa', companySettingsRouter);
 apiRouter.use('/bot-prompts', botPromptsRouter);
 apiRouter.use('/onboarding', onboardingRouter);
+apiRouter.use('/plans', plansRouter);
+apiRouter.use('/reports', reportsRouter);

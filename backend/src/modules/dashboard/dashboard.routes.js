@@ -1,7 +1,5 @@
 import { Router } from 'express';
-import { authenticate } from '../../middlewares/auth.middleware.js';
-import { attachCompanyScope } from '../../middlewares/company-scope.middleware.js';
-import { authorizeRoles } from '../../middlewares/roles.middleware.js';
+import { attachTenantScope, requireAuth, requirePermission } from '../../middlewares/access-control.middleware.js';
 import {
   commercialDashboard,
   dashboardSummary,
@@ -12,7 +10,7 @@ import {
 
 export const dashboardRouter = Router();
 
-dashboardRouter.use(authenticate, authorizeRoles('SUPER_ADMIN', 'OWNER'), attachCompanyScope);
+dashboardRouter.use(requireAuth, requirePermission('reports.view'), attachTenantScope);
 
 dashboardRouter.get('/commercial', commercialDashboard);
 dashboardRouter.get('/commercial/summary', dashboardSummary);

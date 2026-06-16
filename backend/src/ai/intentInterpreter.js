@@ -53,8 +53,13 @@ const PARAMETER_CLEANERS = {
   precio_max: cleanNullableNumber,
   stock_requerido: cleanBoolean,
   nombre_cliente: cleanString,
+  cliente_nombre: cleanString,
   telefono: cleanString,
+  telefono_cliente: cleanString,
   interes: cleanString,
+  total: cleanNullableNumber,
+  notas: cleanString,
+  conversation_id: cleanPositiveInteger,
   producto_id: cleanPositiveInteger,
   servicio_id: cleanPositiveInteger
 };
@@ -271,7 +276,8 @@ export async function interpretIntent({
   empresa_id: empresaId,
   mensaje_cliente: mensajeCliente,
   contexto = {},
-  client = getOpenAIClient()
+  client = getOpenAIClient(),
+  onUsage = null
 }) {
   const cleanMessage = String(mensajeCliente ?? '').trim();
 
@@ -294,6 +300,15 @@ export async function interpretIntent({
       }
     ]
   });
+
+  if (typeof onUsage === 'function') {
+    await onUsage({
+      tokens_input: Number(completion.usage?.prompt_tokens ?? 0),
+      tokens_output: Number(completion.usage?.completion_tokens ?? 0),
+      total_tokens: Number(completion.usage?.total_tokens ?? 0),
+      modelo_usado: completion.model ?? env.openai.model
+    });
+  }
 
   const content = completion.choices[0]?.message?.content ?? '{}';
   return validateIntentJson(parseJsonObject(content));

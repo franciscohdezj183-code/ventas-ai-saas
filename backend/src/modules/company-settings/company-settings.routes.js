@@ -1,7 +1,5 @@
 import { Router } from 'express';
-import { authenticate } from '../../middlewares/auth.middleware.js';
-import { attachCompanyScope } from '../../middlewares/company-scope.middleware.js';
-import { authorizeRoles } from '../../middlewares/roles.middleware.js';
+import { attachTenantScope, requireAuth, requirePermission, requireRole } from '../../middlewares/access-control.middleware.js';
 import {
   getCompanySettings,
   listCompanySettings,
@@ -11,10 +9,10 @@ import {
 
 export const companySettingsRouter = Router();
 
-companySettingsRouter.use(authenticate, authorizeRoles('SUPER_ADMIN', 'OWNER'), attachCompanyScope);
+companySettingsRouter.use(requireAuth, attachTenantScope);
 
-companySettingsRouter.get('/', listCompanySettings);
-companySettingsRouter.put('/', saveCompanySettings);
-companySettingsRouter.get('/:empresaId', getCompanySettings);
-companySettingsRouter.put('/:empresaId', saveCompanySettings);
-companySettingsRouter.delete('/:empresaId', removeCompanySettings);
+companySettingsRouter.get('/', requirePermission('ai_config.view'), listCompanySettings);
+companySettingsRouter.put('/', requireRole('owner'), saveCompanySettings);
+companySettingsRouter.get('/:empresaId', requirePermission('ai_config.view'), getCompanySettings);
+companySettingsRouter.put('/:empresaId', requireRole('owner'), saveCompanySettings);
+companySettingsRouter.delete('/:empresaId', requireRole('owner'), removeCompanySettings);

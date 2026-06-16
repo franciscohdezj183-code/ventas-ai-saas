@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'node:crypto';
 import { env } from '../../config/env.js';
 import { query } from '../../config/database.js';
+import { getPermissionsForRole, normalizeRole } from '../../config/permissions.js';
 import { createHttpError } from '../../utils/http-error.js';
 
 const AUTH_USER_COLUMNS = `
@@ -26,6 +27,8 @@ export function sanitizeUser(user) {
     nombre: user.nombre,
     email: user.email,
     rol: user.rol,
+    normalizedRole: normalizeRole(user.rol),
+    permissions: getPermissionsForRole(user.rol),
     estado: user.estado,
     empresa: {
       id: user.empresa_id,
@@ -43,7 +46,7 @@ export function createToken(user) {
   const token = jwt.sign(
     {
       empresaId: user.empresa_id,
-      rol: user.rol
+      rol: normalizeRole(user.rol) ?? user.rol
     },
     env.jwt.secret,
     {

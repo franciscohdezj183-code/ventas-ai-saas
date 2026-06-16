@@ -3,6 +3,8 @@ import { interpretIntent } from '../../ai/intentInterpreter.js';
 import { orchestrateIncomingMessage } from '../../bot/messageOrchestrator.js';
 import { mcpClient } from '../../mcp/mcpClient.js';
 import { createAuditLog } from '../audit/audit.service.js';
+import { isPlanLimitAvailable } from '../plans/plan-limits.service.js';
+import { registerAIUsage } from '../ai-usage/ai-usage.service.js';
 
 function normalizePhone(value) {
   return String(value ?? '')
@@ -14,7 +16,9 @@ async function saveConversationWithoutReply({ empresaId, phone, message }) {
   const result = await mcpClient.callTool('guardar_conversacion', {
     empresa_id: empresaId,
     telefono: phone,
-    mensaje: message
+    mensaje: message,
+    estado: 'open',
+    tipo_mensaje: 'customer'
   });
 
   return result.conversacion_id;
@@ -29,10 +33,23 @@ export function getAIStatus() {
   };
 }
 
-export async function generateCompanyReply({ empresaId, phone, message, whatsappChatId = null }) {
+export async function generateCompanyReply({ empresaId, userId = null, phone, message, whatsappChatId = null }) {
   try {
+    const aiLimit = await isPlanLimitAvailable(empresaId, 'aiMessagesMonthly');
+
+    if (!aiLimit.allowed) {
+      return {
+        respuesta: aiLimit.message,
+        intencion: 'PLAN_LIMIT_REACHED',
+        herramienta_mcp: null,
+        lead_id: null,
+        conversacion_id: null
+      };
+    }
+
     return await orchestrateIncomingMessage({
       empresaId,
+      userId,
       phone,
       message,
       whatsappChatId
@@ -48,13 +65,43 @@ export async function generateCompanyReply({ empresaId, phone, message, whatsapp
   }
 }
 
-export async function interpretCustomerIntent({ empresaId, message, contexto }) {
+export async function interpretCustomerIntent({ empresaId, userId = null, message, contexto }) {
   try {
-    return await interpretIntent({
+    const aiLimit = await isPlanLimitAvailable(empresaId, 'aiMessagesMonthly');
+
+    if (!aiLimit.allowed) {
+      return {
+        intencion: 'PLAN_LIMIT_REACHED',
+        confianza: 1,
+        requiere_respuesta_ia: false,
+        herramienta_mcp: null,
+        parametros: {},
+        message: aiLimit.message
+      };
+    }
+
+    let usageSnapshot = null;
+    const intent = await interpretIntent({
       empresa_id: empresaId,
       mensaje_cliente: message,
-      contexto
+      contexto,
+      onUsage: (usage) => {
+        usageSnapshot = usage;
+      }
     });
+
+    if (usageSnapshot) {
+      await registerAIUsage({
+        tenantId: empresaId,
+        userId,
+        tokensInput: usageSnapshot.tokens_input,
+        tokensOutput: usageSnapshot.tokens_output,
+        totalTokens: usageSnapshot.total_tokens,
+        modelUsed: usageSnapshot.modelo_usado
+      });
+    }
+
+    return intent;
   } catch (error) {
     await createAuditLog({
       empresaId,
@@ -66,7 +113,7 @@ export async function interpretCustomerIntent({ empresaId, message, contexto }) 
   }
 }
 
-export async function processIncomingCustomerMessage({ empresaId, phone, message, whatsappChatId = null }) {
+export async function processIncomingCustomerMessage({ empresaId, userId = null, phone, message, whatsappChatId = null }) {
   const cleanPhone = normalizePhone(phone);
 
   if (!env.openai.apiKey || !env.openai.autoReply) {
@@ -85,8 +132,27 @@ export async function processIncomingCustomerMessage({ empresaId, phone, message
     };
   }
 
+  const aiLimit = await isPlanLimitAvailable(empresaId, 'aiMessagesMonthly');
+
+  if (!aiLimit.allowed) {
+    const conversationId = await saveConversationWithoutReply({
+      empresaId,
+      phone: cleanPhone,
+      message
+    });
+
+    return {
+      respuesta: aiLimit.message,
+      intencion: 'PLAN_LIMIT_REACHED',
+      herramienta_mcp: null,
+      lead_id: null,
+      conversacion_id: conversationId
+    };
+  }
+
   return generateCompanyReply({
     empresaId,
+    userId,
     phone: cleanPhone,
     message,
     whatsappChatId

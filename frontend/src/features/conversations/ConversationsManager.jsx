@@ -11,8 +11,10 @@ import {
 } from 'lucide-react';
 import { ConfirmModal, EmptyState, ErrorState, StatusBadge } from '../../components/ui/index.js';
 import { useAuth } from '../../context/AuthContext.jsx';
+import { isSuperAdminRole } from '../../config/permissions.js';
 import { fetchCompanies } from '../companies/companiesApi.js';
 import {
+  closeInboxThread,
   createConversation,
   deleteConversation,
   fetchInboxThread,
@@ -42,6 +44,14 @@ function formatDate(value) {
   return value ? new Date(value).toLocaleDateString('es-MX', { dateStyle: 'medium' }) : '-';
 }
 
+const conversationStateLabels = {
+  open: 'Abierta',
+  bot_active: 'Bot activo',
+  requires_human: 'Requiere humano',
+  human_active: 'Atencion humana',
+  closed: 'Cerrada'
+};
+
 function ThreadList({ selectedThread, threads, onSelect }) {
   if (!threads.length) {
     return <EmptyState title="Sin conversaciones" description="Cuando lleguen mensajes, apareceran aqui." />;
@@ -66,7 +76,7 @@ function ThreadList({ selectedThread, threads, onSelect }) {
           </div>
           <div className="inbox-thread-badges">
             <span className="channel-badge whatsapp">WHATSAPP</span>
-            <StatusBadge status={thread.estado_inbox}>{thread.estado_inbox}</StatusBadge>
+            <StatusBadge status={thread.estado_inbox}>{conversationStateLabels[thread.estado_inbox] ?? thread.estado_inbox}</StatusBadge>
           </div>
         </button>
       ))}
@@ -75,6 +85,9 @@ function ThreadList({ selectedThread, threads, onSelect }) {
 }
 
 function ChatMessage({ message, onDelete, onEdit }) {
+  const isHuman = message.tipo_mensaje === 'human';
+  const isBot = message.tipo_mensaje === 'bot';
+
   return (
     <article className="inbox-message-group">
       <div className="chat-bubble customer">
@@ -82,8 +95,8 @@ function ChatMessage({ message, onDelete, onEdit }) {
         <p>{message.mensaje}</p>
       </div>
       {message.respuesta ? (
-        <div className="chat-bubble agent">
-          <span>Bot / asesor</span>
+        <div className={isHuman ? 'chat-bubble agent human' : 'chat-bubble agent'}>
+          <span>{isHuman ? 'Asesor' : isBot ? 'Bot' : 'Bot / asesor'}</span>
           <p>{message.respuesta}</p>
         </div>
       ) : null}
@@ -106,6 +119,7 @@ function ChatPanel({
   onPause,
   onReply,
   onResume,
+  onClose,
   reply,
   setReply,
   thread
@@ -126,12 +140,12 @@ function ChatPanel({
         <div>
           <strong>{thread.telefono_cliente}</strong>
           <span>
-            Empresa #{thread.empresa_id} - {thread.bot_pausado ? 'Bot pausado por asesor' : 'Bot activo'}
+            Empresa #{thread.empresa_id} - {conversationStateLabels[thread.estado_inbox] ?? thread.estado_inbox}
           </span>
         </div>
         <div>
-          <StatusBadge status={thread.bot_pausado ? 'HUMANO' : 'BOT'}>
-            {thread.bot_pausado ? 'HUMANO' : 'BOT'}
+          <StatusBadge status={thread.estado_inbox}>
+            {conversationStateLabels[thread.estado_inbox] ?? thread.estado_inbox}
           </StatusBadge>
           {thread.bot_pausado ? (
             <button className="secondary-button" onClick={onResume} type="button">
@@ -144,6 +158,11 @@ function ChatPanel({
               Pausar bot
             </button>
           )}
+          {thread.estado_inbox !== 'closed' ? (
+            <button className="secondary-button" onClick={onClose} type="button">
+              Cerrar
+            </button>
+          ) : null}
         </div>
       </header>
 
@@ -184,7 +203,7 @@ function ChatPanel({
 
 export function ConversationsManager() {
   const { user } = useAuth();
-  const canSelectCompany = user?.rol === 'SUPER_ADMIN';
+  const canSelectCompany = isSuperAdminRole(user?.rol);
   const [companies, setCompanies] = useState([]);
   const [editingConversation, setEditingConversation] = useState(null);
   const [error, setError] = useState('');
@@ -304,6 +323,12 @@ export function ConversationsManager() {
     await loadThreads(filters);
   }
 
+  async function handleClose() {
+    if (!selectedThread) return;
+    setThreadDetail(await closeInboxThread({ empresaId: selectedThread.empresa_id, telefono: selectedThread.telefono_cliente }));
+    await loadThreads(filters);
+  }
+
   async function handleReply(event) {
     event.preventDefault();
     if (!selectedThread || !reply.trim()) return;
@@ -376,9 +401,11 @@ export function ConversationsManager() {
               value={filters.estado}
             >
               <option value="">Todos</option>
-              <option value="ABIERTA">Abiertas</option>
-              <option value="BOT">Bot activo</option>
-              <option value="HUMANO">Humano</option>
+              <option value="open">Abiertas</option>
+              <option value="bot_active">Bot activo</option>
+              <option value="requires_human">Requiere humano</option>
+              <option value="human_active">Atencion humana</option>
+              <option value="closed">Cerradas</option>
             </select>
           </div>
 
@@ -422,6 +449,7 @@ export function ConversationsManager() {
             onPause={handlePause}
             onReply={handleReply}
             onResume={handleResume}
+            onClose={handleClose}
             reply={reply}
             setReply={setReply}
             thread={threadDetail}

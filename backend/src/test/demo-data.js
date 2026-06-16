@@ -51,6 +51,14 @@ export async function setupDemoData() {
     email: `${TEST_PREFIX}-super@example.com`,
     password: 'Password123!'
   };
+  const sellerA = {
+    email: `${TEST_PREFIX}-seller-a@example.com`,
+    password: 'Password123!'
+  };
+  const viewerA = {
+    email: `${TEST_PREFIX}-viewer-a@example.com`,
+    password: 'Password123!'
+  };
 
   await createUser({
     empresaId: companyAId,
@@ -73,13 +81,29 @@ export async function setupDemoData() {
     password: superAdmin.password,
     rol: 'SUPER_ADMIN'
   });
+  await createUser({
+    empresaId: companyAId,
+    nombre: 'Seller A',
+    email: sellerA.email,
+    password: sellerA.password,
+    rol: 'seller'
+  });
+  await createUser({
+    empresaId: companyAId,
+    nombre: 'Viewer A',
+    email: viewerA.email,
+    password: viewerA.password,
+    rol: 'viewer'
+  });
 
   return {
     companyAId,
     companyBId,
     ownerA,
     ownerB,
-    superAdmin
+    superAdmin,
+    sellerA,
+    viewerA
   };
 }
 

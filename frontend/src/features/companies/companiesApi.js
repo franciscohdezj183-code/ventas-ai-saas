@@ -16,12 +16,16 @@ export async function impersonateCompanyOwner(id) {
 }
 
 export async function createCompany(payload) {
-  const response = await api.post('/companies', payload);
+  const response = await api.post('/companies', payload, payload instanceof FormData ? {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  } : undefined);
   return response.data.data;
 }
 
 export async function updateCompany(id, payload) {
-  const response = await api.put(`/companies/${id}`, payload);
+  const response = await api.put(`/companies/${id}`, payload, payload instanceof FormData ? {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  } : undefined);
   return response.data.data;
 }
 

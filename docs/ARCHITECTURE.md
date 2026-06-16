@@ -2,9 +2,10 @@
 
 ## Vision general
 
-`ventas-ai-saas` es una plataforma SaaS multiempresa. Cada negocio se representa
-como una fila en `empresas`, y los datos operativos se relacionan mediante
-`empresa_id`.
+`ventas-ai-saas` / Nexus IA es una plataforma SaaS multiempresa para ventas
+conversacionales por WhatsApp con IA. Cada negocio se representa como una fila
+en `empresas`, y los datos operativos se relacionan mediante `empresa_id` o
+`tenant_id`.
 
 ```text
 ventas-ai-saas/
@@ -48,20 +49,27 @@ Capas principales:
 - `middlewares`: autenticacion, roles, errores y uploads.
 - `modules`: modulos HTTP de la API.
 - `routes`: registro central de rutas Express.
+- `utils`: helpers comunes, incluyendo cifrado de campos sensibles.
 
 Modulos HTTP principales:
 
 - `auth`: login, logout, usuario actual y validacion de roles.
-- `companies`: CRUD de empresas, solo `SUPER_ADMIN`.
+- `companies`: empresas, resumen SaaS global e impersonacion; lectura/edicion segun permisos y creacion global para `super_admin`.
 - `users`: CRUD de usuarios.
 - `categories`: CRUD de categorias por empresa.
 - `products`: CRUD de productos, imagenes e importacion Excel.
 - `services`: CRUD de servicios.
 - `leads`: gestion de prospectos y estadisticas.
 - `conversations`: historial de conversaciones.
+- `orders`: pedidos por empresa.
 - `dashboard`: metricas comerciales.
 - `whatsapp`: sesiones por empresa con QR y estado de conexion.
 - `ai`: endpoints de estado, prueba de intencion y prueba del orquestador.
+- `ai-usage`: registro y consulta de consumo IA.
+- `company-settings`: configuracion IA por empresa.
+- `plans`: planes SaaS y limites.
+- `reports`: reportes por empresa/globales.
+- `onboarding`: flujo de creacion de empresa y checklist.
 
 ## Frontend
 
@@ -77,20 +85,48 @@ Rutas principales:
 - `/productos`: productos, imagenes e importacion.
 - `/servicios`: servicios.
 - `/leads`: leads y estadisticas.
+- `/pedidos`: pedidos.
 - `/conversaciones`: historial.
+- `/reportes`: reportes.
 - `/whatsapp`: sesiones WhatsApp.
-- `/configuracion`: modulo reservado.
+- `/configuracion`: configuracion IA/empresa.
+- `/mi-empresa`: panel owner.
+- `/super-admin`: panel global Super Admin.
+- `/inicio-guiado`: onboarding.
+- `/prompts-bot`: plantillas globales del bot.
 
 ## Multiempresa
 
 Regla base:
 
 - Toda tabla operativa debe incluir `empresa_id`.
-- Los usuarios `OWNER` deben consultar solo datos de su empresa.
-- Los usuarios `SUPER_ADMIN` pueden administrar empresas y ver datos globales.
+- Los usuarios `owner`, `seller`, `support` y `viewer` consultan solo datos de
+  su empresa.
+- Los usuarios `super_admin` pueden administrar empresas y ver datos globales.
 
 El backend resuelve el usuario autenticado desde el JWT y usa `empresa_id` para
-filtrar las consultas segun el rol.
+filtrar las consultas segun el rol. El middleware `attachTenantScope` valida que
+un usuario no global no intente acceder a otro tenant.
+
+## Roles y permisos
+
+Roles:
+
+- `super_admin`
+- `owner`
+- `seller`
+- `support`
+- `viewer`
+
+Los permisos se definen en:
+
+```text
+backend/src/config/permissions.js
+frontend/src/config/permissions.js
+```
+
+El frontend puede ocultar UI con `Can`, pero la seguridad real vive en backend
+con `requireAuth`, `requirePermission`, `requireRole` y `attachTenantScope`.
 
 ## Flujo IA + MCP
 
@@ -157,6 +193,9 @@ Herramientas MCP actuales:
 - `obtener_promociones`: placeholder para futuras promociones.
 - `obtener_configuracion_empresa`: consulta datos basicos de empresa.
 - `crear_lead`: registra un lead con datos reales en MySQL.
+- `registrar_intencion_compra`: registra intencion comercial como lead.
+- `guardar_conversacion`: guarda mensajes del flujo WhatsApp.
+- `crear_pedido`: crea pedidos basicos tenant-scoped.
 
 ## Pruebas
 
@@ -179,13 +218,18 @@ se emite un JWT firmado con `JWT_SECRET`.
 
 Roles disponibles:
 
-- `SUPER_ADMIN`
-- `OWNER`
+- `SUPER_ADMIN` / `super_admin`
+- `OWNER` / `owner`
+- `seller`
+- `support`
+- `viewer`
 
 Middlewares:
 
 - `authenticate`: valida el token Bearer.
 - `authorizeRoles`: restringe rutas por rol.
+- `authorizePermissions`: restringe rutas por permiso.
+- `requireTenantScope`: evita acceso cruzado entre empresas.
 
 ## Archivos locales
 

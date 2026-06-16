@@ -1,7 +1,8 @@
 import { createHttpError } from '../utils/http-error.js';
+import { normalizeRole, ROLES } from '../config/permissions.js';
 
 export function isSuperAdmin(auth) {
-  return auth?.user?.rol === 'SUPER_ADMIN';
+  return normalizeRole(auth?.user?.rol) === ROLES.SUPER_ADMIN;
 }
 
 export function getAuthenticatedEmpresaId(auth) {

@@ -3,6 +3,7 @@ import {
   getAuthenticatedEmpresaId,
   isSuperAdmin
 } from '../../middlewares/company-scope.middleware.js';
+import { getMonthlyAIUsage } from '../ai-usage/ai-usage.service.js';
 import { listWhatsappStatuses } from '../whatsapp/whatsapp.service.js';
 
 const DEFAULT_RANGE_DAYS = 30;
@@ -899,6 +900,8 @@ export async function getRecentErrors(auth, filters = {}) {
 }
 
 export async function getCommercialDashboard(auth, filters = {}) {
+  const requestedUsageMonth = filters.month ?? filters.mes ?? String(filters.fecha_fin ?? '').slice(0, 7);
+  const usageMonth = requestedUsageMonth || undefined;
   const [
     summary,
     metrics,
@@ -911,7 +914,8 @@ export async function getCommercialDashboard(auth, filters = {}) {
     industryOptimization,
     recentLeads,
     recentActivity,
-    recentErrors
+    recentErrors,
+    aiUsage
   ] = await Promise.all([
     getDashboardSummary(auth, filters),
     getOperationalMetrics(auth),
@@ -924,7 +928,8 @@ export async function getCommercialDashboard(auth, filters = {}) {
     getIndustryOptimization(auth, filters),
     getRecentLeads(auth),
     getRecentActivity(auth),
-    getRecentErrors(auth, filters)
+    getRecentErrors(auth, filters),
+    getMonthlyAIUsage(auth, { month: usageMonth })
   ]);
   const executiveIntelligence = await getExecutiveIntelligence({
     auth,
@@ -957,6 +962,7 @@ export async function getCommercialDashboard(auth, filters = {}) {
     }),
     leads_recientes: recentLeads,
     actividad_reciente: recentActivity,
-    errores_recientes: recentErrors
+    errores_recientes: recentErrors,
+    ai_usage: aiUsage
   };
 }

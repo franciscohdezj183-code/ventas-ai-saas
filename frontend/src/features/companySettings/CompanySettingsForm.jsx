@@ -12,6 +12,7 @@ import {
   Smartphone,
   Sparkles
 } from 'lucide-react';
+import { Can } from '../../components/Can.jsx';
 
 const initialForm = {
   empresa_id: '',
@@ -19,6 +20,12 @@ const initialForm = {
   tono_respuesta: '',
   mensaje_bienvenida: '',
   mensaje_fuera_horario: '',
+  instrucciones_negocio: '',
+  temas_bloqueados: '',
+  faq_personalizada: '',
+  auto_pedidos: true,
+  envio_imagenes: true,
+  fallback_message: '',
   telefono_dueno: '',
   direccion: '',
   horario_atencion: '',
@@ -35,6 +42,12 @@ function toFormValue(settings) {
     tono_respuesta: settings?.tono_respuesta ?? '',
     mensaje_bienvenida: settings?.mensaje_bienvenida ?? '',
     mensaje_fuera_horario: settings?.mensaje_fuera_horario ?? '',
+    instrucciones_negocio: settings?.instrucciones_negocio ?? '',
+    temas_bloqueados: settings?.temas_bloqueados ?? '',
+    faq_personalizada: settings?.faq_personalizada ?? '',
+    auto_pedidos: settings?.auto_pedidos ?? true,
+    envio_imagenes: settings?.envio_imagenes ?? true,
+    fallback_message: settings?.fallback_message ?? '',
     telefono_dueno: settings?.telefono_dueno ?? '',
     direccion: settings?.direccion ?? settings?.empresa_direccion ?? '',
     horario_atencion: settings?.horario_atencion ?? '',
@@ -271,6 +284,81 @@ export function CompanySettingsForm({
           </SettingsSection>
 
           <SettingsSection
+            description="Define comportamiento, limites y respuestas base del asistente de esta empresa."
+            icon={Sparkles}
+            title="Configuracion IA"
+          >
+            <div className="settings-message-grid">
+              <label className="field-group" htmlFor="settings-business-instructions">
+                <span>Instrucciones del negocio</span>
+                <textarea
+                  id="settings-business-instructions"
+                  name="instrucciones_negocio"
+                  onChange={handleChange}
+                  placeholder="Reglas comerciales, estilo de atencion, condiciones especiales..."
+                  value={form.instrucciones_negocio}
+                />
+              </label>
+
+              <label className="field-group" htmlFor="settings-blocked-topics">
+                <span>Temas bloqueados</span>
+                <textarea
+                  id="settings-blocked-topics"
+                  name="temas_bloqueados"
+                  onChange={handleChange}
+                  placeholder="Un tema por linea o separado por comas"
+                  value={form.temas_bloqueados}
+                />
+              </label>
+
+              <label className="field-group" htmlFor="settings-custom-faq">
+                <span>FAQ personalizada</span>
+                <textarea
+                  id="settings-custom-faq"
+                  name="faq_personalizada"
+                  onChange={handleChange}
+                  placeholder="Pregunta: respuesta"
+                  value={form.faq_personalizada}
+                />
+              </label>
+
+              <label className="field-group" htmlFor="settings-fallback">
+                <span>Fallback message</span>
+                <textarea
+                  id="settings-fallback"
+                  name="fallback_message"
+                  onChange={handleChange}
+                  placeholder="Mensaje cuando la IA no debe o no puede responder"
+                  value={form.fallback_message}
+                />
+              </label>
+            </div>
+
+            <div className="settings-switch-list">
+              <Can role="owner">
+                <SettingSwitch
+                  checked={form.auto_pedidos}
+                  description="Permite automatizar intenciones de pedido cuando el flujo este disponible."
+                  icon={PackageCheck}
+                  id="settings-auto-orders"
+                  label="Auto pedidos"
+                  name="auto_pedidos"
+                  onChange={handleChange}
+                />
+                <SettingSwitch
+                  checked={form.envio_imagenes}
+                  description="Permite que el bot envie imagenes de productos cuando existan."
+                  icon={Smartphone}
+                  id="settings-send-images"
+                  label="Envio de imagenes"
+                  name="envio_imagenes"
+                  onChange={handleChange}
+                />
+              </Can>
+            </div>
+          </SettingsSection>
+
+          <SettingsSection
             description="Aclara zonas, tiempos, condiciones y restricciones de entrega."
             icon={PackageCheck}
             title="Politicas de entrega"
@@ -287,22 +375,24 @@ export function CompanySettingsForm({
             </label>
           </SettingsSection>
 
-          <SettingsSection
-            description="Define metodos de pago, anticipos, facturacion y condiciones."
-            icon={CreditCard}
-            title="Politicas de pago"
-          >
-            <label className="field-group" htmlFor="settings-payments">
-              <span>Politica pagos</span>
-              <textarea
-                id="settings-payments"
-                name="politica_pagos"
-                onChange={handleChange}
-                placeholder="Metodos de pago, anticipos y facturacion"
-                value={form.politica_pagos}
-              />
-            </label>
-          </SettingsSection>
+          <Can permission="billing.view">
+            <SettingsSection
+              description="Define metodos de pago, anticipos, facturacion y condiciones."
+              icon={CreditCard}
+              title="Politicas de pago"
+            >
+              <label className="field-group" htmlFor="settings-payments">
+                <span>Politica pagos</span>
+                <textarea
+                  id="settings-payments"
+                  name="politica_pagos"
+                  onChange={handleChange}
+                  placeholder="Metodos de pago, anticipos y facturacion"
+                  value={form.politica_pagos}
+                />
+              </label>
+            </SettingsSection>
+          </Can>
         </div>
 
         <aside className="settings-aside">
@@ -335,24 +425,26 @@ export function CompanySettingsForm({
             title="IA y WhatsApp"
           >
             <div className="settings-switch-list">
-              <SettingSwitch
-                checked={form.activo_ia}
-                description="Permite que el bot responda automaticamente segun la configuracion."
-                icon={MessageSquare}
-                id="settings-ai-active"
-                label="IA activa"
-                name="activo_ia"
-                onChange={handleChange}
-              />
-              <SettingSwitch
-                checked={form.activo_whatsapp}
-                description="Habilita el canal WhatsApp para la empresa seleccionada."
-                icon={Smartphone}
-                id="settings-whatsapp-active"
-                label="WhatsApp activo"
-                name="activo_whatsapp"
-                onChange={handleChange}
-              />
+              <Can role="owner">
+                <SettingSwitch
+                  checked={form.activo_ia}
+                  description="Permite que el bot responda automaticamente segun la configuracion."
+                  icon={MessageSquare}
+                  id="settings-ai-active"
+                  label="IA activa"
+                  name="activo_ia"
+                  onChange={handleChange}
+                />
+                <SettingSwitch
+                  checked={form.activo_whatsapp}
+                  description="Habilita el canal WhatsApp para la empresa seleccionada."
+                  icon={Smartphone}
+                  id="settings-whatsapp-active"
+                  label="WhatsApp activo"
+                  name="activo_whatsapp"
+                  onChange={handleChange}
+                />
+              </Can>
             </div>
           </SettingsSection>
         </aside>
@@ -364,16 +456,18 @@ export function CompanySettingsForm({
           <span>{settings?.empresa_tipo_negocio ?? 'Preferencias comerciales y automaticas'}</span>
         </div>
         <div>
-          {settings?.fecha_creacion ? (
-            <button className="secondary-button" disabled={isSaving} onClick={() => onDelete(form)} type="button">
-              <RotateCcw size={18} aria-hidden="true" />
-              Restablecer
+          <Can role="owner">
+            {settings?.fecha_creacion ? (
+              <button className="secondary-button" disabled={isSaving} onClick={() => onDelete(form)} type="button">
+                <RotateCcw size={18} aria-hidden="true" />
+                Restablecer
+              </button>
+            ) : null}
+            <button className="primary-button" disabled={isSaving || (canSelectCompany && !form.empresa_id)} type="submit">
+              <Save size={18} aria-hidden="true" />
+              {isSaving ? 'Guardando...' : 'Guardar configuracion'}
             </button>
-          ) : null}
-          <button className="primary-button" disabled={isSaving || (canSelectCompany && !form.empresa_id)} type="submit">
-            <Save size={18} aria-hidden="true" />
-            {isSaving ? 'Guardando...' : 'Guardar configuracion'}
-          </button>
+          </Can>
         </div>
       </div>
     </form>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Bot, Eye, FileText, Layers3, Save, Sparkles, Trash2 } from 'lucide-react';
 import { ErrorState, LoadingState } from '../../components/ui/index.js';
+import { isSuperAdminRole } from '../../config/permissions.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { fetchCompanies } from '../companies/companiesApi.js';
 import {
@@ -116,7 +117,7 @@ export function BotPromptsManager() {
     });
   }, [selectedSettings?.id]);
 
-  if (user?.rol !== 'SUPER_ADMIN') {
+  if (!isSuperAdminRole(user?.rol)) {
     return <ErrorState message="No tienes permisos para administrar prompts del bot." />;
   }
 

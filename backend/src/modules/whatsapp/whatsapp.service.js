@@ -7,6 +7,7 @@ import pkg from 'whatsapp-web.js';
 import { env } from '../../config/env.js';
 import { query } from '../../config/database.js';
 import { createHttpError } from '../../utils/http-error.js';
+import { decryptField, encryptField } from '../../utils/crypto-field.js';
 import { processIncomingCustomerMessage } from '../ai/ai.service.js';
 import {
   handleOwnerResponse,
@@ -181,8 +182,8 @@ function mapPersistedStatus(row) {
   return {
     empresa_id: row.empresa_id,
     status: row.status,
-    qr: row.qr,
-    qr_image: row.qr_image,
+    qr: decryptField(row.qr),
+    qr_image: decryptField(row.qr_image),
     phone: row.phone,
     connected_at: row.connected_at ? new Date(row.connected_at).toISOString() : null,
     last_error: row.last_error,
@@ -214,8 +215,8 @@ async function persistWhatsappStatus(state) {
     [
       state.empresa_id,
       state.status,
-      state.qr,
-      state.qr_image,
+      encryptField(state.qr),
+      encryptField(state.qr_image),
       state.phone,
       mysqlDateTime(state.connected_at),
       state.last_error,

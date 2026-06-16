@@ -1358,6 +1358,29 @@ h1 {
   gap: 14px;
 }
 
+.commercial-dashboard .dashboard-kpi-row {
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 10px;
+}
+
+@media (max-width: 1500px) {
+  .commercial-dashboard .dashboard-kpi-row {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .commercial-dashboard .dashboard-kpi-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .commercial-dashboard .dashboard-kpi-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 .enterprise-metric {
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr);
@@ -6829,6 +6852,21 @@ tbody tr:last-child td {
   box-shadow: var(--shadow-sm);
 }
 
+:root[data-theme="dark"] .bot-prompts-tabs {
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  box-shadow: none;
+}
+
+:root[data-theme="dark"] .bot-prompts-tabs button {
+  color: var(--color-muted);
+}
+
+:root[data-theme="dark"] .bot-prompts-tabs button.active {
+  background: rgba(90, 162, 255, 0.16);
+  color: var(--color-blue);
+}
+
 :root[data-theme="dark"] .topbar {
   background: rgba(17, 26, 36, 0.9);
   backdrop-filter: blur(16px);
@@ -7428,8 +7466,31 @@ tbody tr:last-child td {
   padding-inline: 18px;
 }
 
+.commercial-dashboard .dashboard-control-row {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.commercial-dashboard .dashboard-control-row .enterprise-filters {
+  align-self: stretch;
+  width: max-content;
+  min-width: 0;
+}
+
 .commercial-dashboard .executive-intelligence-panel {
   gap: 10px;
+  margin: 0;
+  min-width: 0;
+}
+
+.commercial-dashboard .executive-intelligence-overview {
+  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+  align-self: stretch;
+}
+
+.commercial-dashboard .executive-focus-panel {
   margin: 10px 0 14px;
 }
 
@@ -7879,12 +7940,18 @@ tbody tr:last-child td {
 }
 
 @media (max-width: 1280px) {
+  .commercial-dashboard .dashboard-control-row,
+  .commercial-dashboard .executive-intelligence-overview,
   .executive-intelligence-panel,
   .executive-overview-row,
   .catalog-advisor-panel,
   .saas-ops-grid,
   .crm-priority-strip {
     grid-template-columns: 1fr;
+  }
+
+  .commercial-dashboard .dashboard-control-row .enterprise-filters {
+    width: 100%;
   }
 
   .catalog-intelligence-grid,

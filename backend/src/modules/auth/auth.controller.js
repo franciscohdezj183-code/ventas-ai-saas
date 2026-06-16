@@ -1,5 +1,6 @@
 import { loginWithEmailAndPassword } from './auth.service.js';
 import { revokeToken } from './token-blacklist.js';
+import { createAuditLog } from '../audit/audit.service.js';
 import { auditFromRequest } from '../audit/audit.service.js';
 
 export async function login(req, res, next) {
@@ -19,12 +20,24 @@ export async function login(req, res, next) {
       data: session
     });
   } catch (error) {
+    await createAuditLog({
+      accion: 'LOGIN_FALLIDO',
+      modulo: 'auth',
+      descripcion: `Login fallido para ${req.body?.email ?? 'email no informado'}`,
+      ip: req.headers['x-forwarded-for']?.split(',')[0] ?? req.ip,
+      userAgent: req.headers['user-agent']
+    });
     next(error);
   }
 }
 
-export function logout(req, res) {
+export async function logout(req, res) {
   revokeToken(req.auth.payload.jti, req.auth.payload.exp);
+  await auditFromRequest(req, {
+    accion: 'LOGOUT',
+    modulo: 'auth',
+    descripcion: `Logout de usuario #${req.auth.user.id}`
+  });
 
   res.json({
     message: 'Logout successful'

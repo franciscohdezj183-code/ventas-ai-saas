@@ -33,6 +33,12 @@ export async function getUser(req, res, next) {
 export async function storeUser(req, res, next) {
   try {
     const user = await createUser(req.body, req.auth);
+    await auditFromRequest(req, {
+      accion: 'CREAR',
+      modulo: 'usuarios',
+      descripcion: `Usuario creado: #${user.id}`,
+      empresaId: user.empresa_id
+    });
     res.status(201).json({ data: user });
   } catch (error) {
     next(error);
@@ -42,6 +48,12 @@ export async function storeUser(req, res, next) {
 export async function patchUser(req, res, next) {
   try {
     const user = await updateUser(req.params.id, req.body, req.auth);
+    await auditFromRequest(req, {
+      accion: 'ACTUALIZAR',
+      modulo: 'usuarios',
+      descripcion: `Usuario actualizado: #${user.id}`,
+      empresaId: user.empresa_id
+    });
     res.json({ data: user });
   } catch (error) {
     next(error);

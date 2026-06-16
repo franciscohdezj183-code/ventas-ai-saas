@@ -1,4 +1,5 @@
 import { Edit3, Power, Trash2 } from 'lucide-react';
+import { Can } from '../../components/Can.jsx';
 import { DataTable, StatusBadge } from '../../components/ui/index.js';
 
 function formatDate(value) {
@@ -33,20 +34,26 @@ export function UserTable({ isLoading, onDelete, onEdit, onToggle, users }) {
       header: 'Acciones',
       render: (user) => (
         <div className="table-actions">
-          <button aria-label="Editar usuario" onClick={() => onEdit(user)} type="button">
-            <Edit3 size={16} aria-hidden="true" />
-          </button>
-          <button
-            aria-label={user.estado === 'ACTIVO' ? 'Desactivar usuario' : 'Activar usuario'}
-            onClick={() => onToggle(user)}
-            title={user.estado === 'ACTIVO' ? 'Desactivar' : 'Activar'}
-            type="button"
-          >
-            <Power size={16} aria-hidden="true" />
-          </button>
-          <button aria-label="Eliminar usuario" onClick={() => onDelete(user)} type="button">
-            <Trash2 size={16} aria-hidden="true" />
-          </button>
+          <Can permission="users.manage">
+            <button aria-label="Editar usuario" onClick={() => onEdit(user)} type="button">
+              <Edit3 size={16} aria-hidden="true" />
+            </button>
+          </Can>
+          <Can permission="users.manage">
+            <button
+              aria-label={user.estado === 'ACTIVO' ? 'Desactivar usuario' : 'Activar usuario'}
+              onClick={() => onToggle(user)}
+              title={user.estado === 'ACTIVO' ? 'Desactivar' : 'Activar'}
+              type="button"
+            >
+              <Power size={16} aria-hidden="true" />
+            </button>
+          </Can>
+          <Can permission="users.manage">
+            <button aria-label="Eliminar usuario" onClick={() => onDelete(user)} type="button">
+              <Trash2 size={16} aria-hidden="true" />
+            </button>
+          </Can>
         </div>
       )
     }

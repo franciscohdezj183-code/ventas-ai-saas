@@ -4,6 +4,7 @@ import { companyTools } from './tools/companyTools.js';
 import { configTools } from './tools/configTools.js';
 import { conversationTools } from './tools/conversationTools.js';
 import { leadTools } from './tools/leadTools.js';
+import { orderTools } from './tools/orderTools.js';
 import { productTools } from './tools/productTools.js';
 import { serviceTools } from './tools/serviceTools.js';
 
@@ -11,6 +12,7 @@ const toolDefinitions = [
   ...productTools,
   ...serviceTools,
   ...leadTools,
+  ...orderTools,
   ...conversationTools,
   ...companyTools,
   ...configTools

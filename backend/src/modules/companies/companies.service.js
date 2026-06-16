@@ -1,5 +1,6 @@
 import { query } from '../../config/database.js';
 import { getAuthenticatedEmpresaId, isSuperAdmin, resolveScopedEmpresaId } from '../../middlewares/company-scope.middleware.js';
+import { getPlanConfig } from '../../config/plans.js';
 import { createToken, sanitizeUser } from '../auth/auth.service.js';
 import { createHttpError } from '../../utils/http-error.js';
 
@@ -10,6 +11,7 @@ const COMPANY_COLUMNS = `
   telefono,
   direccion,
   tipo_negocio,
+  logo,
   plan,
   activo,
   estado,
@@ -39,16 +41,17 @@ function normalizeCompanyPayload(payload) {
     telefono: String(payload.telefono ?? '').trim() || null,
     direccion: String(payload.direccion ?? '').trim() || null,
     tipo_negocio: String(payload.tipo_negocio ?? '').trim() || null,
-    plan: String(payload.plan ?? 'BASICO').trim().toUpperCase(),
+    logo: String(payload.logo ?? '').trim() || null,
+    plan: String(payload.plan ?? 'STARTER').trim().toUpperCase(),
     activo: payload.activo !== false
   };
 }
 
 function assertValidPlan(plan) {
-  const allowedPlans = ['BASICO', 'PRO', 'ENTERPRISE'];
+  const allowedPlans = ['BASICO', 'PRO', 'STARTER', 'BUSINESS', 'ENTERPRISE'];
 
   if (!allowedPlans.includes(plan)) {
-    throw createHttpError(400, 'El plan debe ser BASICO, PRO o ENTERPRISE');
+    throw createHttpError(400, 'El plan debe ser STARTER, BUSINESS o ENTERPRISE');
   }
 }
 
@@ -115,14 +118,15 @@ export async function createCompany(payload) {
   try {
     const [result] = await query(
       `INSERT INTO empresas
-        (nombre, slug, telefono, direccion, tipo_negocio, plan, activo, estado)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        (nombre, slug, telefono, direccion, tipo_negocio, logo, plan, activo, estado)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         company.nombre,
         slug,
         company.telefono,
         company.direccion,
         company.tipo_negocio,
+        company.logo,
         company.plan,
         company.activo ? 1 : 0,
         estado
@@ -161,6 +165,7 @@ export async function updateCompany(companyId, payload, auth) {
            telefono = ?,
            direccion = ?,
            tipo_negocio = ?,
+           logo = COALESCE(?, logo),
            plan = ?,
            activo = ?,
            estado = ?
@@ -171,6 +176,7 @@ export async function updateCompany(companyId, payload, auth) {
         company.telefono,
         company.direccion,
         company.tipo_negocio,
+        company.logo,
         company.plan,
         company.activo ? 1 : 0,
         estado,
@@ -227,6 +233,7 @@ export async function getSaasGlobalOverview(auth) {
        e.telefono,
        e.direccion,
        e.tipo_negocio,
+       e.logo,
        e.plan,
        e.activo,
        e.estado,
@@ -234,7 +241,7 @@ export async function getSaasGlobalOverview(auth) {
        COALESCE(ce.activo_ia, 1) AS activo_ia,
        COALESCE(ce.activo_whatsapp, 1) AS activo_whatsapp,
        w.status AS whatsapp_status,
-       w.connected_number AS whatsapp_numero,
+       w.phone AS whatsapp_numero,
        w.last_error AS whatsapp_error,
        w.updated_at AS whatsapp_updated_at,
        brs.template_id,
@@ -242,6 +249,7 @@ export async function getSaasGlobalOverview(auth) {
        COALESCE(metrics.leads_30d, 0) AS leads_30d,
        COALESCE(metrics.ganados_30d, 0) AS ganados_30d,
        COALESCE(metrics.conversaciones_30d, 0) AS conversaciones_30d,
+       COALESCE(metrics.respuestas_ia_30d, 0) AS respuestas_ia_30d,
        COALESCE(metrics.productos_activos, 0) AS productos_activos,
        COALESCE(metrics.servicios_activos, 0) AS servicios_activos,
        COALESCE(metrics.usuarios_activos, 0) AS usuarios_activos,
@@ -258,6 +266,7 @@ export async function getSaasGlobalOverview(auth) {
          (SELECT COUNT(*) FROM leads l WHERE l.empresa_id = e2.id AND l.fecha_creacion >= DATE_SUB(NOW(), INTERVAL 30 DAY)) AS leads_30d,
          (SELECT COUNT(*) FROM leads l WHERE l.empresa_id = e2.id AND l.estado = 'GANADO' AND l.fecha_creacion >= DATE_SUB(NOW(), INTERVAL 30 DAY)) AS ganados_30d,
          (SELECT COUNT(*) FROM conversaciones c WHERE c.empresa_id = e2.id AND c.fecha >= DATE_SUB(NOW(), INTERVAL 30 DAY)) AS conversaciones_30d,
+         (SELECT COUNT(*) FROM conversaciones c WHERE c.empresa_id = e2.id AND c.fecha >= DATE_SUB(NOW(), INTERVAL 30 DAY) AND c.respuesta IS NOT NULL AND c.respuesta <> '') AS respuestas_ia_30d,
          (SELECT COUNT(*) FROM productos p WHERE p.empresa_id = e2.id AND p.estado = 'ACTIVO') AS productos_activos,
          (SELECT COUNT(*) FROM servicios s WHERE s.empresa_id = e2.id AND s.estado = 'ACTIVO') AS servicios_activos,
          (SELECT COUNT(*) FROM usuarios u WHERE u.empresa_id = e2.id AND u.estado = 'ACTIVO') AS usuarios_activos
@@ -290,10 +299,14 @@ export async function getSaasGlobalOverview(auth) {
       leads_30d: leads,
       ganados_30d: won,
       conversaciones_30d: Number(company.conversaciones_30d ?? 0),
+      respuestas_ia_30d: Number(company.respuestas_ia_30d ?? 0),
       productos_activos: Number(company.productos_activos ?? 0),
       servicios_activos: Number(company.servicios_activos ?? 0),
       usuarios_activos: Number(company.usuarios_activos ?? 0),
       conversion_30d: leads > 0 ? Number(((won / leads) * 100).toFixed(2)) : 0,
+      plan_key: getPlanConfig(company.plan).key,
+      plan_label: getPlanConfig(company.plan).label,
+      ingreso_estimado_mensual: getPlanConfig(company.plan).estimatedMonthlyPrice,
       salud_saas: scoreCompanyHealth(company)
     };
   });
@@ -306,6 +319,9 @@ export async function getSaasGlobalOverview(auth) {
     ia_activas: accumulator.ia_activas + (company.activo_ia ? 1 : 0),
     leads_30d: accumulator.leads_30d + company.leads_30d,
     conversaciones_30d: accumulator.conversaciones_30d + company.conversaciones_30d,
+    respuestas_ia_30d: accumulator.respuestas_ia_30d + company.respuestas_ia_30d,
+    usuarios_activos: accumulator.usuarios_activos + company.usuarios_activos,
+    ingreso_estimado_mensual: accumulator.ingreso_estimado_mensual + company.ingreso_estimado_mensual,
     errores: accumulator.errores + (company.ultimo_error ? 1 : 0),
     plantillas_asignadas: accumulator.plantillas_asignadas + (company.template_id ? 1 : 0)
   }), {
@@ -316,6 +332,9 @@ export async function getSaasGlobalOverview(auth) {
     ia_activas: 0,
     leads_30d: 0,
     conversaciones_30d: 0,
+    respuestas_ia_30d: 0,
+    usuarios_activos: 0,
+    ingreso_estimado_mensual: 0,
     errores: 0,
     plantillas_asignadas: 0
   });
@@ -341,7 +360,8 @@ export async function getSaasGlobalOverview(auth) {
       ...totals,
       salud_promedio: companies.length
         ? Math.round(companies.reduce((sum, company) => sum + company.salud_saas, 0) / companies.length)
-        : 0
+        : 0,
+      ingreso_estimado_anual: totals.ingreso_estimado_mensual * 12
     },
     empresas: companies,
     auditoria_reciente: auditRows
@@ -366,7 +386,7 @@ export async function impersonateCompanyOwner(companyId, auth) {
      FROM usuarios u
      INNER JOIN empresas e ON e.id = u.empresa_id
      WHERE u.empresa_id = ?
-       AND u.rol = 'OWNER'
+       AND u.rol IN ('OWNER', 'owner')
        AND u.estado = 'ACTIVO'
        AND e.activo = 1
      ORDER BY u.fecha_creacion ASC

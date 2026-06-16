@@ -1,13 +1,13 @@
 import { Router } from 'express';
-import { authenticate } from '../../middlewares/auth.middleware.js';
-import { attachCompanyScope } from '../../middlewares/company-scope.middleware.js';
-import { authorizeRoles } from '../../middlewares/roles.middleware.js';
+import { attachTenantScope, requireAuth, requirePermission } from '../../middlewares/access-control.middleware.js';
 import { aiStatus, testIntent, testReply } from './ai.controller.js';
+import { monthlyAIUsage } from '../ai-usage/ai-usage.controller.js';
 
 export const aiRouter = Router();
 
-aiRouter.use(authenticate, authorizeRoles('SUPER_ADMIN', 'OWNER'), attachCompanyScope);
+aiRouter.use(requireAuth, attachTenantScope);
 
-aiRouter.get('/status', aiStatus);
-aiRouter.post('/test-intent', testIntent);
-aiRouter.post('/test-reply', testReply);
+aiRouter.get('/status', requirePermission('ai_config.view'), aiStatus);
+aiRouter.get('/usage/monthly', requirePermission('reports.view'), monthlyAIUsage);
+aiRouter.post('/test-intent', requirePermission('ai_config.manage'), testIntent);
+aiRouter.post('/test-reply', requirePermission('ai_config.manage'), testReply);

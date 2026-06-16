@@ -1,6 +1,8 @@
 import bcrypt from 'bcrypt';
 import { query } from '../../config/database.js';
+import { isKnownRole, normalizeRole, ROLES } from '../../config/permissions.js';
 import { appendCompanyScope, isSuperAdmin, resolveScopedEmpresaId } from '../../middlewares/company-scope.middleware.js';
+import { assertPlanLimit } from '../plans/plan-limits.service.js';
 import { createHttpError } from '../../utils/http-error.js';
 
 const USER_COLUMNS = `
@@ -19,7 +21,8 @@ function normalizeUserPayload(payload, auth, { requirePassword = true } = {}) {
   const nombre = String(payload.nombre ?? '').trim();
   const correo = String(payload.correo ?? payload.email ?? '').trim().toLowerCase();
   const password = String(payload.password ?? '');
-  const rol = isSuperAdmin(auth) ? String(payload.rol ?? 'OWNER').trim().toUpperCase() : 'OWNER';
+  const requestedRole = normalizeRole(payload.rol ?? ROLES.OWNER) ?? String(payload.rol ?? ROLES.OWNER).trim();
+  const rol = isSuperAdmin(auth) ? requestedRole : requestedRole === ROLES.SUPER_ADMIN ? ROLES.OWNER : requestedRole;
   const empresaId = resolveScopedEmpresaId(auth, payload.empresa_id);
 
   if (!nombre) {
@@ -34,8 +37,8 @@ function normalizeUserPayload(payload, auth, { requirePassword = true } = {}) {
     throw createHttpError(400, 'La empresa es requerida');
   }
 
-  if (!['SUPER_ADMIN', 'OWNER'].includes(rol)) {
-    throw createHttpError(400, 'El rol debe ser SUPER_ADMIN u OWNER');
+  if (!isKnownRole(rol)) {
+    throw createHttpError(400, 'El rol debe ser super_admin, owner, seller, support o viewer');
   }
 
   const estado = String(payload.estado ?? payload.activo_estado ?? '').trim().toUpperCase();
@@ -104,6 +107,8 @@ export async function createUser(payload, auth) {
   const passwordHash = await bcrypt.hash(user.password, 10);
 
   try {
+    await assertPlanLimit(user.empresaId, 'users');
+
     const [result] = await query(
       `INSERT INTO usuarios
         (empresa_id, nombre, email, password_hash, rol, estado)

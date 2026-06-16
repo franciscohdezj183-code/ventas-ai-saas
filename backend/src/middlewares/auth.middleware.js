@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken';
 import { env } from '../config/env.js';
 import { findAuthUserById } from '../modules/auth/auth.service.js';
 import { isTokenRevoked } from '../modules/auth/token-blacklist.js';
+import { getPermissionsForRole, normalizeRole } from '../config/permissions.js';
 import { createHttpError } from '../utils/http-error.js';
 
 function getBearerToken(req) {
@@ -42,7 +43,9 @@ export async function authenticate(req, res, next) {
         empresaId: user.empresa_id,
         nombre: user.nombre,
         email: user.email,
-        rol: user.rol
+        rol: user.rol,
+        normalizedRole: normalizeRole(user.rol),
+        permissions: getPermissionsForRole(user.rol)
       }
     };
 

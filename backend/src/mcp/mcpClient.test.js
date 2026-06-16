@@ -8,6 +8,7 @@ const REQUIRED_TOOLS = [
   'buscar_servicios',
   'obtener_servicio',
   'crear_lead',
+  'crear_pedido',
   'guardar_conversacion',
   'obtener_configuracion_empresa',
   'obtener_categorias',

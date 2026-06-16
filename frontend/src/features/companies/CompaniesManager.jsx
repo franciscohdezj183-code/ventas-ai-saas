@@ -15,6 +15,8 @@ import {
   TriangleAlert
 } from 'lucide-react';
 import { ConfirmModal, ErrorState, StatusBadge } from '../../components/ui/index.js';
+import { Can } from '../../components/Can.jsx';
+import { isSuperAdminRole } from '../../config/permissions.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { CompanyForm } from './CompanyForm.jsx';
 import { CompanyTable } from './CompanyTable.jsx';
@@ -142,7 +144,7 @@ function SaaSGlobalPanel({ overview, onViewCompany }) {
 export function CompaniesManager() {
   const { assumeSession, user } = useAuth();
   const navigate = useNavigate();
-  const isSuperAdmin = user?.rol === 'SUPER_ADMIN';
+  const isSuperAdmin = isSuperAdminRole(user?.rol);
   const [companies, setCompanies] = useState([]);
   const [editingCompany, setEditingCompany] = useState(null);
   const [viewingCompany, setViewingCompany] = useState(null);
@@ -289,17 +291,19 @@ export function CompaniesManager() {
           </div>
         </div>
         <div>
-          <button
-            className="primary-button"
-            onClick={() => {
-              setEditingCompany(null);
-              setIsFormOpen(true);
-            }}
-            type="button"
-          >
-            <Plus size={18} aria-hidden="true" />
-            {isSuperAdmin ? 'Crear empresa con wizard' : 'Nueva empresa'}
-          </button>
+          <Can permission="tenants.manage">
+            <button
+              className="primary-button"
+              onClick={() => {
+                setEditingCompany(null);
+                setIsFormOpen(true);
+              }}
+              type="button"
+            >
+              <Plus size={18} aria-hidden="true" />
+              {isSuperAdmin ? 'Crear empresa con wizard' : 'Nueva empresa'}
+            </button>
+          </Can>
         </div>
       </div>
 
@@ -490,14 +494,16 @@ export function CompaniesManager() {
                   <LogIn size={17} aria-hidden="true" />
                   Ver como OWNER
                 </button>
-                <button className="primary-button" onClick={() => {
-                  setEditingCompany(viewingCompany);
-                  setViewingCompany(null);
-                  setIsFormOpen(true);
-                }} type="button">
-                  <ShieldCheck size={17} aria-hidden="true" />
-                  Administrar tenant
-                </button>
+                <Can permission="tenants.manage">
+                  <button className="primary-button" onClick={() => {
+                    setEditingCompany(viewingCompany);
+                    setViewingCompany(null);
+                    setIsFormOpen(true);
+                  }} type="button">
+                    <ShieldCheck size={17} aria-hidden="true" />
+                    Administrar tenant
+                  </button>
+                </Can>
               </div>
             ) : null}
           </article>

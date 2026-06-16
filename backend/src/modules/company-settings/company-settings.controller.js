@@ -4,6 +4,7 @@ import {
   findCompanySettingsByCompanyId,
   upsertCompanySettings
 } from './company-settings.service.js';
+import { auditFromRequest } from '../audit/audit.service.js';
 
 export async function listCompanySettings(req, res, next) {
   try {
@@ -38,6 +39,13 @@ export async function saveCompanySettings(req, res, next) {
       req.auth
     );
 
+    await auditFromRequest(req, {
+      accion: 'ACTUALIZAR',
+      modulo: 'configuracion_ia',
+      descripcion: `Configuracion IA actualizada para empresa #${settings.empresa_id}`,
+      empresaId: settings.empresa_id
+    });
+
     res.json({ data: settings });
   } catch (error) {
     next(error);
@@ -46,7 +54,14 @@ export async function saveCompanySettings(req, res, next) {
 
 export async function removeCompanySettings(req, res, next) {
   try {
-    await deleteCompanySettings(req.params.empresaId ?? req.body.empresa_id, req.auth);
+    const empresaId = req.params.empresaId ?? req.body.empresa_id;
+    await deleteCompanySettings(empresaId, req.auth);
+    await auditFromRequest(req, {
+      accion: 'ELIMINAR',
+      modulo: 'configuracion_ia',
+      descripcion: `Configuracion IA restablecida para empresa #${empresaId}`,
+      empresaId
+    });
     res.status(204).send();
   } catch (error) {
     next(error);

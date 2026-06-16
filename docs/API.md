@@ -33,7 +33,7 @@ Login:
 
 ## Empresas
 
-Solo `SUPER_ADMIN`.
+Acceso segun permisos `tenants.view` y `tenants.manage`.
 
 | Metodo | Ruta | Descripcion |
 | --- | --- | --- |
@@ -42,6 +42,8 @@ Solo `SUPER_ADMIN`.
 | GET | `/companies/:id` | Obtiene empresa |
 | PUT | `/companies/:id` | Actualiza empresa |
 | DELETE | `/companies/:id` | Elimina empresa |
+| GET | `/companies/saas/global` | Resumen global SaaS para Super Admin |
+| POST | `/companies/:id/impersonate` | Impersona owner de empresa |
 
 Campos:
 
@@ -180,6 +182,12 @@ Estados:
 | GET | `/conversations/:id` | Obtiene conversacion |
 | PUT | `/conversations/:id` | Actualiza conversacion |
 | DELETE | `/conversations/:id` | Elimina conversacion |
+| GET | `/conversations/inbox/threads` | Lista hilos de inbox |
+| GET | `/conversations/inbox/threads/:empresaId/:telefono` | Obtiene hilo |
+| POST | `/conversations/inbox/threads/:empresaId/:telefono/pause` | Pausa bot y requiere humano |
+| POST | `/conversations/inbox/threads/:empresaId/:telefono/resume` | Reactiva bot |
+| POST | `/conversations/inbox/threads/:empresaId/:telefono/reply` | Respuesta manual |
+| POST | `/conversations/inbox/threads/:empresaId/:telefono/close` | Cierra hilo |
 
 Campos:
 
@@ -192,11 +200,63 @@ Campos:
 }
 ```
 
+## Pedidos
+
+Protegido por `orders.view` y `orders.manage`.
+
+| Metodo | Ruta | Descripcion |
+| --- | --- | --- |
+| GET | `/orders` | Lista pedidos filtrados por tenant |
+| POST | `/orders` | Crea pedido |
+| GET | `/orders/:id` | Obtiene pedido |
+| PUT | `/orders/:id` | Actualiza pedido |
+| DELETE | `/orders/:id` | Elimina pedido |
+
+Campos:
+
+```json
+{
+  "cliente_nombre": "Cliente Demo",
+  "telefono_cliente": "5550000000",
+  "conversation_id": 1,
+  "estado": "NUEVO",
+  "total": 450,
+  "notas": "Pedido capturado desde WhatsApp",
+  "empresa_id": 1
+}
+```
+
+Estados:
+
+- `NUEVO`
+- `CONFIRMADO`
+- `EN_PROCESO`
+- `ENTREGADO`
+- `CANCELADO`
+
 ## Dashboard
 
 | Metodo | Ruta | Descripcion |
 | --- | --- | --- |
 | GET | `/dashboard/commercial` | Metricas comerciales |
+
+## Reportes
+
+Protegido por `reports.view`.
+
+| Metodo | Ruta | Descripcion |
+| --- | --- | --- |
+| GET | `/reports/overview` | Reportes por empresa o globales |
+
+Filtros:
+
+```text
+fecha_inicio=2026-05-18
+fecha_fin=2026-06-16
+empresa_id=1
+```
+
+`empresa_id` solo aplica para `super_admin`.
 
 ## WhatsApp
 
@@ -217,8 +277,38 @@ Campos:
 | Metodo | Ruta | Descripcion |
 | --- | --- | --- |
 | GET | `/ai/status` | Estado de configuracion IA |
+| GET | `/ai/usage/monthly` | Consumo IA mensual |
 | POST | `/ai/test-intent` | Interpreta intencion y devuelve JSON validado |
 | POST | `/ai/test-reply` | Ejecuta el orquestador completo y genera respuesta final |
+
+## Configuracion IA por empresa
+
+| Metodo | Ruta | Descripcion |
+| --- | --- | --- |
+| GET | `/configuracion-empresa` | Lista configuraciones accesibles |
+| PUT | `/configuracion-empresa` | Guarda configuracion del owner |
+| GET | `/configuracion-empresa/:empresaId` | Obtiene configuracion |
+| PUT | `/configuracion-empresa/:empresaId` | Guarda configuracion |
+| DELETE | `/configuracion-empresa/:empresaId` | Elimina configuracion |
+
+Solo `owner` puede modificar configuracion IA. `seller`, `support` y `viewer`
+no pueden modificarla.
+
+## Planes
+
+| Metodo | Ruta | Descripcion |
+| --- | --- | --- |
+| GET | `/plans` | Lista planes disponibles |
+| GET | `/plans/current` | Plan de la empresa autenticada |
+
+## Onboarding
+
+| Metodo | Ruta | Descripcion |
+| --- | --- | --- |
+| GET | `/onboarding/status` | Checklist de configuracion por empresa |
+| POST | `/onboarding/companies` | Crea empresa, owner, plan, IA y productos iniciales |
+
+`POST /onboarding/companies` requiere `super_admin`.
 
 La IA no consulta productos, servicios ni MySQL. Solo interpreta el mensaje y
 devuelve JSON. Las consultas de negocio se hacen mediante herramientas MCP.
@@ -290,11 +380,16 @@ Intenciones soportadas:
 Herramientas MCP usadas por el orquestador:
 
 - `buscar_productos`
+- `obtener_producto`
 - `buscar_servicios`
+- `obtener_servicio`
 - `obtener_categorias`
 - `obtener_promociones`
 - `obtener_configuracion_empresa`
 - `crear_lead`
+- `registrar_intencion_compra`
+- `guardar_conversacion`
+- `crear_pedido`
 
 Regla de seguridad: OpenAI nunca ejecuta SQL, no recibe catalogos completos y
 no decide precios, stock ni datos de negocio.

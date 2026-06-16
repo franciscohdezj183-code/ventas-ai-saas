@@ -13,7 +13,9 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { ErrorState, StatusBadge } from '../../components/ui/index.js';
+import { Can } from '../../components/Can.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
+import { isSuperAdminRole } from '../../config/permissions.js';
 import { AIStatusCard } from '../ai/AIStatusCard.jsx';
 import { fetchCompanies } from '../companies/companiesApi.js';
 import {
@@ -168,7 +170,7 @@ function Timeline({ events }) {
 
 export function WhatsAppManager() {
   const { user } = useAuth();
-  const canSelectCompany = user?.rol === 'SUPER_ADMIN';
+  const canSelectCompany = isSuperAdminRole(user?.rol);
   const [companies, setCompanies] = useState([]);
   const [empresaId, setEmpresaId] = useState('');
   const [error, setError] = useState('');
@@ -300,18 +302,24 @@ export function WhatsAppManager() {
           )}
 
           <div className="whatsapp-actions">
-            <button className="primary-button" disabled={!canAct} onClick={handleStart} type="button">
-              <MessageCircle size={18} aria-hidden="true" />
-              Iniciar sesion
-            </button>
-            <button className="secondary-button" disabled={!canAct} onClick={handleRestart} type="button">
-              <RotateCcw size={18} aria-hidden="true" />
-              Reiniciar
-            </button>
-            <button className="secondary-button" disabled={!canAct} onClick={handleDisconnect} type="button">
-              <Power size={18} aria-hidden="true" />
-              Cerrar
-            </button>
+            <Can permission="whatsapp.manage">
+              <button className="primary-button" disabled={!canAct} onClick={handleStart} type="button">
+                <MessageCircle size={18} aria-hidden="true" />
+                Iniciar sesion
+              </button>
+            </Can>
+            <Can permission="whatsapp.manage">
+              <button className="secondary-button" disabled={!canAct} onClick={handleRestart} type="button">
+                <RotateCcw size={18} aria-hidden="true" />
+                Reiniciar
+              </button>
+            </Can>
+            <Can permission="whatsapp.manage">
+              <button className="secondary-button" disabled={!canAct} onClick={handleDisconnect} type="button">
+                <Power size={18} aria-hidden="true" />
+                Cerrar
+              </button>
+            </Can>
             <button className="icon-button bordered" disabled={!canAct} onClick={handleRefresh} type="button" aria-label="Actualizar estado">
               <RefreshCcw size={18} aria-hidden="true" />
             </button>

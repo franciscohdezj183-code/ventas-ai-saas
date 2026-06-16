@@ -5,6 +5,7 @@ Esta guia resume los pasos minimos antes de publicar el proyecto.
 ## Seguridad
 
 - Cambiar `JWT_SECRET` por un secreto largo y aleatorio.
+- Configurar `FIELD_ENCRYPTION_KEY` para cifrar campos sensibles.
 - Usar `API_URL=https://...` en produccion.
 - Definir `CORS_ORIGINS` con dominios exactos separados por coma, por ejemplo `https://app.tudominio.com`.
 - Ajustar `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_MAX` y `AUTH_RATE_LIMIT_MAX` segun trafico real.
@@ -31,6 +32,7 @@ API_URL=https://api.tudominio.com
 FRONTEND_URL=https://app.tudominio.com
 CORS_ORIGINS=https://app.tudominio.com
 JWT_SECRET=un_secreto_largo_de_32_caracteres_o_mas
+FIELD_ENCRYPTION_KEY=otro_secreto_largo_para_cifrado_de_campos
 DB_HOST=...
 DB_PORT=3306
 DB_USER=ventas_ai
@@ -91,6 +93,19 @@ Antes de activar respuestas automaticas:
 - Agregar auditoria de intenciones y herramientas ejecutadas.
 - Agregar handoff humano.
 - Limitar toda herramienta MCP por `empresa_id`.
+- Configurar limites de plan y consumo IA antes de activar `OPENAI_AUTO_REPLY=true`.
+- Revisar `/api/ai/usage/monthly` para detectar abuso o costos inesperados.
+
+## Planes y billing
+
+El proyecto ya tiene configuracion de planes y limites. Antes de vender en
+produccion:
+
+- Validar limites Starter, Business y Enterprise con datos reales.
+- Conectar pasarela de pago.
+- Agregar webhooks de suscripcion.
+- Suspender o limitar empresas con pago vencido.
+- Revisar mensajes de bloqueo por limite superado.
 
 ## Uploads
 
@@ -111,6 +126,7 @@ Para imagenes y Excel:
 - Usar pool de conexiones con limites adecuados.
 - Ejecutar migraciones SQL nuevas antes de arrancar la version nueva.
 - Ejecutar `npm run migrate -w backend` antes de levantar la API cuando exista una version nueva.
+- Verificar que `schema_migrations` registre todas las migraciones aplicadas.
 
 ## Observabilidad
 
@@ -177,6 +193,8 @@ Sirve `frontend/dist` desde hosting estatico/CDN. No lo subas al repositorio.
 - [ ] Usuario `SUPER_ADMIN` creado.
 - [ ] `npm run build` exitoso.
 - [ ] `npm test -w backend` exitoso.
+- [ ] `npm run test:db -w backend` exitoso contra base de pruebas.
+- [ ] `npm run migrate -w backend` ejecutado.
 - [ ] `npm audit --workspaces` revisado.
 - [ ] HTTPS activo.
 - [ ] Backups configurados.
@@ -184,3 +202,7 @@ Sirve `frontend/dist` desde hosting estatico/CDN. No lo subas al repositorio.
 - [ ] `/api/health` responde `ok`.
 - [ ] WhatsApp probado por empresa.
 - [ ] IA probada con `OPENAI_AUTO_REPLY=false`.
+- [ ] Panel Super Admin probado.
+- [ ] Onboarding probado con empresa demo.
+- [ ] Roles `owner`, `seller`, `support` y `viewer` probados.
+- [ ] Pedidos probados por API y frontend.

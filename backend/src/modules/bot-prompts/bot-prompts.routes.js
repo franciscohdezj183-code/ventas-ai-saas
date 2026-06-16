@@ -1,6 +1,5 @@
 import { Router } from 'express';
-import { authenticate } from '../../middlewares/auth.middleware.js';
-import { authorizeRoles } from '../../middlewares/roles.middleware.js';
+import { requireAuth, requireRole } from '../../middlewares/access-control.middleware.js';
 import {
   getPromptCatalog,
   previewResponse,
@@ -11,7 +10,7 @@ import {
 
 export const botPromptsRouter = Router();
 
-botPromptsRouter.use(authenticate, authorizeRoles('SUPER_ADMIN'));
+botPromptsRouter.use(requireAuth, requireRole('super_admin'));
 
 botPromptsRouter.get('/', getPromptCatalog);
 botPromptsRouter.post('/templates', upsertTemplate);

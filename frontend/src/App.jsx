@@ -6,9 +6,13 @@ import {
   ConversationsPage,
   LeadsPage,
   OnboardingPage,
+  OrdersPage,
+  OwnerCompanyPage,
   ProductsPage,
+  ReportsPage,
   ServicesPage,
   SettingsPage,
+  SuperAdminPage,
   UsersPage,
   WhatsAppPage
 } from './pages/AdminSectionPages.jsx';
@@ -30,6 +34,14 @@ export function App() {
         }
       >
         <Route index element={<DashboardPage />} />
+        <Route
+          path="mi-empresa"
+          element={
+            <RoleRoute roles={['owner']}>
+              <OwnerCompanyPage />
+            </RoleRoute>
+          }
+        />
         <Route path="inicio-guiado" element={<OnboardingPage />} />
         <Route path="empresas" element={<CompaniesPage />} />
         <Route path="usuarios" element={<UsersPage />} />
@@ -38,8 +50,34 @@ export function App() {
         <Route path="servicios" element={<ServicesPage />} />
         <Route path="leads" element={<LeadsPage />} />
         <Route path="conversaciones" element={<ConversationsPage />} />
+        <Route path="pedidos" element={<OrdersPage />} />
+        <Route path="reportes" element={<ReportsPage />} />
         <Route path="whatsapp" element={<WhatsAppPage />} />
         <Route path="configuracion" element={<SettingsPage />} />
+        <Route
+          path="suscripciones"
+          element={
+            <RoleRoute roles={['super_admin']}>
+              <CompaniesPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="consumo-ia"
+          element={
+            <RoleRoute roles={['super_admin']}>
+              <ReportsPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="super-admin"
+          element={
+            <RoleRoute roles={['super_admin']}>
+              <SuperAdminPage />
+            </RoleRoute>
+          }
+        />
         <Route
           path="prompts-bot"
           element={

@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
+import { Can } from '../../components/Can.jsx';
 
 const initialForm = {
   nombre: '',
   telefono: '',
   direccion: '',
   tipo_negocio: '',
-  plan: 'BASICO',
+  plan: 'STARTER',
   activo: true
 };
 
@@ -34,7 +35,7 @@ export function CompanyForm({ company, isSaving, onCancel, onSubmit }) {
         telefono: company.telefono ?? '',
         direccion: company.direccion ?? '',
         tipo_negocio: company.tipo_negocio ?? '',
-        plan: company.plan ?? 'BASICO',
+        plan: company.plan ?? 'STARTER',
         activo: Boolean(company.activo)
       });
       return;
@@ -111,14 +112,24 @@ export function CompanyForm({ company, isSaving, onCancel, onSubmit }) {
           {errors.tipo_negocio ? <small>{errors.tipo_negocio}</small> : null}
         </label>
 
-        <label className="field-group" htmlFor="company-plan">
-          <span>Plan</span>
-          <select id="company-plan" name="plan" onChange={handleChange} value={form.plan}>
-            <option value="BASICO">BASICO</option>
-            <option value="PRO">PRO</option>
-            <option value="ENTERPRISE">ENTERPRISE</option>
-          </select>
-        </label>
+        <Can
+          permission="subscriptions.manage"
+          fallback={
+            <label className="field-group" htmlFor="company-plan-readonly">
+              <span>Plan</span>
+              <input id="company-plan-readonly" readOnly type="text" value={form.plan} />
+            </label>
+          }
+        >
+          <label className="field-group" htmlFor="company-plan">
+            <span>Plan</span>
+            <select id="company-plan" name="plan" onChange={handleChange} value={form.plan}>
+              <option value="STARTER">Starter</option>
+              <option value="BUSINESS">Business</option>
+              <option value="ENTERPRISE">Enterprise</option>
+            </select>
+          </label>
+        </Can>
 
         <label className="field-group full-field" htmlFor="company-address">
           <span>Direccion</span>

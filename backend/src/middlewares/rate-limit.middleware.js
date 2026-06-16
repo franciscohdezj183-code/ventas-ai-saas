@@ -6,6 +6,16 @@ function clientKey(req) {
 
 export function createRateLimiter({ windowMs, maxRequests, message = 'Too many requests' }) {
   const buckets = new Map();
+  const cleanupInterval = setInterval(() => {
+    const now = Date.now();
+    for (const [key, bucket] of buckets.entries()) {
+      if (bucket.resetAt <= now) {
+        buckets.delete(key);
+      }
+    }
+  }, Math.max(windowMs, 1000));
+
+  cleanupInterval.unref?.();
 
   return (req, res, next) => {
     const now = Date.now();

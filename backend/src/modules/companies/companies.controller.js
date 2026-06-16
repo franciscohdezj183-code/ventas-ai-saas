@@ -59,7 +59,10 @@ export async function getCompany(req, res, next) {
 
 export async function storeCompany(req, res, next) {
   try {
-    const company = await createCompany(req.body);
+    const company = await createCompany({
+      ...req.body,
+      logo: req.file ? `/uploads/companies/${req.file.filename}` : req.body.logo
+    });
     await auditFromRequest(req, {
       accion: 'CREAR',
       modulo: 'empresas',
@@ -74,7 +77,10 @@ export async function storeCompany(req, res, next) {
 
 export async function patchCompany(req, res, next) {
   try {
-    const company = await updateCompany(req.params.id, req.body, req.auth);
+    const company = await updateCompany(req.params.id, {
+      ...req.body,
+      logo: req.file ? `/uploads/companies/${req.file.filename}` : req.body.logo
+    }, req.auth);
     await auditFromRequest(req, {
       accion: 'EDITAR',
       modulo: 'empresas',

@@ -1,7 +1,6 @@
 import { Router } from 'express';
-import { authenticate } from '../../middlewares/auth.middleware.js';
+import { requireAuth, requireRole } from '../../middlewares/access-control.middleware.js';
 import { createRateLimiter } from '../../middlewares/rate-limit.middleware.js';
-import { authorizeRoles } from '../../middlewares/roles.middleware.js';
 import { env } from '../../config/env.js';
 import { login, logout, me } from './auth.controller.js';
 
@@ -16,7 +15,7 @@ authRouter.post(
   }),
   login
 );
-authRouter.post('/logout', authenticate, logout);
-authRouter.get('/me', authenticate, me);
-authRouter.get('/super-admin', authenticate, authorizeRoles('SUPER_ADMIN'), me);
-authRouter.get('/owner', authenticate, authorizeRoles('OWNER'), me);
+authRouter.post('/logout', requireAuth, logout);
+authRouter.get('/me', requireAuth, me);
+authRouter.get('/super-admin', requireAuth, requireRole('super_admin'), me);
+authRouter.get('/owner', requireAuth, requireRole('owner'), me);

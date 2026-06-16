@@ -2,6 +2,7 @@ import { query } from '../../config/database.js';
 import { appendCompanyScope, companyScopeCondition, getAuthenticatedEmpresaId, isSuperAdmin, resolveScopedEmpresaId } from '../../middlewares/company-scope.middleware.js';
 import { resumeBotForCustomer, isBotPausedForCustomer } from '../../bot/humanHandoffManager.js';
 import { sendWhatsappMessage } from '../whatsapp/whatsapp.service.js';
+import { CONVERSATION_STATES, markThreadState, normalizeConversationState } from './conversation-status.service.js';
 import { createHttpError } from '../../utils/http-error.js';
 
 const CONVERSATION_COLUMNS = `
@@ -10,6 +11,9 @@ const CONVERSATION_COLUMNS = `
   c.telefono_cliente,
   c.mensaje,
   c.respuesta,
+  c.estado,
+  c.tipo_mensaje,
+  c.agente_usuario_id,
   c.fecha,
   c.fecha_creacion,
   c.fecha_actualizacion,
@@ -57,6 +61,34 @@ function normalizePhone(value) {
     .replace(/\D/g, '');
 }
 
+function normalizeInboxStateFilter(value) {
+  const state = String(value ?? '').trim().toLowerCase();
+  const legacyMap = {
+    abierta: CONVERSATION_STATES.OPEN,
+    abiertas: CONVERSATION_STATES.OPEN,
+    bot: CONVERSATION_STATES.BOT_ACTIVE,
+    humano: CONVERSATION_STATES.HUMAN_ACTIVE,
+    requiere_humano: CONVERSATION_STATES.REQUIRES_HUMAN
+  };
+
+  return legacyMap[state] ?? normalizeConversationState(state, '');
+}
+
+function resolveThreadState(thread) {
+  if (thread.handoff_estado === 'PENDING_OWNER') {
+    return CONVERSATION_STATES.REQUIRES_HUMAN;
+  }
+
+  if (thread.handoff_estado === 'HUMAN_TAKEOVER') {
+    return CONVERSATION_STATES.HUMAN_ACTIVE;
+  }
+
+  return normalizeConversationState(
+    thread.ultimo_estado,
+    Number(thread.mensajes_sin_respuesta) > 0 ? CONVERSATION_STATES.OPEN : CONVERSATION_STATES.BOT_ACTIVE
+  );
+}
+
 function normalizeInboxFilters(auth, filters = {}) {
   const empresaId = isSuperAdmin(auth)
     ? resolveScopedEmpresaId(auth, filters.empresa_id, { requiredForSuperAdmin: false })
@@ -66,7 +98,7 @@ function normalizeInboxFilters(auth, filters = {}) {
     empresaId,
     telefono: normalizePhone(filters.telefono_cliente ?? filters.telefono ?? filters.query),
     search: String(filters.search ?? filters.query ?? '').trim(),
-    estado: String(filters.estado ?? '').trim().toUpperCase(),
+    estado: normalizeInboxStateFilter(filters.estado),
     limit: Math.min(Math.max(Number(filters.limit) || 40, 1), 100),
     offset: Math.max(Number(filters.offset) || 0, 0)
   };
@@ -138,6 +170,7 @@ export async function findInboxThreads(auth, filters = {}) {
        latest.empresa_nombre,
        latest.ultimo_mensaje,
        latest.ultima_respuesta,
+       latest.ultimo_estado,
        latest.ultima_fecha,
        latest.total_mensajes,
        latest.mensajes_sin_respuesta,
@@ -149,6 +182,7 @@ export async function findInboxThreads(auth, filters = {}) {
          e.nombre AS empresa_nombre,
          SUBSTRING_INDEX(GROUP_CONCAT(c.mensaje ORDER BY c.fecha DESC, c.id DESC SEPARATOR '\n---\n'), '\n---\n', 1) AS ultimo_mensaje,
          SUBSTRING_INDEX(GROUP_CONCAT(COALESCE(c.respuesta, '') ORDER BY c.fecha DESC, c.id DESC SEPARATOR '\n---\n'), '\n---\n', 1) AS ultima_respuesta,
+         SUBSTRING_INDEX(GROUP_CONCAT(c.estado ORDER BY c.fecha DESC, c.id DESC SEPARATOR '\n---\n'), '\n---\n', 1) AS ultimo_estado,
          MAX(c.fecha) AS ultima_fecha,
          COUNT(*) AS total_mensajes,
          SUM(CASE WHEN c.respuesta IS NULL OR c.respuesta = '' THEN 1 ELSE 0 END) AS mensajes_sin_respuesta
@@ -170,22 +204,13 @@ export async function findInboxThreads(auth, filters = {}) {
   return rows
     .filter((thread) => {
       if (!where.input.estado) return true;
-      const status = thread.handoff_estado === 'HUMAN_TAKEOVER'
-        ? 'HUMANO'
-        : Number(thread.mensajes_sin_respuesta) > 0
-          ? 'ABIERTA'
-          : 'BOT';
-      return status === where.input.estado;
+      return resolveThreadState(thread) === where.input.estado;
     })
     .map((thread) => ({
       ...thread,
       total_mensajes: Number(thread.total_mensajes ?? 0),
       mensajes_sin_respuesta: Number(thread.mensajes_sin_respuesta ?? 0),
-      estado_inbox: thread.handoff_estado === 'HUMAN_TAKEOVER'
-        ? 'HUMANO'
-        : Number(thread.mensajes_sin_respuesta) > 0
-          ? 'ABIERTA'
-          : 'BOT'
+      estado_inbox: resolveThreadState(thread)
     }));
 }
 
@@ -220,6 +245,11 @@ export async function findInboxThread(auth, { empresaId, telefono }) {
   return {
     empresa_id: scopedEmpresaId,
     telefono_cliente: cleanPhone,
+    estado_inbox: handoffs.find((handoff) => handoff.estado === 'PENDING_OWNER')
+      ? CONVERSATION_STATES.REQUIRES_HUMAN
+      : handoffs.find((handoff) => handoff.estado === 'HUMAN_TAKEOVER')
+        ? CONVERSATION_STATES.HUMAN_ACTIVE
+        : (messages[messages.length - 1]?.estado ?? CONVERSATION_STATES.OPEN),
     bot_pausado: await isBotPausedForCustomer({ empresa_id: scopedEmpresaId, telefono_cliente: cleanPhone }).catch(() => false),
     handoff_activo: handoffs.find((handoff) => ['PENDING_OWNER', 'HUMAN_TAKEOVER'].includes(handoff.estado)) ?? null,
     handoffs,
@@ -241,6 +271,12 @@ export async function pauseBotForThread(auth, { empresaId, telefono }) {
      VALUES (?, ?, 'HUMAN_TAKEOVER', 'PAUSA_MANUAL', DATE_ADD(NOW(), INTERVAL 4 MINUTE), NOW())`,
     [scopedEmpresaId, cleanPhone]
   );
+  await markThreadState({
+    empresaId: scopedEmpresaId,
+    telefonoCliente: cleanPhone,
+    estado: CONVERSATION_STATES.HUMAN_ACTIVE,
+    agenteUsuarioId: auth.user?.id
+  });
 
   return findInboxThread(auth, { empresaId: scopedEmpresaId, telefono: cleanPhone });
 }
@@ -264,10 +300,36 @@ export async function sendThreadReply(auth, { empresaId, telefono, mensaje }) {
 
   await sendWhatsappMessage(scopedEmpresaId, cleanPhone, cleanMessage);
   await query(
-    `INSERT INTO conversaciones (empresa_id, telefono_cliente, mensaje, respuesta, fecha)
-     VALUES (?, ?, ?, ?, NOW())`,
-    [scopedEmpresaId, cleanPhone, '[Respuesta manual desde inbox]', cleanMessage]
+    `INSERT INTO conversaciones
+      (empresa_id, telefono_cliente, mensaje, respuesta, estado, tipo_mensaje, agente_usuario_id, fecha)
+     VALUES (?, ?, ?, ?, 'human_active', 'human', ?, NOW())`,
+    [scopedEmpresaId, cleanPhone, '[Respuesta manual desde inbox]', cleanMessage, auth.user?.id ?? null]
   );
+  await markThreadState({
+    empresaId: scopedEmpresaId,
+    telefonoCliente: cleanPhone,
+    estado: CONVERSATION_STATES.HUMAN_ACTIVE,
+    agenteUsuarioId: auth.user?.id
+  });
+
+  return findInboxThread(auth, { empresaId: scopedEmpresaId, telefono: cleanPhone });
+}
+
+export async function closeThread(auth, { empresaId, telefono }) {
+  const scopedEmpresaId = resolveScopedEmpresaId(auth, empresaId);
+  const cleanPhone = normalizePhone(telefono);
+
+  if (!cleanPhone) {
+    throw createHttpError(400, 'El telefono del cliente es requerido');
+  }
+
+  await resumeBotForCustomer({ empresa_id: scopedEmpresaId, telefono_cliente: cleanPhone });
+  await markThreadState({
+    empresaId: scopedEmpresaId,
+    telefonoCliente: cleanPhone,
+    estado: CONVERSATION_STATES.CLOSED,
+    agenteUsuarioId: auth.user?.id
+  });
 
   return findInboxThread(auth, { empresaId: scopedEmpresaId, telefono: cleanPhone });
 }
@@ -294,13 +356,15 @@ export async function createConversation(payload, auth) {
   try {
     const [result] = await query(
       `INSERT INTO conversaciones
-        (empresa_id, telefono_cliente, mensaje, respuesta, fecha)
-       VALUES (?, ?, ?, ?, ?)`,
+        (empresa_id, telefono_cliente, mensaje, respuesta, estado, tipo_mensaje, fecha)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
         conversation.empresaId,
         conversation.telefonoCliente,
         conversation.mensaje,
         conversation.respuesta,
+        conversation.respuesta ? CONVERSATION_STATES.BOT_ACTIVE : CONVERSATION_STATES.OPEN,
+        conversation.respuesta ? 'bot' : 'customer',
         conversation.fecha
       ]
     );
@@ -328,6 +392,7 @@ export async function updateConversation(conversationId, payload, auth) {
            telefono_cliente = ?,
            mensaje = ?,
            respuesta = ?,
+           estado = ?,
            fecha = ?
        WHERE id = ?
        ${scope.clause}`,
@@ -336,6 +401,7 @@ export async function updateConversation(conversationId, payload, auth) {
         conversation.telefonoCliente,
         conversation.mensaje,
         conversation.respuesta,
+        conversation.respuesta ? CONVERSATION_STATES.BOT_ACTIVE : CONVERSATION_STATES.OPEN,
         conversation.fecha,
         ...scope.params
       ]

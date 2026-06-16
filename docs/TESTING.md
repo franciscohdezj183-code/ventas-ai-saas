@@ -38,6 +38,36 @@ Cobertura de integracion:
 - OWNER no accede a datos de otra empresa
 - CRUD productos
 - CRUD servicios
+- seller no puede configurar IA
+- viewer no puede modificar datos
+- pedidos tenant-scoped
+- super_admin puede consultar datos globales
+
+## Verificacion manual recomendada
+
+Antes de subir una actualizacion importante:
+
+```bash
+npm run build --workspace frontend
+npm test --workspace backend
+npm run test:db --workspace backend
+npm run migrate --workspace backend
+```
+
+Checklist manual:
+
+- Login con `super_admin`, `owner`, `seller`, `support`, `viewer`.
+- Menu lateral correcto por rol.
+- Owner no ve datos de otra empresa.
+- Seller no puede entrar a configuracion IA.
+- Viewer no puede crear/editar/eliminar.
+- Super Admin ve dashboard global y empresas.
+- WhatsApp muestra estado sin exponer QR en listados.
+- QR solo disponible con `whatsapp.manage`.
+- IA devuelve JSON valido o fallback.
+- Conversaciones guardan mensajes.
+- Pedidos se crean y aparecen filtrados por tenant.
+- Reportes usan pedidos reales.
 
 ## Recomendacion CI
 

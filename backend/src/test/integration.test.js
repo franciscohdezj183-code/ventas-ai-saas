@@ -39,6 +39,8 @@ describe('API integration with demo data', { skip: !runDbTests }, () => {
   let ownerAToken;
   let ownerBToken;
   let superToken;
+  let sellerAToken;
+  let viewerAToken;
 
   before(async () => {
     server = await listen();
@@ -57,10 +59,20 @@ describe('API integration with demo data', { skip: !runDbTests }, () => {
       method: 'POST',
       body: { email: demo.superAdmin.email, password: demo.superAdmin.password }
     });
+    const sellerALogin = await requestJson(baseUrl, '/auth/login', {
+      method: 'POST',
+      body: { email: demo.sellerA.email, password: demo.sellerA.password }
+    });
+    const viewerALogin = await requestJson(baseUrl, '/auth/login', {
+      method: 'POST',
+      body: { email: demo.viewerA.email, password: demo.viewerA.password }
+    });
 
     ownerAToken = ownerALogin.payload.data.accessToken.token;
     ownerBToken = ownerBLogin.payload.data.accessToken.token;
     superToken = superLogin.payload.data.accessToken.token;
+    sellerAToken = sellerALogin.payload.data.accessToken.token;
+    viewerAToken = viewerALogin.payload.data.accessToken.token;
   });
 
   after(async () => {
@@ -81,11 +93,20 @@ describe('API integration with demo data', { skip: !runDbTests }, () => {
   });
 
   it('keeps OWNER product CRUD scoped to its company', async () => {
-    const createA = await requestJson(baseUrl, '/products', {
+    const crossTenantCreate = await requestJson(baseUrl, '/products', {
       method: 'POST',
       token: ownerAToken,
       body: {
         empresa_id: demo.companyBId,
+        nombre: 'Producto Owner A',
+        precio: 100,
+        stock: 5
+      }
+    });
+    const createA = await requestJson(baseUrl, '/products', {
+      method: 'POST',
+      token: ownerAToken,
+      body: {
         nombre: 'Producto Owner A',
         precio: 100,
         stock: 5
@@ -101,6 +122,7 @@ describe('API integration with demo data', { skip: !runDbTests }, () => {
       }
     });
 
+    assert.equal(crossTenantCreate.response.status, 403);
     assert.equal(createA.response.status, 201);
     assert.equal(Number(createA.payload.data.empresa_id), demo.companyAId);
     assert.equal(createB.response.status, 201);
@@ -159,5 +181,58 @@ describe('API integration with demo data', { skip: !runDbTests }, () => {
     assert.equal(updateService.response.status, 200);
     assert.equal(updateService.payload.data.nombre, 'Servicio Demo Editado');
     assert.equal(deleteService.response.status, 204);
+  });
+
+  it('enforces role permissions and supports tenant-scoped orders', async () => {
+    const sellerCannotConfigureAi = await requestJson(baseUrl, '/configuracion-empresa', {
+      method: 'PUT',
+      token: sellerAToken,
+      body: {
+        nombre_bot: 'Seller Bot',
+        mensaje_bienvenida: 'Hola'
+      }
+    });
+    const viewerCannotCreateOrder = await requestJson(baseUrl, '/orders', {
+      method: 'POST',
+      token: viewerAToken,
+      body: {
+        cliente_nombre: 'Viewer Cliente',
+        total: 10
+      }
+    });
+    const ownerOrder = await requestJson(baseUrl, '/orders', {
+      method: 'POST',
+      token: ownerAToken,
+      body: {
+        empresa_id: demo.companyBId,
+        cliente_nombre: 'Cliente Pedido A',
+        telefono_cliente: '5551112222',
+        total: 450,
+        notas: 'Pedido demo'
+      }
+    });
+    const ownerOrders = await requestJson(baseUrl, '/orders', { token: ownerAToken });
+    const superOrders = await requestJson(baseUrl, '/orders', { token: superToken });
+
+    assert.equal(sellerCannotConfigureAi.response.status, 403);
+    assert.equal(viewerCannotCreateOrder.response.status, 403);
+    assert.equal(ownerOrder.response.status, 403);
+
+    const validOwnerOrder = await requestJson(baseUrl, '/orders', {
+      method: 'POST',
+      token: ownerAToken,
+      body: {
+        cliente_nombre: 'Cliente Pedido A',
+        telefono_cliente: '5551112222',
+        total: 450,
+        notas: 'Pedido demo'
+      }
+    });
+
+    assert.equal(validOwnerOrder.response.status, 201);
+    assert.equal(Number(validOwnerOrder.payload.data.empresa_id), demo.companyAId);
+    assert.equal(ownerOrders.response.status, 200);
+    assert.ok(ownerOrders.payload.data.every((order) => Number(order.empresa_id) === demo.companyAId));
+    assert.equal(superOrders.response.status, 200);
   });
 });

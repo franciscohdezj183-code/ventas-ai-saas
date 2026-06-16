@@ -1,6 +1,7 @@
 import { getConnection, query } from '../../config/database.js';
 import { env } from '../../config/env.js';
 import { appendCompanyScope, companyScopeCondition, isSuperAdmin, resolveScopedEmpresaId } from '../../middlewares/company-scope.middleware.js';
+import { assertPlanLimit } from '../plans/plan-limits.service.js';
 import { createHttpError } from '../../utils/http-error.js';
 
 const PRODUCT_COLUMNS = `
@@ -377,6 +378,8 @@ export async function createProduct(payload, auth, file) {
   const imagen = imageUrlFromFile(file);
 
   try {
+    await assertPlanLimit(product.empresaId, 'products');
+
     const [result] = await query(
       `INSERT INTO productos
         (empresa_id, categoria_id, nombre, descripcion, precio, stock, imagen, estado)
@@ -543,6 +546,8 @@ export async function importProducts(rows, auth, payload = {}) {
       errores: validationErrors
     };
   }
+
+  await assertPlanLimit(empresaId, 'products', validRows.length);
 
   const connection = await getConnection();
 

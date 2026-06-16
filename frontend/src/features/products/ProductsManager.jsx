@@ -15,7 +15,9 @@ import {
   Sparkles
 } from 'lucide-react';
 import { ConfirmModal, ErrorState, StatusBadge } from '../../components/ui/index.js';
+import { Can } from '../../components/Can.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
+import { isSuperAdminRole } from '../../config/permissions.js';
 import { fetchCategories } from '../categories/categoriesApi.js';
 import { fetchCompanies } from '../companies/companiesApi.js';
 import {
@@ -154,7 +156,7 @@ function CatalogRecommendations({ insights, onOpenProduct }) {
 
 export function ProductsManager() {
   const { user } = useAuth();
-  const canSelectCompany = user?.rol === 'SUPER_ADMIN';
+  const canSelectCompany = isSuperAdminRole(user?.rol);
   const [categories, setCategories] = useState([]);
   const [companies, setCompanies] = useState([]);
   const [editingProduct, setEditingProduct] = useState(null);
@@ -299,25 +301,29 @@ export function ProductsManager() {
           </div>
         </div>
         <div>
-          <button
-            className="secondary-button"
-            onClick={() => setIsImportModalOpen(true)}
-            type="button"
-          >
-            <FileSpreadsheet size={18} aria-hidden="true" />
-            Subir Excel
-          </button>
-          <button
-            className="primary-button"
-            onClick={() => {
-              setEditingProduct(null);
-              setIsProductModalOpen(true);
-            }}
-            type="button"
-          >
-            <PackagePlus size={18} aria-hidden="true" />
-            Nuevo producto
-          </button>
+          <Can permission="products.manage">
+            <button
+              className="secondary-button"
+              onClick={() => setIsImportModalOpen(true)}
+              type="button"
+            >
+              <FileSpreadsheet size={18} aria-hidden="true" />
+              Subir Excel
+            </button>
+          </Can>
+          <Can permission="products.manage">
+            <button
+              className="primary-button"
+              onClick={() => {
+                setEditingProduct(null);
+                setIsProductModalOpen(true);
+              }}
+              type="button"
+            >
+              <PackagePlus size={18} aria-hidden="true" />
+              Nuevo producto
+            </button>
+          </Can>
         </div>
       </div>
 
@@ -549,17 +555,19 @@ export function ProductsManager() {
                 <button className="secondary-button" onClick={() => setSelectedProduct(null)} type="button">
                   Cerrar
                 </button>
-                <button
-                  className="primary-button"
-                  onClick={() => {
-                    setEditingProduct(selectedProduct);
-                    setIsProductModalOpen(true);
-                    setSelectedProduct(null);
-                  }}
-                  type="button"
-                >
-                  Editar producto
-                </button>
+                <Can permission="products.manage">
+                  <button
+                    className="primary-button"
+                    onClick={() => {
+                      setEditingProduct(selectedProduct);
+                      setIsProductModalOpen(true);
+                      setSelectedProduct(null);
+                    }}
+                    type="button"
+                  >
+                    Editar producto
+                  </button>
+                </Can>
               </div>
             </div>
           </article>

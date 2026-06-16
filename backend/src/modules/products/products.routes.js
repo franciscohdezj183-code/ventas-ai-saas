@@ -1,7 +1,5 @@
 import { Router } from 'express';
-import { authenticate } from '../../middlewares/auth.middleware.js';
-import { attachCompanyScope } from '../../middlewares/company-scope.middleware.js';
-import { authorizeRoles } from '../../middlewares/roles.middleware.js';
+import { attachTenantScope, requireAuth, requirePermission } from '../../middlewares/access-control.middleware.js';
 import { uploadProductImage, uploadProductsXlsx } from '../../middlewares/upload.middleware.js';
 import {
   catalogInsights,
@@ -15,12 +13,12 @@ import {
 
 export const productsRouter = Router();
 
-productsRouter.use(authenticate, authorizeRoles('SUPER_ADMIN', 'OWNER'), attachCompanyScope);
+productsRouter.use(requireAuth, attachTenantScope);
 
-productsRouter.get('/', listProducts);
-productsRouter.get('/insights', catalogInsights);
-productsRouter.post('/import', uploadProductsXlsx, importProductsFromExcel);
-productsRouter.post('/', uploadProductImage, storeProduct);
-productsRouter.get('/:id', getProduct);
-productsRouter.put('/:id', uploadProductImage, patchProduct);
-productsRouter.delete('/:id', removeProduct);
+productsRouter.get('/', requirePermission('products.view'), listProducts);
+productsRouter.get('/insights', requirePermission('products.view'), catalogInsights);
+productsRouter.post('/import', requirePermission('products.manage'), uploadProductsXlsx, importProductsFromExcel);
+productsRouter.post('/', requirePermission('products.manage'), uploadProductImage, storeProduct);
+productsRouter.get('/:id', requirePermission('products.view'), getProduct);
+productsRouter.put('/:id', requirePermission('products.manage'), uploadProductImage, patchProduct);
+productsRouter.delete('/:id', requirePermission('products.manage'), removeProduct);

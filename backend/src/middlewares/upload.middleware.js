@@ -9,9 +9,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const productsUploadDir = path.resolve(__dirname, '../../uploads/products');
 const importsUploadDir = path.resolve(__dirname, '../../uploads/imports');
+const companiesUploadDir = path.resolve(__dirname, '../../uploads/companies');
 
 fs.mkdirSync(productsUploadDir, { recursive: true });
 fs.mkdirSync(importsUploadDir, { recursive: true });
+fs.mkdirSync(companiesUploadDir, { recursive: true });
 
 const storage = multer.diskStorage({
   destination(req, file, cb) {
@@ -40,6 +42,24 @@ const uploadProductImageRaw = multer({
     fileSize: 3 * 1024 * 1024
   }
 }).single('imagen');
+
+const companyLogoStorage = multer.diskStorage({
+  destination(req, file, cb) {
+    cb(null, companiesUploadDir);
+  },
+  filename(req, file, cb) {
+    const extension = path.extname(file.originalname).toLowerCase();
+    cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${extension}`);
+  }
+});
+
+const uploadCompanyLogoRaw = multer({
+  storage: companyLogoStorage,
+  fileFilter: imageFileFilter,
+  limits: {
+    fileSize: 3 * 1024 * 1024
+  }
+}).single('logo');
 
 function hasImageSignature(buffer) {
   const hex = buffer.toString('hex');
@@ -103,6 +123,21 @@ function validateUploadedFileSignature({ required, validator, message }) {
 
 export function uploadProductImage(req, res, next) {
   uploadProductImageRaw(req, res, (error) => {
+    if (error) {
+      next(error);
+      return;
+    }
+
+    validateUploadedFileSignature({
+      required: false,
+      validator: hasImageSignature,
+      message: 'El archivo debe ser una imagen valida'
+    })(req, res, next);
+  });
+}
+
+export function uploadCompanyLogo(req, res, next) {
+  uploadCompanyLogoRaw(req, res, (error) => {
     if (error) {
       next(error);
       return;

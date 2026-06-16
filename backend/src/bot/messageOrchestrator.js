@@ -9,6 +9,7 @@ import {
   requestHandoff
 } from './humanHandoffManager.js';
 import { getBotResponseProfile } from '../modules/bot-prompts/bot-prompts.service.js';
+import { registerAIUsage } from '../modules/ai-usage/ai-usage.service.js';
 import { mcpClient as defaultMcpClient } from '../mcp/mcpClient.js';
 
 function normalizePhone(value) {
@@ -93,6 +94,62 @@ function responseEmoji(profile, key, fallback = '') {
 function configuredText(profile, key, fallback) {
   const value = String(profile?.[key] ?? '').trim();
   return value || fallback;
+}
+
+function configuredFallback(companyContext = {}) {
+  return companyContext.fallback_message || 'Puedo ayudarte con productos, servicios y atencion comercial. Dime que estas buscando.';
+}
+
+function parseBlockedTopics(value) {
+  return String(value ?? '')
+    .split(/[\n,;]+/)
+    .map((item) => normalizarTextoBusqueda(item).trim())
+    .filter(Boolean);
+}
+
+function matchesBlockedTopic(message, blockedTopics) {
+  const normalizedMessage = normalizarTextoBusqueda(message);
+  return blockedTopics.some((topic) => normalizedMessage.includes(topic));
+}
+
+function parseFaqEntries(value) {
+  return String(value ?? '')
+    .split(/\n{2,}/)
+    .map((block) => {
+      const inlineMatch = block.match(/^(?:p(?:regunta)?\s*[:.-]\s*)?(.+?)\s*[:?]\s*(?:r(?:espuesta)?\s*[:.-]\s*)?(.+)$/is);
+
+      if (inlineMatch) {
+        return {
+          question: inlineMatch[1].trim(),
+          answer: inlineMatch[2].trim()
+        };
+      }
+
+      const [question, ...answerParts] = block.split(/\n/);
+      return {
+        question: String(question ?? '').replace(/^p(regunta)?\s*[:.-]?\s*/i, '').trim(),
+        answer: answerParts.join('\n').replace(/^r(espuesta)?\s*[:.-]?\s*/i, '').trim()
+      };
+    })
+    .filter((entry) => entry.question && entry.answer);
+}
+
+function findFaqAnswer(message, faqText) {
+  const normalizedMessage = normalizarTextoBusqueda(message);
+  const messageWords = new Set(normalizedMessage.split(' ').filter((word) => word.length > 3));
+
+  return parseFaqEntries(faqText).find((entry) => {
+    const normalizedQuestion = normalizarTextoBusqueda(entry.question);
+
+    if (normalizedMessage.includes(normalizedQuestion) || normalizedQuestion.includes(normalizedMessage)) {
+      return true;
+    }
+
+    const questionWords = normalizedQuestion.split(' ').filter((word) => word.length > 3);
+    const matches = questionWords.filter((word) => messageWords.has(word)).length;
+
+    return questionWords.length > 0 && matches / questionWords.length >= 0.6;
+  })?.answer ?? null;
 }
 
 function applyResponseTemplate(template, replacements) {
@@ -282,15 +339,21 @@ function buildLeadResponse(intent, result) {
   return 'Perfecto, voy a avisarle a un asesor para ayudarte con la compra. Mientras tanto puedo seguir resolviendo tus dudas.';
 }
 
+function buildOrderResponse(result) {
+  const orderId = result?.pedido_id ? ` #${result.pedido_id}` : '';
+  return `Listo, registre tu pedido${orderId}. Un asesor puede confirmar detalles, pago y entrega.`;
+}
+
 function buildStaticResponse(intent, companyContext = {}) {
   const profile = companyContext.response_profile ?? {};
+  const fallback = configuredFallback(companyContext);
   const responses = {
     SALUDO: configuredText(profile, 'saludo_personalizado', companyContext.mensaje_bienvenida || 'Hola, gracias por escribirnos. Dime que producto o servicio buscas y te ayudo a revisarlo.'),
     DESPEDIDA: configuredText(profile, 'despedida_personalizada', 'Gracias por escribirnos. Cuando necesites algo mas, aqui te ayudamos.'),
     AGRADECIMIENTO: 'Con gusto. Te puedo mostrar mas opciones o pasarte con un asesor.',
     AYUDA: 'Puedo ayudarte a buscar productos, revisar precios, confirmar disponibilidad o pasarte con un asesor.',
-    FUERA_DE_TEMA: 'Puedo ayudarte con productos, servicios y atencion comercial. Dime que estas buscando.',
-    MENSAJE_GENERAL: 'Claro, cuentame que producto o servicio buscas y reviso opciones para ti.'
+    FUERA_DE_TEMA: fallback,
+    MENSAJE_GENERAL: fallback
   };
 
   return responses[intent.intencion] ?? responses.MENSAJE_GENERAL;
@@ -314,6 +377,8 @@ function buildResponse(intent, toolResult, companyContext = {}) {
     case 'crear_lead':
     case 'registrar_intencion_compra':
       return buildLeadResponse(intent, { ...toolResult, profile });
+    case 'crear_pedido':
+      return buildOrderResponse(toolResult);
     default:
       return buildStaticResponse(intent, companyContext);
   }
@@ -370,6 +435,15 @@ function buildToolArgs(toolName, { empresaId, phone, message, normalizedMessage,
         interes: params.interes ?? params.texto ?? message,
         producto_id: params.producto_id ?? conversationContext?.ultimo_producto_id,
         servicio_id: params.servicio_id ?? conversationContext?.ultimo_servicio_id
+      };
+    case 'crear_pedido':
+      return {
+        empresa_id: empresaId,
+        telefono: params.telefono_cliente ?? params.telefono ?? phone,
+        cliente_nombre: params.cliente_nombre ?? params.nombre_cliente,
+        conversation_id: params.conversation_id,
+        total: params.total,
+        notas: params.notas ?? params.interes ?? params.texto ?? message
       };
     case 'obtener_categorias':
     case 'obtener_promociones':
@@ -725,6 +799,12 @@ async function getMinimalCompanyContext(empresaId, mcpClient) {
       tono_respuesta: company?.tono_respuesta,
       mensaje_bienvenida: company?.mensaje_bienvenida,
       mensaje_fuera_horario: company?.mensaje_fuera_horario,
+      instrucciones_negocio: company?.instrucciones_negocio,
+      temas_bloqueados: company?.temas_bloqueados,
+      faq_personalizada: company?.faq_personalizada,
+      auto_pedidos: company?.auto_pedidos !== undefined ? Boolean(company.auto_pedidos) : true,
+      envio_imagenes: company?.envio_imagenes !== undefined ? Boolean(company.envio_imagenes) : true,
+      fallback_message: company?.fallback_message,
       horario_atencion: company?.horario_atencion,
       politica_entrega: company?.politica_entrega,
       politica_pagos: company?.politica_pagos,
@@ -737,6 +817,7 @@ async function getMinimalCompanyContext(empresaId, mcpClient) {
 
 export async function orchestrateIncomingMessage({
   empresaId,
+  userId = null,
   phone,
   message,
   whatsappChatId = null,
@@ -756,6 +837,61 @@ export async function orchestrateIncomingMessage({
   const conversationContext = await contextStore.find({ empresaId, phone: cleanPhone });
   const contextoEmpresa = contexto ?? (await getMinimalCompanyContext(empresaId, mcpClient));
   const normalizedMessage = normalizarTextoBusqueda(message, contextoEmpresa.response_profile?.sinonimos);
+  const blockedTopics = parseBlockedTopics(contextoEmpresa.temas_bloqueados);
+
+  if (matchesBlockedTopic(message, blockedTopics)) {
+    const response = configuredFallback(contextoEmpresa);
+    const savedConversation = await mcpClient.callTool('guardar_conversacion', {
+      empresa_id: empresaId,
+      telefono: cleanPhone,
+      mensaje: message,
+      respuesta: response,
+      estado: 'bot_active',
+      tipo_mensaje: 'bot'
+    });
+
+    return {
+      respuesta: response,
+      medios: [],
+      intencion: 'FUERA_DE_TEMA',
+      herramienta_mcp: null,
+      parametros: {},
+      confianza: 1,
+      requiere_respuesta_ia: false,
+      mcp_result: null,
+      notificacion: null,
+      lead_id: null,
+      conversacion_id: savedConversation.conversacion_id
+    };
+  }
+
+  const faqAnswer = findFaqAnswer(message, contextoEmpresa.faq_personalizada);
+
+  if (faqAnswer) {
+    const savedConversation = await mcpClient.callTool('guardar_conversacion', {
+      empresa_id: empresaId,
+      telefono: cleanPhone,
+      mensaje: message,
+      respuesta: faqAnswer,
+      estado: 'bot_active',
+      tipo_mensaje: 'bot'
+    });
+
+    return {
+      respuesta: faqAnswer,
+      medios: [],
+      intencion: 'FAQ_PERSONALIZADA',
+      herramienta_mcp: null,
+      parametros: {},
+      confianza: 1,
+      requiere_respuesta_ia: false,
+      mcp_result: null,
+      notificacion: null,
+      lead_id: null,
+      conversacion_id: savedConversation.conversacion_id
+    };
+  }
+
   const contextoCompleto = {
     ...contextoEmpresa,
     conversacion_contexto: conversationContext
@@ -768,10 +904,14 @@ export async function orchestrateIncomingMessage({
         }
       : null
   };
+  let usageSnapshot = null;
   const interpretedIntent = await interpreter({
     empresa_id: empresaId,
     mensaje_cliente: normalizedMessage,
-    contexto: contextoCompleto
+    contexto: contextoCompleto,
+    onUsage: (usage) => {
+      usageSnapshot = usage;
+    }
   });
   const intent = applyConversationContext(validateIntentJson(interpretedIntent), normalizedMessage, conversationContext);
   intent.sinonimos = contextoEmpresa.response_profile?.sinonimos ?? null;
@@ -822,13 +962,27 @@ export async function orchestrateIncomingMessage({
   }
 
   const response = buildResponse(responseIntent, toolResult, contextoEmpresa);
-  const media = buildMedia(responseIntent, toolResult, response);
+  const media = contextoEmpresa.envio_imagenes === false ? [] : buildMedia(responseIntent, toolResult, response);
   const savedConversation = await mcpClient.callTool('guardar_conversacion', {
     empresa_id: empresaId,
     telefono: cleanPhone,
     mensaje: message,
-    respuesta: response
+    respuesta: response,
+    estado: shouldRequestHuman ? 'requires_human' : 'bot_active',
+    tipo_mensaje: 'bot'
   });
+
+  if (usageSnapshot) {
+    await registerAIUsage({
+      tenantId: empresaId,
+      userId,
+      conversationId: savedConversation.conversacion_id,
+      tokensInput: usageSnapshot.tokens_input,
+      tokensOutput: usageSnapshot.tokens_output,
+      totalTokens: usageSnapshot.total_tokens,
+      modelUsed: usageSnapshot.modelo_usado
+    });
+  }
 
   if (shouldRequestHuman) {
     try {
