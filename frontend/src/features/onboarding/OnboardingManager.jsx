@@ -64,6 +64,57 @@ const wizardSteps = [
   { id: 'checklist', title: 'Checklist', icon: CheckCircle2 }
 ];
 
+const wizardStepCopy = {
+  business: {
+    description: 'Registra la informacion base para identificar la empresa dentro del SaaS.',
+    helpTitle: 'Que se configura',
+    help: 'Nombre comercial, giro, telefono y direccion. Estos datos ayudan a mostrar la empresa correctamente en administracion y reportes.',
+    example: 'Ejemplo: Restaurante Casa Norte, giro restaurante, telefono de contacto principal.'
+  },
+  owner: {
+    description: 'Crea el primer usuario responsable de administrar esta empresa.',
+    helpTitle: 'Acceso inicial',
+    help: 'El owner podra entrar al sistema, gestionar su equipo y continuar la configuracion operativa.',
+    example: 'Usa un correo real del administrador y una contrasena temporal segura.'
+  },
+  plan: {
+    description: 'Selecciona el plan con el que iniciara la empresa.',
+    helpTitle: 'Alcance comercial',
+    help: 'El plan define limites y capacidad de uso. La seleccion mantiene el flujo actual de suscripcion.',
+    example: 'STARTER para pruebas, BUSINESS para operacion diaria, ENTERPRISE para mayor escala.'
+  },
+  welcome: {
+    description: 'Define como se presentara el asistente ante nuevos clientes.',
+    helpTitle: 'Primer mensaje',
+    help: 'El mensaje de bienvenida debe explicar brevemente como puede ayudar la empresa por chat.',
+    example: 'Hola, soy el asistente de ventas. Puedo ayudarte con productos, precios y pedidos.'
+  },
+  ai: {
+    description: 'Configura el nombre, tono y reglas visibles de la IA para esta empresa.',
+    helpTitle: 'Comportamiento de la IA',
+    help: 'Agrega instrucciones simples del negocio, preguntas frecuentes y temas que la IA debe evitar.',
+    example: 'Responder con tono profesional, sugerir productos disponibles y escalar dudas complejas.'
+  },
+  products: {
+    description: 'Carga algunos productos iniciales para que el negocio tenga un catalogo base.',
+    helpTitle: 'Catalogo inicial',
+    help: 'Puedes dejar filas vacias. Solo se guardaran productos que tengan nombre y datos validos.',
+    example: 'Agrega producto, descripcion, precio y stock para una primera prueba comercial.'
+  },
+  whatsapp: {
+    description: 'Decide si la conexion de WhatsApp se abordara inmediatamente despues de crear la empresa.',
+    helpTitle: 'Canal de atencion',
+    help: 'El tenant se crea aunque dejes WhatsApp pendiente. La conexion se conserva en su pantalla dedicada.',
+    example: 'Marca conectar si el cliente ya esta listo para escanear QR al finalizar.'
+  },
+  checklist: {
+    description: 'Revisa la configuracion antes de finalizar el onboarding.',
+    helpTitle: 'Revision final',
+    help: 'Confirma que los datos minimos esten completos antes de crear la empresa y su owner.',
+    example: 'Al finalizar se mantiene el guardado existente y se muestra el acceso siguiente.'
+  }
+};
+
 const stepIcons = {
   business: Settings,
   assistant: Bot,
@@ -272,7 +323,9 @@ function OnboardingWizard() {
   const [submitError, setSubmitError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const step = wizardSteps[currentStep];
+  const stepCopy = wizardStepCopy[step.id];
   const isLastStep = currentStep === wizardSteps.length - 1;
+  const progressPercent = Math.round(((currentStep + 1) / wizardSteps.length) * 100);
 
   const completedPreview = useMemo(() => ({
     business: Boolean(form.business.nombre && form.business.tipo_negocio),
@@ -373,14 +426,18 @@ function OnboardingWizard() {
       <section className="onboarding-hero">
         <div>
           <p className="eyebrow">Nueva empresa</p>
-          <h1>Onboarding de tenant SaaS</h1>
-          <p>Crea empresa, owner, plan, IA, productos y estado de WhatsApp con tenant_id consistente.</p>
+          <h1>Configura una empresa paso a paso</h1>
+          <p>Completa los datos esenciales para dejar lista la cuenta, su administrador, catalogo inicial e IA.</p>
         </div>
-        <div className="onboarding-progress-ring" style={{ '--progress': `${Math.round(((currentStep + 1) / wizardSteps.length) * 100)}%` }}>
-          <strong>{currentStep + 1}</strong>
-          <span>de {wizardSteps.length}</span>
+        <div className="onboarding-progress-ring" style={{ '--progress': `${progressPercent}%` }}>
+          <strong>{progressPercent}%</strong>
+          <span>Paso {currentStep + 1} de {wizardSteps.length}</span>
         </div>
       </section>
+
+      <div className="onboarding-progress-bar" aria-label={`Progreso ${progressPercent}%`}>
+        <span style={{ width: `${progressPercent}%` }} />
+      </div>
 
       <section className="onboarding-summary-grid">
         {wizardSteps.map((wizardStep, index) => {
@@ -406,28 +463,34 @@ function OnboardingWizard() {
 
       {submitError ? <ErrorState message={submitError} /> : null}
 
-      <section className="panel-section">
+      <section className="panel-section onboarding-step-panel">
         <div className="section-header">
           <div>
             <h2>{step.title}</h2>
-            <p>{result ? `Empresa creada con tenant_id ${result.company.id}.` : 'Completa este paso para continuar.'}</p>
+            <p>{result ? `Empresa creada con tenant_id ${result.company.id}.` : stepCopy.description}</p>
           </div>
         </div>
+
+        <aside className="onboarding-step-help">
+          <strong>{stepCopy.helpTitle}</strong>
+          <p>{stepCopy.help}</p>
+          <small>{stepCopy.example}</small>
+        </aside>
 
         {step.id === 'business' ? (
           <div className="company-form">
             <div className="form-grid">
               <Field error={errors.nombre} id="business-name" label="Nombre del negocio">
-                <input id="business-name" onChange={(event) => updateSection('business', 'nombre', event.target.value)} type="text" value={form.business.nombre} />
+                <input id="business-name" onChange={(event) => updateSection('business', 'nombre', event.target.value)} placeholder="Ej. Casa Norte" type="text" value={form.business.nombre} />
               </Field>
               <Field error={errors.tipo_negocio} id="business-type" label="Giro">
                 <input id="business-type" onChange={(event) => updateSection('business', 'tipo_negocio', event.target.value)} placeholder="Restaurante, retail, servicios..." type="text" value={form.business.tipo_negocio} />
               </Field>
               <Field id="business-phone" label="Telefono">
-                <input id="business-phone" onChange={(event) => updateSection('business', 'telefono', event.target.value)} type="tel" value={form.business.telefono} />
+                <input id="business-phone" onChange={(event) => updateSection('business', 'telefono', event.target.value)} placeholder="+52 55 0000 0000" type="tel" value={form.business.telefono} />
               </Field>
               <Field id="business-address" label="Direccion">
-                <input id="business-address" onChange={(event) => updateSection('business', 'direccion', event.target.value)} type="text" value={form.business.direccion} />
+                <input id="business-address" onChange={(event) => updateSection('business', 'direccion', event.target.value)} placeholder="Sucursal, ciudad o direccion fiscal" type="text" value={form.business.direccion} />
               </Field>
             </div>
           </div>
@@ -437,13 +500,13 @@ function OnboardingWizard() {
           <div className="company-form">
             <div className="form-grid">
               <Field error={errors.owner_nombre} id="owner-name" label="Nombre owner">
-                <input id="owner-name" onChange={(event) => updateSection('owner', 'nombre', event.target.value)} type="text" value={form.owner.nombre} />
+                <input id="owner-name" onChange={(event) => updateSection('owner', 'nombre', event.target.value)} placeholder="Nombre del administrador" type="text" value={form.owner.nombre} />
               </Field>
               <Field error={errors.owner_correo} id="owner-email" label="Correo owner">
-                <input id="owner-email" onChange={(event) => updateSection('owner', 'correo', event.target.value)} type="email" value={form.owner.correo} />
+                <input id="owner-email" onChange={(event) => updateSection('owner', 'correo', event.target.value)} placeholder="owner@empresa.com" type="email" value={form.owner.correo} />
               </Field>
               <Field error={errors.owner_password} id="owner-password" label="Contrasena temporal">
-                <input id="owner-password" onChange={(event) => updateSection('owner', 'password', event.target.value)} type="password" value={form.owner.password} />
+                <input id="owner-password" onChange={(event) => updateSection('owner', 'password', event.target.value)} placeholder="Minimo 6 caracteres" type="password" value={form.owner.password} />
               </Field>
             </div>
           </div>
@@ -476,10 +539,10 @@ function OnboardingWizard() {
           <div className="company-form">
             <div className="form-grid">
               <Field error={errors.mensaje_bienvenida} full id="welcome-message" label="Mensaje de bienvenida">
-                <textarea id="welcome-message" onChange={(event) => updateSection('settings', 'mensaje_bienvenida', event.target.value)} rows={4} value={form.settings.mensaje_bienvenida} />
+                <textarea id="welcome-message" onChange={(event) => updateSection('settings', 'mensaje_bienvenida', event.target.value)} placeholder="Hola, soy el asistente de ventas. Puedo ayudarte con precios, productos y pedidos." rows={4} value={form.settings.mensaje_bienvenida} />
               </Field>
               <Field id="fallback-message" label="Fallback">
-                <input id="fallback-message" onChange={(event) => updateSection('settings', 'fallback_message', event.target.value)} type="text" value={form.settings.fallback_message} />
+                <input id="fallback-message" onChange={(event) => updateSection('settings', 'fallback_message', event.target.value)} placeholder="Te conectare con una persona para ayudarte mejor." type="text" value={form.settings.fallback_message} />
               </Field>
               <Field id="tone" label="Tono de respuesta">
                 <select id="tone" onChange={(event) => updateSection('settings', 'tono_respuesta', event.target.value)} value={form.settings.tono_respuesta}>
@@ -497,16 +560,16 @@ function OnboardingWizard() {
           <div className="company-form">
             <div className="form-grid">
               <Field error={errors.nombre_bot} id="ai-name" label="Nombre de la IA">
-                <input id="ai-name" onChange={(event) => updateSection('settings', 'nombre_bot', event.target.value)} type="text" value={form.settings.nombre_bot} />
+                <input id="ai-name" onChange={(event) => updateSection('settings', 'nombre_bot', event.target.value)} placeholder="Ej. Asistente Casa Norte" type="text" value={form.settings.nombre_bot} />
               </Field>
               <Field full id="business-instructions" label="Instrucciones del negocio">
-                <textarea id="business-instructions" onChange={(event) => updateSection('settings', 'instrucciones_negocio', event.target.value)} rows={4} value={form.settings.instrucciones_negocio} />
+                <textarea id="business-instructions" onChange={(event) => updateSection('settings', 'instrucciones_negocio', event.target.value)} placeholder="Describe horarios, politicas, productos destacados y tono esperado." rows={4} value={form.settings.instrucciones_negocio} />
               </Field>
               <Field id="blocked-topics" label="Temas bloqueados">
-                <input id="blocked-topics" onChange={(event) => updateSection('settings', 'temas_bloqueados', event.target.value)} type="text" value={form.settings.temas_bloqueados} />
+                <input id="blocked-topics" onChange={(event) => updateSection('settings', 'temas_bloqueados', event.target.value)} placeholder="Descuentos no autorizados, temas legales..." type="text" value={form.settings.temas_bloqueados} />
               </Field>
               <Field id="faq" label="FAQ personalizada">
-                <input id="faq" onChange={(event) => updateSection('settings', 'faq_personalizada', event.target.value)} type="text" value={form.settings.faq_personalizada} />
+                <input id="faq" onChange={(event) => updateSection('settings', 'faq_personalizada', event.target.value)} placeholder="Envios, cambios, garantias, formas de pago..." type="text" value={form.settings.faq_personalizada} />
               </Field>
             </div>
           </div>
@@ -519,16 +582,16 @@ function OnboardingWizard() {
                 <article className="onboarding-step" key={`product-${index}`}>
                   <div className="form-grid full-field">
                     <Field error={errors[`product_${index}_nombre`]} id={`product-${index}-name`} label="Producto">
-                      <input id={`product-${index}-name`} onChange={(event) => updateProduct(index, 'nombre', event.target.value)} type="text" value={product.nombre} />
+                      <input id={`product-${index}-name`} onChange={(event) => updateProduct(index, 'nombre', event.target.value)} placeholder="Nombre comercial" type="text" value={product.nombre} />
                     </Field>
                     <Field id={`product-${index}-description`} label="Descripcion">
-                      <input id={`product-${index}-description`} onChange={(event) => updateProduct(index, 'descripcion', event.target.value)} type="text" value={product.descripcion} />
+                      <input id={`product-${index}-description`} onChange={(event) => updateProduct(index, 'descripcion', event.target.value)} placeholder="Detalle breve del producto" type="text" value={product.descripcion} />
                     </Field>
                     <Field error={errors[`product_${index}_precio`]} id={`product-${index}-price`} label="Precio">
-                      <input id={`product-${index}-price`} min="0" onChange={(event) => updateProduct(index, 'precio', event.target.value)} step="0.01" type="number" value={product.precio} />
+                      <input id={`product-${index}-price`} min="0" onChange={(event) => updateProduct(index, 'precio', event.target.value)} placeholder="0.00" step="0.01" type="number" value={product.precio} />
                     </Field>
                     <Field error={errors[`product_${index}_stock`]} id={`product-${index}-stock`} label="Stock">
-                      <input id={`product-${index}-stock`} min="0" onChange={(event) => updateProduct(index, 'stock', event.target.value)} type="number" value={product.stock} />
+                      <input id={`product-${index}-stock`} min="0" onChange={(event) => updateProduct(index, 'stock', event.target.value)} placeholder="0" type="number" value={product.stock} />
                     </Field>
                   </div>
                   {form.products.length > 1 ? (
@@ -588,7 +651,7 @@ function OnboardingWizard() {
         ) : null}
       </section>
 
-      <div className="form-actions">
+      <div className="form-actions onboarding-nav-actions">
         <button className="secondary-button" disabled={currentStep === 0 || isSaving} onClick={goBack} type="button">
           <ChevronLeft size={18} aria-hidden="true" />
           Atras
@@ -596,7 +659,7 @@ function OnboardingWizard() {
         {isLastStep ? (
           <button className="primary-button" disabled={isSaving || Boolean(result)} onClick={handleSubmit} type="button">
             <Rocket size={18} aria-hidden="true" />
-            {isSaving ? 'Creando...' : result ? 'Empresa creada' : 'Crear empresa'}
+            {isSaving ? 'Finalizando...' : result ? 'Finalizado' : 'Finalizar'}
           </button>
         ) : (
           <button className="primary-button" disabled={isSaving} onClick={goNext} type="button">

@@ -1,16 +1,20 @@
 import {
-  Boxes,
   Building2,
+  Bot,
   CreditCard,
-  LayoutDashboard,
-  MessageSquareText,
+  Home,
+  Inbox,
   MessageCircle,
   BarChart3,
+  Package,
+  Rocket,
   Settings,
   Sparkles,
-  ShoppingBag,
+  ClipboardList,
+  Tags,
   UserCog,
-  Users
+  Users,
+  Wrench
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
@@ -21,39 +25,54 @@ import { useAuth } from '../context/AuthContext.jsx';
 
 const navigationByRole = {
   super_admin: [
-    { label: 'Dashboard global', icon: LayoutDashboard, to: '/', end: true, permission: 'reports.view' },
-    { label: 'Empresas', icon: Building2, to: '/super-admin', permission: 'tenants.view' },
-    { label: 'Suscripciones', icon: CreditCard, to: '/suscripciones', permission: 'subscriptions.view' },
-    { label: 'Consumo IA', icon: Sparkles, to: '/consumo-ia', permission: 'reports.view' },
-    { label: 'Usuarios globales', icon: Users, to: '/usuarios', permission: 'users.view' },
-    { label: 'Configuracion', icon: Settings, to: '/prompts-bot', roles: ['super_admin'] }
+    { label: 'Dashboard', section: 'Inicio', icon: Home, to: '/', end: true, permission: 'reports.view' },
+    { label: 'Conversaciones', section: 'Operacion', icon: Inbox, to: '/conversaciones', permission: 'conversations.view' },
+    { label: 'Clientes', section: 'Operacion', icon: Users, to: '/leads', permission: 'customers.view' },
+    { label: 'Pedidos', section: 'Operacion', icon: ClipboardList, to: '/pedidos', permission: 'orders.view' },
+    { label: 'Productos', section: 'Catalogo', icon: Package, to: '/productos', permission: 'products.view' },
+    { label: 'Categorias', section: 'Catalogo', icon: Tags, to: '/categorias', permission: 'products.view' },
+    { label: 'Servicios', section: 'Catalogo', icon: Wrench, to: '/servicios', permission: 'products.view' },
+    { label: 'WhatsApp', section: 'Canales e IA', icon: MessageCircle, to: '/whatsapp', permission: 'whatsapp.view' },
+    { label: 'Configuracion IA', section: 'Canales e IA', icon: Bot, to: '/configuracion', permission: 'ai_config.view' },
+    { label: 'Centro super admin', section: 'Administracion', icon: Building2, to: '/super-admin', permission: 'tenants.view' },
+    { label: 'Directorio empresas', section: 'Administracion', icon: Building2, to: '/empresas', permission: 'tenants.view' },
+    { label: 'Inicio guiado', section: 'Administracion', icon: Rocket, to: '/inicio-guiado', permission: 'tenants.view' },
+    { label: 'Suscripciones', section: 'Administracion', icon: CreditCard, to: '/suscripciones', permission: 'subscriptions.view' },
+    { label: 'Consumo IA', section: 'Administracion', icon: Sparkles, to: '/consumo-ia', permission: 'reports.view' },
+    { label: 'Usuarios globales', section: 'Administracion', icon: Users, to: '/usuarios', permission: 'users.view' },
+    { label: 'Configuracion', section: 'Sistema', icon: Settings, to: '/prompts-bot', roles: ['super_admin'] }
   ],
   owner: [
-    { label: 'Dashboard', icon: LayoutDashboard, to: '/', end: true, permission: 'reports.view' },
-    { label: 'Conversaciones', icon: MessageSquareText, to: '/conversaciones', permission: 'conversations.view' },
-    { label: 'Clientes', icon: Users, to: '/leads', permission: 'customers.view' },
-    { label: 'Productos', icon: Boxes, to: '/productos', permission: 'products.view' },
-    { label: 'Pedidos', icon: ShoppingBag, to: '/pedidos', permission: 'orders.view' },
-    { label: 'Reportes', icon: BarChart3, to: '/reportes', permission: 'reports.view' },
-    { label: 'WhatsApp', icon: MessageCircle, to: '/whatsapp', permission: 'whatsapp.view' },
-    { label: 'Configuracion IA', icon: Settings, to: '/configuracion', permission: 'ai_config.view' },
-    { label: 'Usuarios', icon: UserCog, to: '/usuarios', permission: 'users.view' },
-    { label: 'Plan', icon: CreditCard, to: '/mi-empresa', roles: ['owner'], permission: 'subscriptions.view' }
+    { label: 'Dashboard', section: 'Inicio', icon: Home, to: '/', end: true, permission: 'reports.view' },
+    { label: 'Conversaciones', section: 'Operacion', icon: Inbox, to: '/conversaciones', permission: 'conversations.view' },
+    { label: 'Clientes', section: 'Operacion', icon: Users, to: '/leads', permission: 'customers.view' },
+    { label: 'Pedidos', section: 'Operacion', icon: ClipboardList, to: '/pedidos', permission: 'orders.view' },
+    { label: 'Productos', section: 'Catalogo', icon: Package, to: '/productos', permission: 'products.view' },
+    { label: 'Categorias', section: 'Catalogo', icon: Tags, to: '/categorias', permission: 'products.view' },
+    { label: 'Servicios', section: 'Catalogo', icon: Wrench, to: '/servicios', permission: 'products.view' },
+    { label: 'WhatsApp', section: 'Canales e IA', icon: MessageCircle, to: '/whatsapp', permission: 'whatsapp.view' },
+    { label: 'Configuracion IA', section: 'Canales e IA', icon: Bot, to: '/configuracion', permission: 'ai_config.view' },
+    { label: 'Reportes', section: 'Administracion', icon: BarChart3, to: '/reportes', permission: 'reports.view' },
+    { label: 'Usuarios', section: 'Administracion', icon: UserCog, to: '/usuarios', permission: 'users.view' },
+    { label: 'Plan', section: 'Administracion', icon: CreditCard, to: '/mi-empresa', roles: ['owner'], permission: 'subscriptions.view' }
   ],
   seller: [
-    { label: 'Conversaciones', icon: MessageSquareText, to: '/conversaciones', permission: 'conversations.view' },
-    { label: 'Clientes', icon: Users, to: '/leads', permission: 'customers.view' },
-    { label: 'Productos', icon: Boxes, to: '/productos', permission: 'products.view' },
-    { label: 'Pedidos', icon: ShoppingBag, to: '/pedidos', permission: 'orders.view' }
+    { label: 'Conversaciones', section: 'Operacion', icon: Inbox, to: '/conversaciones', permission: 'conversations.view' },
+    { label: 'Clientes', section: 'Operacion', icon: Users, to: '/leads', permission: 'customers.view' },
+    { label: 'Pedidos', section: 'Operacion', icon: ClipboardList, to: '/pedidos', permission: 'orders.view' },
+    { label: 'Productos', section: 'Catalogo', icon: Package, to: '/productos', permission: 'products.view' },
+    { label: 'Categorias', section: 'Catalogo', icon: Tags, to: '/categorias', permission: 'products.view' },
+    { label: 'Servicios', section: 'Catalogo', icon: Wrench, to: '/servicios', permission: 'products.view' }
   ],
   support: [
-    { label: 'Conversaciones', icon: MessageSquareText, to: '/conversaciones', permission: 'conversations.view' },
-    { label: 'Clientes', icon: Users, to: '/leads', permission: 'customers.view' }
+    { label: 'Conversaciones', section: 'Operacion', icon: Inbox, to: '/conversaciones', permission: 'conversations.view' },
+    { label: 'Clientes', section: 'Operacion', icon: Users, to: '/leads', permission: 'customers.view' }
   ],
   viewer: [
-    { label: 'Dashboard', icon: LayoutDashboard, to: '/', end: true, permission: 'reports.view' },
-    { label: 'Reportes', icon: BarChart3, to: '/reportes', permission: 'reports.view' },
-    { label: 'Conversaciones', icon: MessageSquareText, to: '/conversaciones', permission: 'conversations.view' }
+    { label: 'Dashboard', section: 'Inicio', icon: Home, to: '/', end: true, permission: 'reports.view' },
+    { label: 'Conversaciones', section: 'Operacion', icon: Inbox, to: '/conversaciones', permission: 'conversations.view' },
+    { label: 'Pedidos', section: 'Operacion', icon: ClipboardList, to: '/pedidos', permission: 'orders.view' },
+    { label: 'Reportes', section: 'Administracion', icon: BarChart3, to: '/reportes', permission: 'reports.view' }
   ]
 };
 
@@ -117,7 +136,11 @@ export function AdminLayout() {
         companyName={companyName}
         isCollapsed={isSidebarCollapsed}
         items={visibleNavigationItems}
+        onLogout={logout}
         onNavigate={() => setIsSidebarOpen(false)}
+        onThemeToggle={() => setTheme((currentTheme) => (currentTheme === 'dark' ? 'light' : 'dark'))}
+        theme={theme}
+        user={user}
       />
       <button
         aria-label="Cerrar menu"

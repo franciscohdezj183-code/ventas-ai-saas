@@ -2,6 +2,16 @@ import { Edit3, Eye, Power, Trash2 } from 'lucide-react';
 import { Can } from '../../components/Can.jsx';
 import { DataTable, StatusBadge } from '../../components/ui/index.js';
 
+function formatCompanyDate(company) {
+  const value = company.fecha_creacion ?? company.created_at ?? company.fecha_alta;
+
+  return value ? new Date(value).toLocaleDateString('es-MX', { dateStyle: 'medium' }) : '-';
+}
+
+function getPlanClass(plan) {
+  return `plan-badge plan-${String(plan || 'sin-plan').toLowerCase()}`;
+}
+
 export function CompanyTable({ companies, isLoading, onDelete, onEdit, onToggle, onView }) {
   const columns = [
     {
@@ -19,7 +29,7 @@ export function CompanyTable({ companies, isLoading, onDelete, onEdit, onToggle,
     {
       key: 'plan',
       header: 'Plan',
-      render: (company) => <span className="plan-badge">{company.plan || 'SIN PLAN'}</span>
+      render: (company) => <span className={getPlanClass(company.plan)}>{company.plan || 'SIN PLAN'}</span>
     },
     {
       key: 'activo',
@@ -30,21 +40,23 @@ export function CompanyTable({ companies, isLoading, onDelete, onEdit, onToggle,
         </StatusBadge>
       )
     },
+    { key: 'fecha', header: 'Fecha', render: formatCompanyDate },
     {
       key: 'acciones',
       header: 'Acciones',
       render: (company) => (
-        <div className="table-actions">
-          <button aria-label="Ver empresa" onClick={() => onView(company)} type="button" title="Ver detalle">
+        <div className="table-actions company-actions">
+          <button className="company-action view" aria-label="Ver empresa" onClick={() => onView(company)} type="button" title="Ver detalle">
             <Eye size={16} aria-hidden="true" />
           </button>
           <Can permission="tenants.manage">
-            <button aria-label="Editar empresa" onClick={() => onEdit(company)} type="button">
+            <button className="company-action edit" aria-label="Editar empresa" onClick={() => onEdit(company)} type="button" title="Editar">
               <Edit3 size={16} aria-hidden="true" />
             </button>
           </Can>
           <Can permission="tenants.manage">
             <button
+              className={company.activo ? 'company-action suspend' : 'company-action activate'}
               aria-label={company.activo ? 'Desactivar empresa' : 'Activar empresa'}
               onClick={() => onToggle(company)}
               type="button"
@@ -54,7 +66,7 @@ export function CompanyTable({ companies, isLoading, onDelete, onEdit, onToggle,
             </button>
           </Can>
           <Can permission="tenants.manage">
-            <button aria-label="Eliminar empresa" onClick={() => onDelete(company)} type="button">
+            <button className="company-action delete" aria-label="Eliminar empresa" onClick={() => onDelete(company)} type="button" title="Eliminar">
               <Trash2 size={16} aria-hidden="true" />
             </button>
           </Can>

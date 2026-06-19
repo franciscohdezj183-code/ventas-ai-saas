@@ -7,6 +7,7 @@ import { LeadsManager } from '../features/leads/LeadsManager.jsx';
 import { OnboardingManager } from '../features/onboarding/OnboardingManager.jsx';
 import { OrdersPlaceholder } from '../features/orders/OrdersPlaceholder.jsx';
 import { OwnerCompanyPanel } from '../features/owner/OwnerCompanyPanel.jsx';
+import { PlansManager } from '../features/plans/PlansManager.jsx';
 import { ProductsManager } from '../features/products/ProductsManager.jsx';
 import { ReportsManager } from '../features/reports/ReportsManager.jsx';
 import { ServicesManager } from '../features/services/ServicesManager.jsx';
@@ -87,4 +88,8 @@ export function OrdersPage() {
 
 export function ReportsPage() {
   return <ReportsManager />;
+}
+
+export function PlansPage() {
+  return <PlansManager />;
 }

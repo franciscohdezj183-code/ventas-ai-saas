@@ -33,7 +33,7 @@ const statusCopy = {
     description: 'WhatsApp esta listo para responder mensajes de clientes.'
   },
   QR_READY: {
-    label: 'Escaneando QR',
+    label: 'Esperando QR',
     tone: 'scanning',
     icon: QrCode,
     description: 'Escanea el codigo con WhatsApp para completar la vinculacion.'
@@ -50,6 +50,18 @@ const statusCopy = {
     icon: ShieldCheck,
     description: 'WhatsApp valido la sesion. Esperando conexion final.'
   },
+  RECONNECTING: {
+    label: 'Reconectando',
+    tone: 'scanning',
+    icon: RefreshCcw,
+    description: 'Estamos intentando recuperar la sesion. Si tarda demasiado, genera un QR nuevo.'
+  },
+  LOADING_SCREEN: {
+    label: 'Reconectando',
+    tone: 'scanning',
+    icon: RefreshCcw,
+    description: 'WhatsApp esta cargando la sesion del navegador.'
+  },
   AUTH_FAILED: {
     label: 'Error',
     tone: 'error',
@@ -63,6 +75,14 @@ const statusCopy = {
     description: 'WhatsApp no esta conectado. Inicia sesion para activar la atencion automatica.'
   }
 };
+
+const connectionSteps = [
+  'Haz clic en Conectar o Reconectar.',
+  'Espera a que aparezca el codigo QR en pantalla.',
+  'Abre WhatsApp en el telefono del negocio.',
+  'Entra a Dispositivos vinculados y escanea el codigo.',
+  'Manten el telefono con internet para conservar la sesion.'
+];
 
 function getApiError(error) {
   return error?.response?.data?.message ?? 'No se pudo completar la operacion.';
@@ -135,6 +155,26 @@ function StatusHero({ status }) {
           <span>Ultima actualizacion</span>
           <strong>{formatDateTime(status?.updated_at)}</strong>
         </div>
+      </div>
+    </article>
+  );
+}
+
+function ConnectionSteps() {
+  return (
+    <article className="whatsapp-steps-card">
+      <div>
+        <h3>Como conectar el canal</h3>
+        <p>Sigue estos pasos con el telefono que atendera las conversaciones del negocio.</p>
+      </div>
+      <ol>
+        {connectionSteps.map((step) => (
+          <li key={step}>{step}</li>
+        ))}
+      </ol>
+      <div className="whatsapp-user-warning">
+        <AlertTriangle size={18} aria-hidden="true" />
+        <span>No cierres esta pantalla mientras escaneas. Si el QR vence, usa Reconectar para generar uno nuevo.</span>
       </div>
     </article>
   );
@@ -305,19 +345,19 @@ export function WhatsAppManager() {
             <Can permission="whatsapp.manage">
               <button className="primary-button" disabled={!canAct} onClick={handleStart} type="button">
                 <MessageCircle size={18} aria-hidden="true" />
-                Iniciar sesion
+                Conectar
               </button>
             </Can>
             <Can permission="whatsapp.manage">
               <button className="secondary-button" disabled={!canAct} onClick={handleRestart} type="button">
                 <RotateCcw size={18} aria-hidden="true" />
-                Reiniciar
+                Reconectar
               </button>
             </Can>
             <Can permission="whatsapp.manage">
               <button className="secondary-button" disabled={!canAct} onClick={handleDisconnect} type="button">
                 <Power size={18} aria-hidden="true" />
-                Cerrar
+                Desconectar
               </button>
             </Can>
             <button className="icon-button bordered" disabled={!canAct} onClick={handleRefresh} type="button" aria-label="Actualizar estado">
@@ -360,6 +400,8 @@ export function WhatsAppManager() {
           </article>
 
           <div className="whatsapp-side-stack">
+            <ConnectionSteps />
+
             <article className="whatsapp-detail-card compact">
               <h3>Informacion de sesion</h3>
               <dl>

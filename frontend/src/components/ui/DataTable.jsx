@@ -12,17 +12,25 @@ export function DataTable({
   className = ''
 }) {
   if (isLoading) {
-    return <LoadingState message={loadingMessage} />;
+    return (
+      <div className={`data-table-shell data-table-state-shell ${className}`}>
+        <LoadingState message={loadingMessage} />
+      </div>
+    );
   }
 
   if (!data?.length) {
-    return <EmptyState title={emptyTitle} description={emptyDescription} />;
+    return (
+      <div className={`data-table-shell data-table-state-shell ${className}`}>
+        <EmptyState title={emptyTitle} description={emptyDescription} />
+      </div>
+    );
   }
 
   return (
-    <div className={`data-table-shell overflow-x-auto ${className}`}>
+    <div className={`data-table-shell ${className}`}>
       <div className="table-wrap">
-        <table className="table table-zebra">
+        <table className="data-table">
           <thead>
             <tr>
               {columns.map((column) => (

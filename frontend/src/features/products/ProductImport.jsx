@@ -264,7 +264,7 @@ export function ProductImport({
               </div>
             </div>
             <div className="table-wrap">
-              <table>
+              <table className="data-table">
                 <thead>
                   <tr>
                     <th>Fila</th>

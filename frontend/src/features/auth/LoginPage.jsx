@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CheckCircle2, Eye, EyeOff, Loader2, LockKeyhole, Mail, ShieldCheck, Sparkles } from 'lucide-react';
+import { AlertCircle, ArrowRight, CheckCircle2, Eye, EyeOff, Loader2, LockKeyhole, Mail, ShieldCheck, Sparkles } from 'lucide-react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
 import logo from '../../../Logo.png';
@@ -96,7 +96,7 @@ export function LoginPage() {
           </span>
           <div>
             <strong>Nexus IA</strong>
-            <small>SaaS empresarial</small>
+            <small>DDS Media</small>
           </div>
         </div>
 
@@ -105,28 +105,38 @@ export function LoginPage() {
             <Sparkles size={16} aria-hidden="true" />
             Panel multiempresa
           </span>
-          <strong>Administra ventas, leads y catalogos desde un solo lugar.</strong>
-          <p>Una consola comercial para operar WhatsApp, productos, servicios y seguimiento de clientes con IA.</p>
+          <strong>Transforma cada mensaje en una oportunidad de venta.</strong>
+          <p>Gestiona productos, servicios, pedidos y clientes desde un único lugar mientras la IA y WhatsApp te ayudan a responder más rápido, dar seguimiento y vender más.</p>
         </div>
 
         <div className="login-benefits">
           <div>
             <CheckCircle2 size={18} aria-hidden="true" />
-            <span>Catalogo y CRM centralizados</span>
+            <span>Atención automatizada por WhatsApp</span>
           </div>
           <div>
             <CheckCircle2 size={18} aria-hidden="true" />
-            <span>Atencion por WhatsApp conectada al negocio</span>
+            <span>Gestión de productos y servicios</span>
           </div>
           <div>
             <CheckCircle2 size={18} aria-hidden="true" />
-            <span>Usuarios y empresas con roles controlados</span>
+            <span>Multiempresa y control de usuarios</span>
           </div>
         </div>
       </section>
 
       <section className="login-panel" aria-label="Inicio de sesion">
         <form className="login-form" onSubmit={handleSubmit} noValidate>
+          <div className="login-form-brand">
+            <span className="login-form-logo">
+              <img alt="Nexus IA" src={logo} />
+            </span>
+            <div>
+              <strong>Nexus IA</strong>
+              <small>DDS Media</small>
+            </div>
+          </div>
+
           <div className="login-heading">
             <p className="eyebrow">Acceso administrativo</p>
             <h1>Iniciar sesion</h1>
@@ -135,7 +145,7 @@ export function LoginPage() {
 
           {apiError ? (
             <div className="login-alert">
-              <ShieldCheck size={18} aria-hidden="true" />
+              <AlertCircle size={18} aria-hidden="true" />
               <span>{apiError}</span>
             </div>
           ) : null}
@@ -186,10 +196,13 @@ export function LoginPage() {
             {isSubmitting ? (
               <>
                 <Loader2 className="spin-icon" size={18} aria-hidden="true" />
-                Validando acceso...
+                <span>Validando acceso...</span>
               </>
             ) : (
-              'Entrar al panel'
+              <>
+                <span>Entrar al panel</span>
+                <ArrowRight size={18} aria-hidden="true" />
+              </>
             )}
           </button>
 

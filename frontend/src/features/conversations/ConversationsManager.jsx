@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  ArrowLeft,
   MessageCircle,
   MessageSquarePlus,
   PauseCircle,
@@ -9,7 +10,7 @@ import {
   Send,
   SlidersHorizontal
 } from 'lucide-react';
-import { ConfirmModal, EmptyState, ErrorState, StatusBadge } from '../../components/ui/index.js';
+import { ConfirmModal, EmptyState, ErrorState, LoadingState, StatusBadge } from '../../components/ui/index.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { isSuperAdminRole } from '../../config/permissions.js';
 import { fetchCompanies } from '../companies/companiesApi.js';
@@ -52,6 +53,17 @@ const conversationStateLabels = {
   closed: 'Cerrada'
 };
 
+const conversationRoleLabels = {
+  customer: 'Cliente',
+  human: 'Usuario',
+  bot: 'IA',
+  system: 'Sistema'
+};
+
+function getThreadKey(thread) {
+  return thread ? `${thread.empresa_id}-${thread.telefono_cliente}` : '';
+}
+
 function ThreadList({ selectedThread, threads, onSelect }) {
   if (!threads.length) {
     return <EmptyState title="Sin conversaciones" description="Cuando lleguen mensajes, apareceran aqui." />;
@@ -62,7 +74,7 @@ function ThreadList({ selectedThread, threads, onSelect }) {
       {threads.map((thread) => (
         <button
           className={selectedThread?.telefono_cliente === thread.telefono_cliente && selectedThread?.empresa_id === thread.empresa_id ? 'inbox-thread active' : 'inbox-thread'}
-          key={`${thread.empresa_id}-${thread.telefono_cliente}`}
+          key={getThreadKey(thread)}
           onClick={() => onSelect(thread)}
           type="button"
         >
@@ -87,16 +99,19 @@ function ThreadList({ selectedThread, threads, onSelect }) {
 function ChatMessage({ message, onDelete, onEdit }) {
   const isHuman = message.tipo_mensaje === 'human';
   const isBot = message.tipo_mensaje === 'bot';
+  const isSystem = message.tipo_mensaje === 'system';
+  const responseClass = isHuman ? 'chat-bubble human' : isSystem ? 'chat-bubble system' : 'chat-bubble bot';
+  const responseLabel = isHuman ? 'Usuario' : isBot ? 'IA' : isSystem ? 'Sistema' : 'IA / usuario';
 
   return (
     <article className="inbox-message-group">
       <div className="chat-bubble customer">
-        <span>Cliente · {formatTime(message.fecha)}</span>
+        <span>Cliente - {formatTime(message.fecha)}</span>
         <p>{message.mensaje}</p>
       </div>
       {message.respuesta ? (
-        <div className={isHuman ? 'chat-bubble agent human' : 'chat-bubble agent'}>
-          <span>{isHuman ? 'Asesor' : isBot ? 'Bot' : 'Bot / asesor'}</span>
+        <div className={responseClass}>
+          <span>{responseLabel} - {formatTime(message.fecha)}</span>
           <p>{message.respuesta}</p>
         </div>
       ) : null}
@@ -120,6 +135,7 @@ function ChatPanel({
   onReply,
   onResume,
   onClose,
+  onBack,
   reply,
   setReply,
   thread
@@ -137,11 +153,19 @@ function ChatPanel({
   return (
     <section className="inbox-chat-panel">
       <header className="inbox-chat-header professional">
-        <div>
-          <strong>{thread.telefono_cliente}</strong>
-          <span>
-            Empresa #{thread.empresa_id} - {conversationStateLabels[thread.estado_inbox] ?? thread.estado_inbox}
+        <div className="inbox-chat-contact">
+          <button className="icon-button inbox-back-button" onClick={onBack} type="button" aria-label="Volver a conversaciones">
+            <ArrowLeft size={17} aria-hidden="true" />
+          </button>
+          <span className="inbox-avatar">
+            <Phone size={17} aria-hidden="true" />
           </span>
+          <div>
+            <strong>{thread.telefono_cliente}</strong>
+            <span>
+              Empresa #{thread.empresa_id} - {conversationStateLabels[thread.estado_inbox] ?? thread.estado_inbox}
+            </span>
+          </div>
         </div>
         <div>
           <StatusBadge status={thread.estado_inbox}>
@@ -212,6 +236,7 @@ export function ConversationsManager() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [reply, setReply] = useState('');
   const [selectedThreadKey, setSelectedThreadKey] = useState('');
@@ -219,7 +244,7 @@ export function ConversationsManager() {
   const [threads, setThreads] = useState([]);
 
   const selectedThread = useMemo(
-    () => threads.find((thread) => `${thread.empresa_id}-${thread.telefono_cliente}` === selectedThreadKey) ?? threads[0] ?? null,
+    () => threads.find((thread) => getThreadKey(thread) === selectedThreadKey) ?? null,
     [selectedThreadKey, threads]
   );
 
@@ -237,6 +262,11 @@ export function ConversationsManager() {
       ]);
       setThreads(nextThreads);
       setCompanies(nextCompanies);
+      if (selectedThreadKey && !nextThreads.some((thread) => getThreadKey(thread) === selectedThreadKey)) {
+        setSelectedThreadKey('');
+        setThreadDetail(null);
+        setIsChatOpen(false);
+      }
     } catch (requestError) {
       setError(getApiError(requestError));
     } finally {
@@ -252,6 +282,7 @@ export function ConversationsManager() {
 
     try {
       setError('');
+      setThreadDetail(null);
       setThreadDetail(await fetchInboxThread({
         empresaId: thread.empresa_id,
         telefono: thread.telefono_cliente
@@ -429,31 +460,37 @@ export function ConversationsManager() {
         <div className="inbox-layout professional">
           <aside className="inbox-sidebar">
             {isLoading ? (
-              <EmptyState title="Cargando conversaciones" description="Estamos preparando la bandeja." />
+              <LoadingState message="Cargando conversaciones..." />
             ) : (
               <ThreadList
                 selectedThread={selectedThread}
                 threads={threads}
-                onSelect={(thread) => setSelectedThreadKey(`${thread.empresa_id}-${thread.telefono_cliente}`)}
+                onSelect={(thread) => {
+                  setSelectedThreadKey(getThreadKey(thread));
+                  setIsChatOpen(true);
+                }}
               />
             )}
           </aside>
 
-          <ChatPanel
-            isSending={isSending}
-            onDelete={setPendingDelete}
-            onEdit={(conversation) => {
-              setEditingConversation(conversation);
-              setIsFormOpen(true);
-            }}
-            onPause={handlePause}
-            onReply={handleReply}
-            onResume={handleResume}
-            onClose={handleClose}
-            reply={reply}
-            setReply={setReply}
-            thread={threadDetail}
-          />
+          <div className={isChatOpen ? 'inbox-chat-shell open' : 'inbox-chat-shell'}>
+            <ChatPanel
+              isSending={isSending}
+              onBack={() => setIsChatOpen(false)}
+              onDelete={setPendingDelete}
+              onEdit={(conversation) => {
+                setEditingConversation(conversation);
+                setIsFormOpen(true);
+              }}
+              onPause={handlePause}
+              onReply={handleReply}
+              onResume={handleResume}
+              onClose={handleClose}
+              reply={reply}
+              setReply={setReply}
+              thread={threadDetail}
+            />
+          </div>
         </div>
       </section>
 

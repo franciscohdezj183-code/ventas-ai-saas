@@ -1,0 +1,90 @@
+/* AdminLayout module styles. Owns the app shell, workspace, backdrop, and responsive layout behavior. */
+
+.admin-shell {
+  --sidebar-width: 280px;
+  --sidebar-collapsed-width: 96px;
+  display: block;
+  min-height: 100vh;
+  overflow-x: hidden;
+  padding-left: var(--sidebar-width);
+  background:
+    linear-gradient(135deg, rgba(24, 119, 242, 0.06), rgba(47, 191, 113, 0.045) 42%, transparent 74%),
+    var(--color-bg);
+  color: var(--color-text);
+  transition: padding-left 220ms ease;
+}
+
+.admin-shell.sidebar-collapsed {
+  padding-left: var(--sidebar-collapsed-width);
+}
+
+.admin-workspace {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-width: 0;
+  background: transparent;
+}
+
+.main-content {
+  display: grid;
+  align-content: start;
+  gap: 24px;
+  width: 100%;
+  min-width: 0;
+  padding: 30px clamp(24px, 2.4vw, 42px) 44px;
+}
+
+.sidebar-backdrop {
+  display: none;
+}
+
+:root[data-theme="dark"] .admin-shell,
+:root[data-theme="dark"] .admin-workspace,
+:root[data-theme="dark"] .main-content {
+  background: transparent;
+  color: var(--color-text);
+}
+
+@media (max-width: 1180px) and (min-width: 901px) {
+  .admin-shell:not(.sidebar-collapsed) {
+    --sidebar-width: 252px;
+  }
+}
+
+@media (max-width: 900px) {
+  .admin-shell,
+  .admin-shell.sidebar-collapsed {
+    padding-left: 0;
+  }
+
+  .sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 35;
+    display: block;
+    border: 0;
+    background: rgba(8, 15, 24, 0.56);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 180ms ease;
+  }
+
+  .sidebar-open .sidebar-backdrop {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .main-content,
+  .admin-shell.sidebar-collapsed .main-content {
+    gap: 20px;
+    padding: 22px 18px 34px;
+  }
+}
+
+@media (max-width: 620px) {
+  .main-content,
+  .admin-shell.sidebar-collapsed .main-content {
+    gap: 18px;
+    padding: 18px 14px 28px;
+  }
+}

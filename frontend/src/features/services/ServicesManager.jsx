@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Clock3, Edit3, Filter, Plus, Power, Search, Wrench } from 'lucide-react';
-import { ConfirmModal, EmptyState, ErrorState, StatusBadge } from '../../components/ui/index.js';
+import { ConfirmModal, EmptyState, ErrorState, LoadingState, StatusBadge } from '../../components/ui/index.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { isSuperAdminRole } from '../../config/permissions.js';
 import { fetchCategories } from '../categories/categoriesApi.js';
@@ -279,7 +279,7 @@ export function ServicesManager() {
         </div>
 
         {isLoading ? (
-          <EmptyState title="Cargando servicios" description="Estamos preparando el catalogo de servicios." />
+          <LoadingState message="Cargando servicios vendibles..." />
         ) : filteredServices.length ? (
           <div className="service-card-grid">
             {filteredServices.map((service) => (
@@ -310,20 +310,24 @@ export function ServicesManager() {
                 </div>
                 <footer>
                   <span>{service.empresa_nombre}</span>
-                  <div className="table-actions">
+                  <div className="table-actions service-actions">
                     <button
                       aria-label="Editar servicio"
+                      className="service-action edit"
                       onClick={() => {
                         setEditingService(service);
                         setIsFormOpen(true);
                       }}
+                      title="Editar"
                       type="button"
                     >
                       <Edit3 size={16} aria-hidden="true" />
                     </button>
                     <button
                       aria-label={service.estado === 'ACTIVO' ? 'Desactivar servicio' : 'Activar servicio'}
+                      className={service.estado === 'ACTIVO' ? 'service-action suspend' : 'service-action activate'}
                       onClick={() => setPendingToggle(service)}
+                      title={service.estado === 'ACTIVO' ? 'Desactivar' : 'Activar'}
                       type="button"
                     >
                       <Power size={16} aria-hidden="true" />
@@ -335,8 +339,8 @@ export function ServicesManager() {
           </div>
         ) : (
           <EmptyState
-            title="No hay servicios para mostrar"
-            description="Crea un servicio o ajusta los filtros para ver el catalogo."
+            title="No hay servicios vendibles"
+            description="Aqui se administran servicios que tu equipo puede vender, cotizar y ofrecer desde el panel."
           />
         )}
       </section>

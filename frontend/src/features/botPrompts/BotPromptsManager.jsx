@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Bot, Eye, FileText, Layers3, Save, Sparkles, Trash2 } from 'lucide-react';
+import { Bot, CheckCircle2, Eye, FileText, Layers3, Save, Sparkles, Trash2 } from 'lucide-react';
 import { ErrorState, LoadingState } from '../../components/ui/index.js';
 import { isSuperAdminRole } from '../../config/permissions.js';
 import { useAuth } from '../../context/AuthContext.jsx';
@@ -64,6 +64,7 @@ export function BotPromptsManager() {
   const [preview, setPreview] = useState(null);
   const [activeSection, setActiveSection] = useState('template');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -127,8 +128,10 @@ export function BotPromptsManager() {
     try {
       setIsSaving(true);
       setError('');
+      setSuccess('');
       await saveBotPromptTemplate(templateForm);
       setTemplateForm(emptyTemplate);
+      setSuccess('Plantilla guardada correctamente.');
       await loadData();
     } catch (requestError) {
       setError(getApiError(requestError));
@@ -153,7 +156,9 @@ export function BotPromptsManager() {
     try {
       setIsSaving(true);
       setError('');
+      setSuccess('');
       await saveBotResponseSettings(settingsForm);
+      setSuccess('Configuracion de IA guardada correctamente.');
       await loadData();
     } catch (requestError) {
       setError(getApiError(requestError));
@@ -165,6 +170,7 @@ export function BotPromptsManager() {
   async function handlePreview() {
     try {
       setError('');
+      setSuccess('');
       const result = await previewBotPrompt({
         ...settingsForm,
         mensaje: previewMessage,
@@ -174,6 +180,7 @@ export function BotPromptsManager() {
         mensaje_asesor: settingsForm.mensaje_asesor
       });
       setPreview(result);
+      setSuccess('Vista previa generada correctamente.');
     } catch (requestError) {
       setError(getApiError(requestError));
     }
@@ -192,13 +199,19 @@ export function BotPromptsManager() {
           </span>
           <div>
             <p className="eyebrow">Personalidad</p>
-            <h1>Prompts del Bot</h1>
-            <p>Controla plantillas, tonos, emojis y respuestas por tipo de negocio.</p>
+            <h1>Configuracion IA</h1>
+            <p>Define como habla la IA, que informacion usa y cuando debe pedir apoyo humano.</p>
           </div>
         </div>
       </div>
 
       {error ? <ErrorState message={error} onRetry={loadData} /> : null}
+      {success ? (
+        <div className="ai-settings-success" role="status" aria-live="polite">
+          <CheckCircle2 size={18} aria-hidden="true" />
+          <span>{success}</span>
+        </div>
+      ) : null}
 
       <section className="bot-prompts-summary-grid">
         <article className="bot-prompts-summary-card">
@@ -284,47 +297,71 @@ export function BotPromptsManager() {
                 <span><FileText size={20} aria-hidden="true" /></span>
                 <div>
                   <h2>Plantilla global</h2>
-                  <p>Define instrucciones, tono y formato reusable por rubro.</p>
+                  <p>Define personalidad, instrucciones y formato reusable por rubro.</p>
                 </div>
               </header>
-              <div className="bot-prompts-form-grid compact">
+              <section className="ai-settings-section-block">
+                <div className="ai-settings-section-copy">
+                  <h3>Personalidad de la IA</h3>
+                  <p>Elige como debe sonar el asistente para que sus respuestas sean consistentes.</p>
+                </div>
+                <div className="bot-prompts-form-grid compact">
+                  <label className="field-group">
+                    <span>Nombre</span>
+                    <input placeholder="Ej. Asistente comercial" value={templateForm.nombre} onChange={(event) => setTemplateForm({ ...templateForm, nombre: event.target.value })} />
+                    <small>Nombre interno para reconocer esta plantilla.</small>
+                  </label>
+                  <label className="field-group">
+                    <span>Tipo de negocio</span>
+                    <select value={templateForm.tipo_negocio} onChange={(event) => setTemplateForm({ ...templateForm, tipo_negocio: event.target.value })}>
+                      {catalog.tipos_negocio.map((type) => <option key={type} value={type}>{type}</option>)}
+                    </select>
+                    <small>Ayuda a adaptar vocabulario y ejemplos.</small>
+                  </label>
+                  <label className="field-group">
+                    <span>Tono</span>
+                    <select value={templateForm.tono} onChange={(event) => setTemplateForm({ ...templateForm, tono: event.target.value })}>
+                      {['PROFESIONAL', 'AMABLE', 'CERCANO', 'FORMAL', 'COMERCIAL'].map((tone) => <option key={tone} value={tone}>{tone}</option>)}
+                    </select>
+                    <small>Ej. Comercial para ventas directas, formal para B2B.</small>
+                  </label>
+                  <label className="toggle-field bot-prompts-toggle">
+                    <input type="checkbox" checked={templateForm.emojis_activos} onChange={(event) => setTemplateForm({ ...templateForm, emojis_activos: event.target.checked })} />
+                    <span>Usar emojis del sistema</span>
+                  </label>
+                </div>
+              </section>
+              <section className="ai-settings-section-block">
+                <div className="ai-settings-section-copy">
+                  <h3>Instrucciones</h3>
+                  <p>Reglas base que guian a la IA. No agregues datos sensibles ni contrasenas.</p>
+                </div>
+                <div className="bot-prompts-system-note">
+                  <Sparkles size={18} aria-hidden="true" />
+                  <span>Ejemplo: responde claro, pregunta una cosa a la vez y ofrece productos disponibles.</span>
+                </div>
                 <label className="field-group">
-                  <span>Nombre</span>
-                  <input value={templateForm.nombre} onChange={(event) => setTemplateForm({ ...templateForm, nombre: event.target.value })} />
+                  <span>Prompt del sistema</span>
+                  <textarea rows={6} value={templateForm.prompt_sistema} onChange={(event) => setTemplateForm({ ...templateForm, prompt_sistema: event.target.value })} />
                 </label>
+              </section>
+              <section className="ai-settings-section-block">
+                <div className="ai-settings-section-copy">
+                  <h3>Respuestas</h3>
+                  <p>Define como se estructura la respuesta que ve el cliente.</p>
+                </div>
                 <label className="field-group">
-                  <span>Tipo de negocio</span>
-                  <select value={templateForm.tipo_negocio} onChange={(event) => setTemplateForm({ ...templateForm, tipo_negocio: event.target.value })}>
-                    {catalog.tipos_negocio.map((type) => <option key={type} value={type}>{type}</option>)}
-                  </select>
+                  <span>Formato de respuesta</span>
+                  <textarea rows={7} value={templateForm.formato_respuesta} onChange={(event) => setTemplateForm({ ...templateForm, formato_respuesta: event.target.value })} />
+                  <small>Ejemplo: usa {'{items}'} para insertar productos o servicios encontrados.</small>
                 </label>
-                <label className="field-group">
-                  <span>Tono</span>
-                  <select value={templateForm.tono} onChange={(event) => setTemplateForm({ ...templateForm, tono: event.target.value })}>
-                    {['PROFESIONAL', 'AMABLE', 'CERCANO', 'FORMAL', 'COMERCIAL'].map((tone) => <option key={tone} value={tone}>{tone}</option>)}
-                  </select>
-                </label>
-                <label className="toggle-field bot-prompts-toggle">
-                  <input type="checkbox" checked={templateForm.emojis_activos} onChange={(event) => setTemplateForm({ ...templateForm, emojis_activos: event.target.checked })} />
-                  <span>Usar emojis del sistema</span>
-                </label>
+              </section>
+              <div className="ai-settings-sticky-actions">
+                <button className="primary-button" disabled={isSaving} type="submit">
+                  <Save size={18} aria-hidden="true" />
+                  {isSaving ? 'Guardando...' : 'Guardar plantilla'}
+                </button>
               </div>
-              <div className="bot-prompts-system-note">
-                <Sparkles size={18} aria-hidden="true" />
-                <span>Los emojis son defaults globales del sistema y se aplican automaticamente. No se configuran por empresa.</span>
-              </div>
-              <label className="field-group">
-                <span>Prompt del sistema</span>
-                <textarea rows={6} value={templateForm.prompt_sistema} onChange={(event) => setTemplateForm({ ...templateForm, prompt_sistema: event.target.value })} />
-              </label>
-              <label className="field-group">
-                <span>Formato de respuesta</span>
-                <textarea rows={7} value={templateForm.formato_respuesta} onChange={(event) => setTemplateForm({ ...templateForm, formato_respuesta: event.target.value })} />
-              </label>
-              <button className="primary-button" disabled={isSaving} type="submit">
-                <Save size={18} aria-hidden="true" />
-                Guardar plantilla
-              </button>
             </form>
           ) : null}
 
@@ -333,16 +370,22 @@ export function BotPromptsManager() {
               <header>
                 <span><Layers3 size={20} aria-hidden="true" /></span>
                 <div>
-                  <h2>Asignacion por empresa</h2>
-                  <p>Selecciona empresa, plantilla y mensajes comerciales puntuales.</p>
+                  <h2>Configuracion por empresa</h2>
+                  <p>Ajusta informacion del negocio, limites y automatizaciones de atencion.</p>
                 </div>
               </header>
+              <section className="ai-settings-section-block">
+                <div className="ai-settings-section-copy">
+                  <h3>Informacion del negocio</h3>
+                  <p>Estos datos ayudan a la IA a hablar como parte de la empresa correcta.</p>
+                </div>
               <div className="bot-prompts-form-grid">
                 <label className="field-group">
                   <span>Empresa</span>
                   <select value={settingsForm.empresa_id} onChange={(event) => setSettingsForm({ ...emptySettings, empresa_id: event.target.value })}>
                     {companies.map((company) => <option key={company.id} value={company.id}>{company.nombre}</option>)}
                   </select>
+                  <small>Selecciona a que negocio se aplicara esta configuracion.</small>
                 </label>
                 <label className="field-group">
                   <span>Plantilla</span>
@@ -350,28 +393,41 @@ export function BotPromptsManager() {
                     <option value="">Sin plantilla</option>
                     {catalog.templates.map((template) => <option key={template.id} value={template.id}>{template.nombre}</option>)}
                   </select>
+                  <small>Puedes dejarlo sin plantilla para usar reglas base.</small>
                 </label>
                 <label className="field-group">
                   <span>Nombre asistente</span>
-                  <input value={settingsForm.nombre_asistente ?? ''} onChange={(event) => setSettingsForm({ ...settingsForm, nombre_asistente: event.target.value })} />
+                  <input placeholder="Ej. Ana de Ventas" value={settingsForm.nombre_asistente ?? ''} onChange={(event) => setSettingsForm({ ...settingsForm, nombre_asistente: event.target.value })} />
                 </label>
                 <label className="field-group">
                   <span>Tono de respuesta</span>
-                  <input value={settingsForm.tono_respuesta ?? ''} onChange={(event) => setSettingsForm({ ...settingsForm, tono_respuesta: event.target.value })} />
+                  <input placeholder="Ej. amable, breve y comercial" value={settingsForm.tono_respuesta ?? ''} onChange={(event) => setSettingsForm({ ...settingsForm, tono_respuesta: event.target.value })} />
                 </label>
               </div>
+              </section>
+              <section className="ai-settings-section-block">
+                <div className="ai-settings-section-copy">
+                  <h3>Respuestas</h3>
+                  <p>Mensajes que el cliente vera en momentos comunes de la conversacion.</p>
+                </div>
               <label className="field-group">
                 <span>Saludo personalizado</span>
-                <textarea rows={3} value={settingsForm.saludo_personalizado ?? ''} onChange={(event) => setSettingsForm({ ...settingsForm, saludo_personalizado: event.target.value })} />
+                <textarea rows={3} placeholder="Ej. Hola, soy el asistente de la tienda. Te ayudo a encontrar lo que necesitas." value={settingsForm.saludo_personalizado ?? ''} onChange={(event) => setSettingsForm({ ...settingsForm, saludo_personalizado: event.target.value })} />
               </label>
               <label className="field-group">
                 <span>Mensaje sin resultados</span>
-                <textarea rows={3} value={settingsForm.mensaje_sin_resultados ?? ''} onChange={(event) => setSettingsForm({ ...settingsForm, mensaje_sin_resultados: event.target.value })} />
+                <textarea rows={3} placeholder="Ej. No encontre ese producto, pero puedo mostrarte opciones similares." value={settingsForm.mensaje_sin_resultados ?? ''} onChange={(event) => setSettingsForm({ ...settingsForm, mensaje_sin_resultados: event.target.value })} />
               </label>
               <label className="field-group">
                 <span>Mensaje asesor</span>
-                <textarea rows={3} value={settingsForm.mensaje_asesor ?? ''} onChange={(event) => setSettingsForm({ ...settingsForm, mensaje_asesor: event.target.value })} />
+                <textarea rows={3} placeholder="Ej. Te comunico con un asesor para ayudarte mejor." value={settingsForm.mensaje_asesor ?? ''} onChange={(event) => setSettingsForm({ ...settingsForm, mensaje_asesor: event.target.value })} />
               </label>
+              </section>
+              <section className="ai-settings-section-block">
+                <div className="ai-settings-section-copy">
+                  <h3>Limites</h3>
+                  <p>Define cuando la IA debe dejar de insistir y pedir apoyo humano.</p>
+                </div>
               <div className="bot-prompts-form-grid compact">
                 <label className="field-group">
                   <span>Tiempo handoff (min)</span>
@@ -381,15 +437,22 @@ export function BotPromptsManager() {
                     value={settingsForm.handoff_timeout_minutos ?? 4}
                     onChange={(event) => setSettingsForm({ ...settingsForm, handoff_timeout_minutos: event.target.value })}
                   />
+                  <small>Minutos antes de escalar a un asesor.</small>
                 </label>
                 <label className="field-group">
                   <span>Mensaje asesor acepta</span>
-                  <input value={settingsForm.handoff_mensaje_tomar ?? ''} onChange={(event) => setSettingsForm({ ...settingsForm, handoff_mensaje_tomar: event.target.value })} />
+                  <input placeholder="Ej. Un asesor tomo la conversacion." value={settingsForm.handoff_mensaje_tomar ?? ''} onChange={(event) => setSettingsForm({ ...settingsForm, handoff_mensaje_tomar: event.target.value })} />
                 </label>
               </div>
+              </section>
+              <section className="ai-settings-section-block">
+                <div className="ai-settings-section-copy">
+                  <h3>Automatizacion</h3>
+                  <p>Configura mensajes de traspaso y palabras equivalentes que puede reconocer la IA.</p>
+                </div>
               <label className="field-group">
                 <span>Mensaje asesor no disponible</span>
-                <textarea rows={2} value={settingsForm.handoff_mensaje_declinar ?? ''} onChange={(event) => setSettingsForm({ ...settingsForm, handoff_mensaje_declinar: event.target.value })} />
+                <textarea rows={2} placeholder="Ej. En este momento no hay asesores disponibles. Te responderemos lo antes posible." value={settingsForm.handoff_mensaje_declinar ?? ''} onChange={(event) => setSettingsForm({ ...settingsForm, handoff_mensaje_declinar: event.target.value })} />
               </label>
               <label className="field-group">
                 <span>Sinónimos por negocio (JSON)</span>
@@ -399,11 +462,15 @@ export function BotPromptsManager() {
                   value={settingsForm.sinonimos_json ?? ''}
                   onChange={(event) => setSettingsForm({ ...settingsForm, sinonimos_json: event.target.value })}
                 />
+                <small>Usa JSON valido. Sirve para reconocer formas distintas de pedir lo mismo.</small>
               </label>
-              <button className="primary-button" disabled={isSaving || !settingsForm.empresa_id} type="submit">
-                <Bot size={18} aria-hidden="true" />
-                Guardar asignacion
-              </button>
+              </section>
+              <div className="ai-settings-sticky-actions">
+                <button className="primary-button" disabled={isSaving || !settingsForm.empresa_id} type="submit">
+                  <Bot size={18} aria-hidden="true" />
+                  {isSaving ? 'Guardando...' : 'Guardar configuracion IA'}
+                </button>
+              </div>
             </form>
           ) : null}
 
@@ -418,7 +485,8 @@ export function BotPromptsManager() {
               </header>
               <label className="field-group">
                 <span>Mensaje de prueba</span>
-                <input value={previewMessage} onChange={(event) => setPreviewMessage(event.target.value)} />
+                <input placeholder="Ej. Tienes salas grises?" value={previewMessage} onChange={(event) => setPreviewMessage(event.target.value)} />
+                <small>La prueba no envia mensajes al cliente; solo muestra como responderia la IA.</small>
               </label>
               <button className="secondary-button" type="button" onClick={handlePreview}>
                 <Eye size={18} aria-hidden="true" />

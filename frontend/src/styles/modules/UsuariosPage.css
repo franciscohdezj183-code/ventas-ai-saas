@@ -1,0 +1,514 @@
+/* UsuariosPage module styles. Owns user administration, role badges, permission summaries, forms, and responsive table UI. */
+
+.users-page {
+  gap: 20px;
+}
+
+.users-unified-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 20px;
+  align-items: center;
+  padding: 22px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background:
+    linear-gradient(135deg, rgba(24, 119, 242, 0.08), rgba(47, 191, 113, 0.07)),
+    #ffffff;
+  box-shadow: var(--shadow-sm);
+}
+
+.users-unified-header > div:first-child,
+.users-unified-header > div:last-child {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.users-unified-header > div:last-child {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.users-header-icon {
+  display: inline-grid;
+  width: 50px;
+  height: 50px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: var(--radius);
+  background: var(--color-blue-soft);
+  color: var(--color-blue);
+}
+
+.users-unified-header h1 {
+  margin: 2px 0 6px;
+  font-size: 2rem;
+  letter-spacing: 0;
+  line-height: 1.05;
+}
+
+.users-header-metric {
+  display: grid;
+  min-width: 160px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: #ffffff;
+}
+
+.users-header-metric strong {
+  color: var(--color-text);
+  font-size: 1.45rem;
+  line-height: 1;
+}
+
+.users-header-metric span {
+  color: var(--color-muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.users-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.user-summary-card {
+  display: grid;
+  gap: 8px;
+  min-height: 132px;
+  padding: 18px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: #ffffff;
+  box-shadow: var(--shadow-sm);
+}
+
+.user-summary-card span {
+  color: var(--color-muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.user-summary-card strong {
+  color: var(--color-text);
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.user-summary-card p {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+.user-summary-card.active {
+  border-color: #bfe8d2;
+  background: linear-gradient(135deg, #ffffff, var(--color-green-soft));
+}
+
+.user-summary-card.inactive {
+  border-color: #f1b7b1;
+  background: linear-gradient(135deg, #ffffff, var(--color-danger-soft));
+}
+
+.user-summary-card.admin {
+  border-color: #b9cff7;
+  background: linear-gradient(135deg, #ffffff, var(--color-blue-soft));
+}
+
+.users-directory-panel {
+  display: grid;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.users-toolbar {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid var(--color-border);
+  background: #ffffff;
+}
+
+.user-filter-group {
+  display: grid;
+  grid-template-columns: 22px minmax(150px, 1fr) minmax(130px, 0.8fr) minmax(130px, 0.8fr);
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface-soft);
+}
+
+.user-filter-group svg {
+  color: var(--color-muted);
+}
+
+.user-filter-group select {
+  min-height: 36px;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-weight: 800;
+  outline: 0;
+}
+
+.users-visible-count {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--color-muted);
+  font-size: 0.82rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.user-table-identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 220px;
+}
+
+.user-table-identity > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.role-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  width: max-content;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--color-surface-soft);
+  color: var(--color-text);
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.role-pill.super_admin {
+  background: var(--color-blue-soft);
+  color: var(--color-blue-dark);
+}
+
+.role-pill.owner {
+  background: var(--color-green-soft);
+  color: var(--color-green-dark);
+}
+
+@media (max-width: 1180px) {
+
+  .users-summary-grid,
+  .categories-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .users-unified-header > div:last-child {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .user-filter-group {
+    grid-template-columns: 22px 1fr 1fr 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+
+  .users-unified-header {
+    padding: 18px;
+  }
+
+  .users-unified-header > div:first-child {
+    align-items: flex-start;
+  }
+
+  .users-unified-header h1 {
+    font-size: 1.65rem;
+  }
+
+  .users-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .user-filter-group {
+    grid-template-columns: 1fr;
+    padding: 10px;
+  }
+}
+
+/* Professional user administration refresh layer. */
+.users-page {
+  --users-card-bg: color-mix(in srgb, var(--color-surface) 96%, transparent);
+  --users-border: color-mix(in srgb, var(--color-border) 78%, transparent);
+}
+
+.users-unified-header {
+  position: relative;
+  overflow: hidden;
+  min-height: 148px;
+  border-color: var(--users-border);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(24, 119, 242, 0.12), rgba(47, 191, 113, 0.09)),
+    var(--color-surface);
+}
+
+.users-unified-header::after {
+  position: absolute;
+  inset: auto 28px -58px auto;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-blue) 12%, transparent);
+  content: "";
+}
+
+.users-unified-header > div {
+  position: relative;
+  z-index: 1;
+}
+
+.users-header-icon {
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm);
+}
+
+.users-unified-header h1 {
+  color: var(--color-heading);
+  font-size: clamp(1.75rem, 2.2vw, 2.35rem);
+}
+
+.users-unified-header p:not(.eyebrow) {
+  max-width: 720px;
+  margin: 0;
+  color: var(--color-muted);
+  line-height: 1.52;
+}
+
+.user-summary-card {
+  position: relative;
+  overflow: hidden;
+  min-height: 122px;
+  border-color: var(--users-border);
+  border-radius: 8px;
+  background: var(--users-card-bg);
+}
+
+.user-summary-card::after {
+  position: absolute;
+  inset: auto -28px -42px auto;
+  width: 104px;
+  height: 104px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-blue) 8%, transparent);
+  content: "";
+}
+
+.user-summary-card.active::after {
+  background: color-mix(in srgb, var(--color-green) 12%, transparent);
+}
+
+.user-summary-card.inactive::after {
+  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+}
+
+.user-summary-card.admin::after {
+  background: color-mix(in srgb, var(--color-blue) 14%, transparent);
+}
+
+.users-directory-panel {
+  border-color: var(--users-border);
+  border-radius: 8px;
+  background: var(--users-card-bg);
+  box-shadow: var(--shadow-sm);
+}
+
+.users-toolbar {
+  grid-template-columns: minmax(280px, 1fr) minmax(420px, auto) auto;
+  border-bottom-color: var(--users-border);
+  background: transparent;
+}
+
+.users-toolbar .product-search,
+.user-filter-group,
+.users-visible-count {
+  border-color: var(--users-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+
+.users-data-table .table-wrap {
+  overflow-x: auto;
+}
+
+.users-data-table .data-table th {
+  background: color-mix(in srgb, var(--color-surface-soft) 86%, var(--color-surface));
+  color: var(--color-muted);
+  font-size: 0.74rem;
+}
+
+.users-data-table .data-table td {
+  height: 64px;
+}
+
+.user-table-identity strong {
+  display: block;
+  color: var(--color-heading);
+  font-size: 0.95rem;
+}
+
+.user-avatar-initial {
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--color-blue), color-mix(in srgb, var(--color-blue) 70%, var(--color-green)));
+  color: #ffffff;
+  box-shadow: var(--shadow-sm);
+}
+
+.role-pill {
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 999px;
+  text-transform: uppercase;
+}
+
+.role-pill.seller {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+}
+
+.role-pill.support {
+  background: #eef2ff;
+  color: #4f46e5;
+}
+
+.role-pill.viewer {
+  background: #eef3f8;
+  color: var(--color-muted);
+}
+
+.permission-summary {
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  max-width: 220px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--users-border);
+  border-radius: 999px;
+  background: var(--color-surface-soft);
+  color: var(--color-muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-actions {
+  justify-content: flex-end;
+}
+
+.user-action {
+  border-radius: 8px;
+}
+
+.user-action.edit {
+  color: var(--color-green-dark);
+}
+
+.user-action.suspend {
+  color: var(--color-warning);
+}
+
+.user-action.activate {
+  color: var(--color-green-dark);
+}
+
+.user-action.delete {
+  color: var(--color-danger);
+}
+
+.catalog-modal .company-form {
+  border-bottom: 0;
+  padding: 20px 0 0;
+}
+
+.catalog-modal .company-form .form-grid {
+  gap: 16px;
+}
+
+.catalog-modal .company-form .field-group input,
+.catalog-modal .company-form .field-group select {
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+
+:root[data-theme="dark"] .users-page {
+  --users-card-bg: var(--color-surface);
+  --users-border: var(--color-border);
+}
+
+:root[data-theme="dark"] .users-unified-header,
+:root[data-theme="dark"] .user-summary-card,
+:root[data-theme="dark"] .users-directory-panel,
+:root[data-theme="dark"] .users-toolbar .product-search,
+:root[data-theme="dark"] .user-filter-group,
+:root[data-theme="dark"] .users-visible-count {
+  border-color: var(--users-border);
+  background: var(--users-card-bg);
+}
+
+:root[data-theme="dark"] .role-pill.support {
+  background: color-mix(in srgb, #6366f1 16%, var(--color-surface));
+  color: #c7d2fe;
+}
+
+@media (max-width: 1180px) {
+  .users-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .users-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .users-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .users-unified-header,
+  .users-unified-header > div:first-child {
+    align-items: flex-start;
+  }
+
+  .users-unified-header > div:first-child {
+    flex-direction: column;
+  }
+
+  .user-filter-group {
+    grid-template-columns: 1fr;
+  }
+
+  .permission-summary {
+    max-width: 180px;
+  }
+}

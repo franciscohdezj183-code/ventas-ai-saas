@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { BarChart } from '@mui/x-charts/BarChart';
+import { PieChart } from '@mui/x-charts/PieChart';
 import {
   Activity,
   CalendarDays,
@@ -11,14 +13,14 @@ import {
   TrendingUp,
   UsersRound
 } from 'lucide-react';
-import { ConfirmModal, ErrorState, StatusBadge } from '../../components/ui/index.js';
+import { ConfirmModal, EmptyState, ErrorState } from '../../components/ui/index.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { isSuperAdminRole } from '../../config/permissions.js';
 import { fetchCompanies } from '../companies/companiesApi.js';
 import { createLead, deleteLead, fetchLeads, fetchLeadStats, updateLead } from './leadsApi.js';
 import { LeadForm } from './LeadForm.jsx';
 import { LeadStats } from './LeadStats.jsx';
-import { CRM_STATES, getLeadPriority, normalizeLeadState, stateLabels, LeadTable } from './LeadTable.jsx';
+import { CRM_STATES, getLeadPriority, LeadStageBadge, normalizeLeadState, stateLabels, LeadTable } from './LeadTable.jsx';
 
 const emptyStats = {
   total: 0,
@@ -34,11 +36,25 @@ function getApiError(error) {
 }
 
 function formatDateTime(value) {
-  return value ? new Date(value).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }) : '-';
+  const date = parseLeadDate(value);
+  return date ? date.toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }) : '-';
+}
+
+function parseLeadDate(value) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function leadOrigin(lead) {
   return lead.origen ?? 'Panel';
+}
+
+function leadResponsible(lead) {
+  return lead.responsable_nombre ?? lead.responsable ?? lead.usuario_nombre ?? lead.assigned_to_name ?? '';
 }
 
 function formatPercent(value) {
@@ -94,12 +110,15 @@ export function LeadsManager() {
     const query = filters.query.trim().toLowerCase();
 
     return leads.filter((lead) => {
-      const createdDate = lead.fecha_creacion ? new Date(lead.fecha_creacion).toISOString().slice(0, 10) : '';
+      const createdAt = parseLeadDate(lead.fecha_creacion);
+      const createdDate = createdAt ? createdAt.toISOString().slice(0, 10) : '';
       const matchesQuery =
         !query ||
         lead.nombre_cliente?.toLowerCase().includes(query) ||
         lead.telefono?.toLowerCase().includes(query) ||
-        lead.interes?.toLowerCase().includes(query);
+        lead.interes?.toLowerCase().includes(query) ||
+        leadOrigin(lead).toLowerCase().includes(query) ||
+        leadResponsible(lead).toLowerCase().includes(query);
       const matchesState = !filters.estado || normalizeLeadState(lead.estado) === filters.estado;
       const matchesOrigin = !filters.origen || leadOrigin(lead) === filters.origen;
       const matchesFrom = !filters.dateFrom || createdDate >= filters.dateFrom;
@@ -111,6 +130,29 @@ export function LeadsManager() {
 
   const origins = useMemo(() => Array.from(new Set(leads.map(leadOrigin))), [leads]);
   const commercialSnapshot = useMemo(() => buildCommercialSnapshot(filteredLeads), [filteredLeads]);
+  const leadsByState = useMemo(() => {
+    const totals = new Map(CRM_STATES.map((state) => [stateLabels[state], 0]));
+
+    filteredLeads.forEach((lead) => {
+      const state = normalizeLeadState(lead.estado);
+      const label = stateLabels[state] ?? state;
+      totals.set(label, (totals.get(label) ?? 0) + 1);
+    });
+
+    return [...totals.entries()]
+      .filter(([, value]) => value > 0)
+      .map(([label, value], id) => ({ id, label, value }));
+  }, [filteredLeads]);
+  const leadsByOrigin = useMemo(() => {
+    const totals = new Map();
+
+    filteredLeads.forEach((lead) => {
+      const origin = leadOrigin(lead);
+      totals.set(origin, (totals.get(origin) ?? 0) + 1);
+    });
+
+    return [...totals.entries()].map(([origin, total]) => ({ origin, total }));
+  }, [filteredLeads]);
   const priorityLeads = useMemo(
     () => [...filteredLeads]
       .sort((first, second) => Number(second.score ?? 0) - Number(first.score ?? 0))
@@ -275,6 +317,39 @@ export function LeadsManager() {
         </div>
       </section>
 
+      <section className="crm-insights-grid" aria-label="Graficas de leads">
+        <article className="crm-chart-card">
+          <div>
+            <h2>Leads por etapa</h2>
+            <p>Distribucion del pipeline filtrado.</p>
+          </div>
+          {leadsByState.length ? (
+            <PieChart
+              height={220}
+              series={[{ data: leadsByState, innerRadius: 58, outerRadius: 92, paddingAngle: 3 }]}
+              slotProps={{ legend: { direction: 'row', position: { horizontal: 'middle', vertical: 'bottom' } } }}
+            />
+          ) : (
+            <EmptyState description="Un lead es un posible cliente que dejo datos de contacto o mostro interes comercial." title="Sin leads por etapa" />
+          )}
+        </article>
+        <article className="crm-chart-card">
+          <div>
+            <h2>Leads por origen</h2>
+            <p>Canales que generan oportunidades.</p>
+          </div>
+          {leadsByOrigin.length ? (
+            <BarChart
+              height={220}
+              series={[{ data: leadsByOrigin.map((item) => item.total), label: 'Leads' }]}
+              xAxis={[{ data: leadsByOrigin.map((item) => item.origin), scaleType: 'band' }]}
+            />
+          ) : (
+            <EmptyState description="Cuando entren leads desde conversaciones, WhatsApp o el panel, veras su origen aqui." title="Sin origenes todavia" />
+          )}
+        </article>
+      </section>
+
       <section className="panel-section crm-panel">
         <div className="crm-toolbar">
           <label className="product-search" htmlFor="lead-search">
@@ -399,9 +474,7 @@ export function LeadsManager() {
             </button>
             <div className="lead-detail-header">
               <div>
-                <StatusBadge status={normalizeLeadState(selectedLead.estado)}>
-                  {stateLabels[normalizeLeadState(selectedLead.estado)]}
-                </StatusBadge>
+                <LeadStageBadge state={normalizeLeadState(selectedLead.estado)} />
                 <h2 id="lead-detail-title">{selectedLead.nombre_cliente}</h2>
                 <a href={`tel:${selectedLead.telefono}`}>{selectedLead.telefono}</a>
               </div>
@@ -419,6 +492,10 @@ export function LeadsManager() {
               <div>
                 <dt>Origen</dt>
                 <dd>{leadOrigin(selectedLead)}</dd>
+              </div>
+              <div>
+                <dt>Responsable</dt>
+                <dd>{leadResponsible(selectedLead) || '-'}</dd>
               </div>
               <div>
                 <dt>Empresa</dt>

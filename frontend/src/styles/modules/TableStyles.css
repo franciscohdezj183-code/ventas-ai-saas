@@ -1,0 +1,233 @@
+/* Shared professional table styles. */
+
+.data-table-shell,
+.data-table-wrapper {
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.data-table-state-shell {
+  padding: 18px;
+}
+
+.data-table-shell .state-card,
+.data-table-wrapper .state-card {
+  margin: 0;
+  border-style: dashed;
+  background: var(--color-surface-soft);
+}
+
+.table-wrap,
+.data-table-wrapper {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-muted) 38%, transparent) transparent;
+}
+
+.table-wrap::-webkit-scrollbar,
+.data-table-wrapper::-webkit-scrollbar {
+  height: 10px;
+}
+
+.table-wrap::-webkit-scrollbar-thumb,
+.data-table-wrapper::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-muted) 28%, transparent);
+}
+
+.data-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.data-table th,
+.data-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
+  color: var(--color-text);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.data-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: color-mix(in srgb, var(--color-surface-soft) 92%, var(--color-surface));
+  color: var(--color-muted);
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.data-table td {
+  font-size: 0.92rem;
+}
+
+.data-table tbody tr {
+  transition:
+    background 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.data-table tbody tr:hover {
+  background: color-mix(in srgb, var(--color-blue-soft) 48%, transparent);
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.data-table td:last-child,
+.data-table th:last-child {
+  text-align: right;
+}
+
+.table-message {
+  padding: 28px;
+  color: var(--color-muted);
+  text-align: center;
+}
+
+.muted-cell {
+  display: block;
+  margin-top: 4px;
+  color: var(--color-muted);
+  font-size: 0.84rem;
+}
+
+.table-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: max-content;
+}
+
+.table-actions button,
+.table-actions .icon-button {
+  display: inline-grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    color 140ms ease,
+    transform 140ms ease;
+}
+
+.table-actions button:hover,
+.table-actions .icon-button:hover {
+  border-color: color-mix(in srgb, var(--color-blue) 24%, var(--color-border));
+  background: var(--color-blue-soft);
+  color: var(--color-blue-dark);
+  transform: translateY(-1px);
+}
+
+.table-actions button:disabled,
+.table-actions .icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+  transform: none;
+}
+
+.status-badge,
+.status-pill,
+.plan-badge,
+.stock-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 850;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.status-badge,
+.status-pill {
+  background: color-mix(in srgb, var(--color-muted) 12%, var(--color-surface));
+  color: var(--color-text);
+}
+
+.status-badge.success,
+.status-pill.active {
+  background: var(--color-green-soft);
+  color: var(--color-green-dark);
+}
+
+.status-badge.danger,
+.status-pill.inactive {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.status-badge.warning {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+}
+
+.status-badge.info {
+  background: var(--color-blue-soft);
+  color: var(--color-blue-dark);
+}
+
+:root[data-theme="dark"] .data-table-shell,
+:root[data-theme="dark"] .data-table-wrapper {
+  border-color: var(--color-border);
+  background: var(--color-surface);
+}
+
+:root[data-theme="dark"] .data-table th {
+  background: var(--color-surface-soft);
+  color: var(--color-muted);
+}
+
+:root[data-theme="dark"] .data-table td {
+  color: var(--color-text);
+}
+
+:root[data-theme="dark"] .data-table tbody tr:hover {
+  background: color-mix(in srgb, var(--color-blue) 8%, var(--color-surface));
+}
+
+@media (max-width: 760px) {
+  .data-table-shell,
+  .data-table-wrapper {
+    border-radius: 8px;
+  }
+
+  .data-table {
+    min-width: 680px;
+  }
+
+  .data-table th,
+  .data-table td {
+    padding: 12px 14px;
+  }
+
+  .table-actions {
+    justify-content: flex-start;
+  }
+}

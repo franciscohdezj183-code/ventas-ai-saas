@@ -8,6 +8,7 @@ import {
   OnboardingPage,
   OrdersPage,
   OwnerCompanyPage,
+  PlansPage,
   ProductsPage,
   ReportsPage,
   ServicesPage,
@@ -58,7 +59,7 @@ export function App() {
           path="suscripciones"
           element={
             <RoleRoute roles={['super_admin']}>
-              <CompaniesPage />
+              <PlansPage />
             </RoleRoute>
           }
         />

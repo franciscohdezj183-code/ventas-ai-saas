@@ -1,5 +1,5 @@
 import { ArrowRight, Eye, Pencil, Phone, Star, Trash2 } from 'lucide-react';
-import { DataTable, EmptyState, StatusBadge } from '../../components/ui/index.js';
+import { DataTable, EmptyState } from '../../components/ui/index.js';
 
 export const CRM_STATES = ['NUEVO', 'CONTACTADO', 'COTIZADO', 'GANADO', 'PERDIDO'];
 
@@ -57,16 +57,25 @@ function formatDate(value) {
   return value ? new Date(value).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }) : '-';
 }
 
+function leadResponsible(lead) {
+  return lead.responsable_nombre ?? lead.responsable ?? lead.usuario_nombre ?? lead.assigned_to_name ?? '';
+}
+
+export function LeadStageBadge({ state }) {
+  const normalizedState = normalizeLeadState(state);
+  return <span className={`lead-stage-badge ${normalizedState.toLowerCase()}`}>{stateLabels[normalizedState]}</span>;
+}
+
 function LeadActions({ lead, onDelete, onEdit, onView }) {
   return (
     <div className="table-actions lead-actions">
-      <button aria-label="Ver lead" onClick={() => onView(lead)} type="button">
+      <button aria-label="Ver lead" className="lead-action view" onClick={() => onView(lead)} type="button">
         <Eye size={16} aria-hidden="true" />
       </button>
-      <button aria-label="Editar lead" onClick={() => onEdit(lead)} type="button">
+      <button aria-label="Editar lead" className="lead-action edit" onClick={() => onEdit(lead)} type="button">
         <Pencil size={16} aria-hidden="true" />
       </button>
-      <button aria-label="Eliminar lead" onClick={() => onDelete(lead)} type="button">
+      <button aria-label="Eliminar lead" className="lead-action delete" onClick={() => onDelete(lead)} type="button">
         <Trash2 size={16} aria-hidden="true" />
       </button>
     </div>
@@ -109,7 +118,7 @@ function LeadCard({ lead, onDelete, onEdit, onStageChange, onView }) {
           <strong>{lead.nombre_cliente}</strong>
           <span>{lead.interes}</span>
         </div>
-        <StatusBadge status={state}>{stateLabels[state]}</StatusBadge>
+        <LeadStageBadge state={state} />
       </div>
       <div className="crm-lead-score-row">
         <LeadScore lead={lead} />
@@ -122,6 +131,7 @@ function LeadCard({ lead, onDelete, onEdit, onStageChange, onView }) {
       <div className="crm-lead-meta">
         <span>{lead.origen ?? 'Panel'}</span>
         <span>{formatDate(lead.fecha_creacion)}</span>
+        {leadResponsible(lead) ? <span>{leadResponsible(lead)}</span> : null}
         {lead.empresa_nombre ? <span>{lead.empresa_nombre}</span> : null}
       </div>
       {lead.notas ? <p>{lead.notas}</p> : null}
@@ -141,7 +151,7 @@ export function LeadKanban({ leads, onDelete, onEdit, onStageChange, onView }) {
     return (
       <EmptyState
         title="Sin leads en el pipeline"
-        description="Los prospectos apareceran aqui cuando entren desde el bot o el panel."
+        description="Un lead es un posible cliente: una persona que dejo contacto o mostro interes para que tu equipo le de seguimiento."
       />
     );
   }
@@ -190,7 +200,7 @@ export function LeadTable({ isLoading, leads, onDelete, onEdit, onStageChange, o
   const columns = [
     {
       key: 'cliente',
-      header: 'Cliente',
+      header: 'Nombre',
       render: (lead) => (
         <div className="lead-client-cell">
           <strong>{lead.nombre_cliente}</strong>
@@ -198,13 +208,13 @@ export function LeadTable({ isLoading, leads, onDelete, onEdit, onStageChange, o
         </div>
       )
     },
-    { key: 'telefono', header: 'Telefono', render: (lead) => <PhoneLink phone={lead.telefono} /> },
+    { key: 'telefono', header: 'Contacto', render: (lead) => <PhoneLink phone={lead.telefono} /> },
     {
       key: 'estado',
       header: 'Estado',
       render: (lead) => {
         const state = normalizeLeadState(lead.estado);
-        return <StatusBadge status={state}>{stateLabels[state]}</StatusBadge>;
+        return <LeadStageBadge state={state} />;
       }
     },
     {
@@ -217,6 +227,7 @@ export function LeadTable({ isLoading, leads, onDelete, onEdit, onStageChange, o
     },
     { key: 'score', header: 'Score', render: (lead) => <LeadScore lead={lead} /> },
     { key: 'origen', header: 'Origen', render: (lead) => lead.origen ?? 'Panel' },
+    { key: 'responsable', header: 'Responsable', render: (lead) => leadResponsible(lead) || '-' },
     { key: 'fecha', header: 'Fecha', render: (lead) => formatDate(lead.fecha_creacion) },
     {
       key: 'acciones',
@@ -234,7 +245,7 @@ export function LeadTable({ isLoading, leads, onDelete, onEdit, onStageChange, o
       className="crm-leads-table"
       columns={columns}
       data={leads}
-      emptyDescription="Los interesados creados por el bot y el panel apareceran aqui."
+      emptyDescription="Un lead es un posible cliente que dejo datos de contacto o mostro interes; aqui podras darle seguimiento."
       emptyTitle="No hay leads registrados"
       isLoading={isLoading}
       loadingMessage="Cargando leads..."

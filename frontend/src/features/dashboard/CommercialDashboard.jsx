@@ -1,24 +1,28 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
-  Activity,
-  BarChart3,
+  ArrowRight,
   Bot,
+  CalendarDays,
   CheckCircle2,
   CircleOff,
-  Clock3,
-  Flame,
+  ClipboardList,
+  MessageCircle,
   MessageSquareText,
-  PackageCheck,
-  PackageSearch,
-  PlugZap,
-  ShieldCheck,
+  Package,
+  Sparkles,
   TrendingUp,
+  UserPlus,
   Users,
   Wrench
 } from 'lucide-react';
+import { BarChart } from '@mui/x-charts/BarChart';
+import { LineChart } from '@mui/x-charts/LineChart';
+import { PieChart } from '@mui/x-charts/PieChart';
+import { SparkLineChart } from '@mui/x-charts/SparkLineChart';
 import { EmptyState, ErrorState, LoadingState } from '../../components/ui/index.js';
+import { hasPermission } from '../../config/permissions.js';
 import { useAuth } from '../../context/AuthContext.jsx';
-import { hasPermission, normalizeRole } from '../../config/permissions.js';
 import { fetchCommercialDashboard } from './dashboardApi.js';
 
 function today() {
@@ -32,10 +36,6 @@ function thirtyDaysAgo() {
 }
 
 const emptyDashboard = {
-  date_range: {
-    fecha_inicio: thirtyDaysAgo(),
-    fecha_fin: today()
-  },
   totals: {
     conversaciones_hoy: 0,
     leads_nuevos: 0,
@@ -58,49 +58,20 @@ const emptyDashboard = {
     }
   },
   lead_states: [],
-  scoring_leads: [],
   daily_activity: [],
   productos_mas_consultados: [],
   servicios_mas_consultados: [],
   oportunidades_prioritarias: [],
-  optimizacion_industria: [],
   recomendaciones: [],
   leads_recientes: [],
   actividad_reciente: [],
-  errores_recientes: [],
   ai_usage: {
     month: today().slice(0, 7),
     total_requests: 0,
-    tokens_input: 0,
-    tokens_output: 0,
     total_tokens: 0,
-    costo_estimado: 0,
     limit: null,
-    remaining: null,
-    by_company: []
+    remaining: null
   }
-};
-
-const emptyIntelligence = {
-  salud_negocio: 0,
-  estado: 'RIESGO',
-  conversaciones: {
-    tasa_respuesta: 0,
-    conversaciones_sin_respuesta: 0,
-    clientes_unicos: 0
-  },
-  catalogo: {
-    salud_catalogo: 0,
-    productos_sin_stock: 0,
-    productos_bajo_stock: 0
-  },
-  pipeline: {
-    leads_abiertos: 0,
-    leads_abiertos_2d: 0,
-    leads_abiertos_7d: 0
-  },
-  riesgos: [],
-  focos: []
 };
 
 const leadStateLabels = {
@@ -112,441 +83,326 @@ const leadStateLabels = {
   PERDIDO: 'Perdidos'
 };
 
-const priorityLabels = {
-  CRITICA: 'Critica',
-  ALTA: 'Alta',
-  MEDIA: 'Media',
-  BAJA: 'Baja'
-};
+function formatDate(value) {
+  return value
+    ? new Date(`${value}T00:00:00`).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })
+    : '-';
+}
 
 function formatDateTime(value) {
-  return value ? new Date(value).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }) : '-';
+  return value ? new Date(value).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }) : '-';
 }
 
 function formatCurrency(value) {
   return Number(value ?? 0).toLocaleString('es-MX', {
     currency: 'MXN',
-    maximumFractionDigits: 4,
+    maximumFractionDigits: 0,
     style: 'currency'
   });
 }
 
-function maxValue(items, key) {
-  return Math.max(...items.map((item) => Number(item[key] ?? 0)), 1);
+function compactNumber(value) {
+  return Number(value ?? 0).toLocaleString('es-MX', { notation: Number(value ?? 0) >= 10000 ? 'compact' : 'standard' });
 }
 
-function MetricTile({ icon: Icon, label, value, detail, tone = 'blue' }) {
+function sumValues(items, keys) {
+  return items.reduce((sum, item) => {
+    const value = keys.map((key) => Number(item[key] ?? 0)).find((candidate) => candidate > 0) ?? 0;
+    return sum + value;
+  }, 0);
+}
+
+function statusLabel(isOk, okText, badText) {
+  return isOk ? okText : badText;
+}
+
+function ExecutiveHeader({ aiUsage, companyName, filters, isWhatsAppConnected, onFilterChange, onFilterSubmit, isLoading, user, whatsapp }) {
+  const userName = user?.nombre ?? 'Administrador';
+  const aiHasActivity = Number(aiUsage.total_requests ?? 0) > 0 || Number(aiUsage.total_tokens ?? 0) > 0;
+  const currentDate = new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
+
   return (
-    <article className={`enterprise-metric ${tone}`}>
-      <span className="enterprise-metric-icon">
-        <Icon size={20} aria-hidden="true" />
-      </span>
+    <section className="dashboard-executive-header">
+      <div className="dashboard-header-copy">
+        <span className="dashboard-date-pill">
+          <CalendarDays size={16} aria-hidden="true" />
+          {currentDate}
+        </span>
+        <h1>Buen dia, {userName}</h1>
+        <p>Resumen ejecutivo de {companyName}. Ventas, pipeline, conversaciones y actividad operativa en una sola vista.</p>
+      </div>
+
+      <div className="dashboard-status-panel">
+        <span className={isWhatsAppConnected ? 'status-chip connected' : 'status-chip disconnected'}>
+          {isWhatsAppConnected ? <CheckCircle2 size={16} aria-hidden="true" /> : <CircleOff size={16} aria-hidden="true" />}
+          {statusLabel(isWhatsAppConnected, 'WhatsApp conectado', 'WhatsApp desconectado')}
+        </span>
+        <span className={aiHasActivity ? 'status-chip connected' : 'status-chip neutral'}>
+          <Bot size={16} aria-hidden="true" />
+          {aiHasActivity ? 'IA activa' : 'IA sin actividad'}
+        </span>
+        <small>{whatsapp.conectadas ?? 0}/{whatsapp.total ?? 0} sesiones conectadas</small>
+      </div>
+
+      <form className="dashboard-date-filter" onSubmit={onFilterSubmit}>
+        <label htmlFor="dashboard-start-date">
+          <span>Inicio</span>
+          <input id="dashboard-start-date" name="fecha_inicio" onChange={onFilterChange} type="date" value={filters.fecha_inicio} />
+        </label>
+        <label htmlFor="dashboard-end-date">
+          <span>Fin</span>
+          <input id="dashboard-end-date" name="fecha_fin" onChange={onFilterChange} type="date" value={filters.fecha_fin} />
+        </label>
+        <button className="dashboard-primary-button" disabled={isLoading} type="submit">
+          {isLoading ? 'Actualizando...' : 'Actualizar'}
+        </button>
+      </form>
+    </section>
+  );
+}
+
+function KpiCard({ detail, icon: Icon, label, tone = 'green', trend = [], value }) {
+  return (
+    <article className={`dashboard-kpi-card ${tone}`}>
+      <div className="dashboard-kpi-topline">
+        <span className="dashboard-kpi-icon">
+          <Icon size={21} aria-hidden="true" />
+        </span>
+        <span className="dashboard-kpi-growth">
+          <TrendingUp size={14} aria-hidden="true" />
+          Activo
+        </span>
+      </div>
       <div>
-        <span>{label}</span>
+        <small>{label}</small>
         <strong>{value}</strong>
-        <small>{detail}</small>
+        <p>{detail}</p>
+      </div>
+      <div className="dashboard-kpi-trend">
+        {trend.length ? (
+          <SparkLineChart colors={['#16a34a']} data={trend} height={42} showHighlight={false} showTooltip={false} />
+        ) : (
+          <span />
+        )}
       </div>
     </article>
   );
 }
 
-function OrdersPendingPanel() {
+function ChartCard({ children, description, icon: Icon, title, wide = false }) {
   return (
-    <article className="panel-section chart-panel">
-      <div className="section-header dashboard-section-header">
+    <article className={`dashboard-card dashboard-chart-card ${wide ? 'wide' : ''}`}>
+      <header className="dashboard-card-header">
         <div>
-          <h2>Pedidos</h2>
-          <p>Estructura lista para conectar el modulo de pedidos.</p>
+          <h2>{title}</h2>
+          <p>{description}</p>
         </div>
-        <PackageCheck size={22} aria-hidden="true" />
-      </div>
-      <EmptyState
-        description="Aun no existe un endpoint de pedidos en el proyecto. Este bloque queda reservado para conectarlo sin usar datos falsos."
-        title="Pedidos pendientes de integrar"
-      />
+        <span>
+          <Icon size={20} aria-hidden="true" />
+        </span>
+      </header>
+      {children}
     </article>
   );
 }
 
-function ConsultationBars({ emptyDescription, items }) {
-  const maxConsultas = maxValue(items, 'consultas');
+function SalesTrendChart({ dailyActivity, salesByDay }) {
+  const dataset = salesByDay.length
+    ? salesByDay.map((item) => ({
+      fecha: item.fecha?.slice?.(5) ?? item.dia ?? item.date ?? '-',
+      ventas: Number(item.ventas ?? item.total ?? item.monto ?? 0)
+    }))
+    : dailyActivity.map((item) => ({
+      fecha: item.fecha?.slice?.(5) ?? '-',
+      ventas: Number(item.leads ?? 0)
+    }));
 
-  if (items.length === 0) {
-    return <EmptyState description={emptyDescription} title="Sin consultas registradas" />;
+  if (!dataset.length || dataset.every((item) => Number(item.ventas) === 0)) {
+    return <EmptyState description="Cuando existan ventas o actividad diaria, la evolucion aparecera aqui." title="Sin evolucion disponible" />;
   }
 
   return (
-    <div className="dashboard-bar-list">
-      {items.map((item) => (
-        <div className="dashboard-bar-row" key={item.id}>
-          <div>
-            <strong>{item.nombre}</strong>
-            <span>{item.consultas} consultas</span>
-          </div>
-          <div className="bar-track">
-            <div className="bar-fill" style={{ width: `${(item.consultas / maxConsultas) * 100}%` }} />
-          </div>
-        </div>
-      ))}
+    <div className="dashboard-chart-shell">
+      <LineChart
+        colors={['#16a34a']}
+        dataset={dataset}
+        height={300}
+        margin={{ bottom: 38, left: 54, right: 18, top: 22 }}
+        series={[{ curve: 'monotoneX', dataKey: 'ventas', label: salesByDay.length ? 'Ventas' : 'Leads', valueFormatter: (value) => salesByDay.length ? formatCurrency(value) : value }]}
+        xAxis={[{ dataKey: 'fecha', scaleType: 'point' }]}
+        yAxis={[{ min: 0 }]}
+      />
+    </div>
+  );
+}
+
+function DailyActivityChart({ items }) {
+  if (!items.length || items.every((item) => Number(item.leads ?? 0) + Number(item.conversaciones ?? 0) === 0)) {
+    return <EmptyState description="Aun no hay conversaciones o leads para graficar." title="Sin actividad diaria" />;
+  }
+
+  return (
+    <div className="dashboard-chart-shell">
+      <BarChart
+        borderRadius={8}
+        colors={['#25d366', '#15803d']}
+        dataset={items.map((item) => ({
+          conversaciones: Number(item.conversaciones ?? 0),
+          fecha: item.fecha?.slice?.(5) ?? '-',
+          leads: Number(item.leads ?? 0)
+        }))}
+        height={300}
+        margin={{ bottom: 40, left: 42, right: 14, top: 22 }}
+        series={[
+          { dataKey: 'leads', label: 'Leads' },
+          { dataKey: 'conversaciones', label: 'Conversaciones' }
+        ]}
+        xAxis={[{ dataKey: 'fecha', scaleType: 'band' }]}
+        yAxis={[{ min: 0 }]}
+      />
     </div>
   );
 }
 
 function LeadStateChart({ states }) {
   const total = states.reduce((sum, item) => sum + Number(item.total ?? 0), 0);
-  const maxTotal = maxValue(states, 'total');
 
-  if (total === 0) {
+  if (!total) {
     return <EmptyState description="Todavia no hay leads en el periodo seleccionado." title="Embudo sin datos" />;
   }
 
   return (
-    <div className="lead-funnel-bars">
-      {states.map((item) => (
-        <div className="lead-funnel-row" key={item.estado}>
-          <span>{leadStateLabels[item.estado] ?? item.estado}</span>
-          <div className="bar-track">
-            <div className={`bar-fill state-${item.estado.toLowerCase()}`} style={{ width: `${(item.total / maxTotal) * 100}%` }} />
-          </div>
-          <strong>{item.total}</strong>
-        </div>
-      ))}
+    <div className="dashboard-chart-shell compact">
+      <PieChart
+        colors={['#25d366', '#16a34a', '#15803d', '#84cc16', '#f59e0b', '#ef4444']}
+        height={280}
+        margin={{ bottom: 18, left: 18, right: 18, top: 18 }}
+        series={[{
+          data: states.map((item) => ({
+            id: item.estado,
+            label: leadStateLabels[item.estado] ?? item.estado,
+            value: Number(item.total ?? 0)
+          })),
+          innerRadius: 58,
+          outerRadius: 104,
+          paddingAngle: 2
+        }]}
+      />
     </div>
   );
 }
 
-function DailyActivityChart({ items }) {
-  const maxDaily = Math.max(
-    ...items.map((item) => Number(item.leads ?? 0) + Number(item.conversaciones ?? 0)),
-    1
-  );
+function ConsultationOriginChart({ products, services }) {
+  const items = [
+    ...products.slice(0, 4).map((item) => ({ label: item.nombre, consultas: Number(item.consultas ?? 0) })),
+    ...services.slice(0, 4).map((item) => ({ label: item.nombre, consultas: Number(item.consultas ?? 0) }))
+  ].filter((item) => item.consultas > 0);
 
-  if (items.length === 0 || items.every((item) => Number(item.leads) + Number(item.conversaciones) === 0)) {
-    return <EmptyState description="Aun no hay leads ni conversaciones para graficar." title="Sin actividad diaria" />;
-  }
-
-  return (
-    <div className="daily-activity-chart">
-      {items.map((item) => {
-        const total = Number(item.leads ?? 0) + Number(item.conversaciones ?? 0);
-
-        return (
-          <div className="daily-activity-column" key={item.fecha}>
-            <div className="daily-bars" title={`${item.fecha}: ${total} eventos`}>
-              <span className="daily-bar conversations" style={{ height: `${(item.conversaciones / maxDaily) * 100}%` }} />
-              <span className="daily-bar leads" style={{ height: `${(item.leads / maxDaily) * 100}%` }} />
-            </div>
-            <small>{item.fecha.slice(5)}</small>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function RecentLeads({ leads }) {
-  if (leads.length === 0) {
-    return <EmptyState description="Los nuevos leads apareceran aqui automaticamente." title="Sin leads recientes" />;
-  }
-
-  return (
-    <div className="dashboard-list">
-      {leads.map((lead) => (
-        <article className="dashboard-list-item" key={lead.id}>
-          <span className="list-avatar">{lead.nombre_cliente?.charAt(0) ?? 'L'}</span>
-          <div>
-            <strong>{lead.nombre_cliente}</strong>
-            <p>{lead.interes ?? lead.telefono ?? 'Sin interes registrado'}</p>
-          </div>
-          <span className="status-badge info">{lead.estado}</span>
-        </article>
-      ))}
-    </div>
-  );
-}
-
-function RecentActivity({ items }) {
-  if (items.length === 0) {
-    return <EmptyState description="Los eventos importantes del panel apareceran aqui." title="Sin actividad reciente" />;
-  }
-
-  return (
-    <div className="activity-list">
-      {items.map((item) => (
-        <article className="activity-item" key={item.id}>
-          <span>
-            <Activity size={16} aria-hidden="true" />
-          </span>
-          <div>
-            <strong>{item.descripcion ?? `${item.accion} en ${item.modulo}`}</strong>
-            <p>
-              {item.empresa_nombre ?? 'Sistema'} · {formatDateTime(item.fecha)}
-            </p>
-          </div>
-        </article>
-      ))}
-    </div>
-  );
-}
-
-function ExecutiveIntelligenceOverview({ intelligence }) {
-  const data = { ...emptyIntelligence, ...(intelligence ?? {}) };
-  const healthTone = data.estado === 'SALUDABLE' ? 'healthy' : data.estado === 'ATENCION' ? 'attention' : 'risk';
-
-  return (
-    <section className="executive-intelligence-panel executive-intelligence-overview" aria-label="Inteligencia ejecutiva">
-      <article className={`business-health-card ${healthTone}`}>
-        <span><Flame size={22} aria-hidden="true" /></span>
-        <div>
-          <p className="eyebrow">Inteligencia Nexus IA</p>
-          <strong>{data.salud_negocio}%</strong>
-          <small>{data.estado}</small>
-        </div>
-      </article>
-
-      <div className="executive-risk-list">
-        <div>
-          <p className="eyebrow">Riesgos y accion</p>
-          <h3>Prioridades operativas</h3>
-        </div>
-        {data.riesgos.map((risk) => (
-          <article key={`${risk.area}-${risk.titulo}`}>
-            <span className={risk.nivel.toLowerCase()}>{risk.nivel}</span>
-            <div>
-              <strong>{risk.titulo}</strong>
-              <p>{risk.detalle}</p>
-              <small>{risk.accion}</small>
-            </div>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function ExecutiveFocusCards({ intelligence }) {
-  const data = { ...emptyIntelligence, ...(intelligence ?? {}) };
-
-  return (
-    <section className="executive-intelligence-panel executive-focus-panel" aria-label="Focos ejecutivos">
-      <div className="executive-focus-grid">
-        {data.focos.map((focus) => (
-          <article key={focus.titulo}>
-            <strong>{focus.valor}</strong>
-            <span>{focus.titulo}</span>
-            <small>{focus.detalle}</small>
-            <em className={focus.estado === 'BUENO' ? 'good' : 'review'}>{focus.estado}</em>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function RecommendationList({ items }) {
   if (!items.length) {
-    return <EmptyState description="Cuando haya mas datos, Nexus IA sugerira acciones comerciales." title="Sin recomendaciones" />;
+    return <EmptyState description="Aun no hay consultas de productos o servicios en este periodo." title="Sin origen de interes" />;
   }
 
   return (
-    <div className="activity-list">
-      {items.map((item) => (
-        <article className="activity-item recommendation-item" key={`${item.tipo}-${item.titulo}`}>
-          <span>
-            <TrendingUp size={16} aria-hidden="true" />
-          </span>
-          <div>
-            <strong>{item.titulo}</strong>
-            <p>{item.detalle}</p>
-            <small>{item.accion}</small>
-          </div>
-          <em>{priorityLabels[item.prioridad] ?? item.prioridad}</em>
-        </article>
-      ))}
+    <div className="dashboard-chart-shell compact">
+      <BarChart
+        borderRadius={8}
+        colors={['#16a34a']}
+        dataset={items}
+        height={280}
+        layout="horizontal"
+        margin={{ bottom: 26, left: 120, right: 18, top: 20 }}
+        series={[{ dataKey: 'consultas', label: 'Consultas' }]}
+        xAxis={[{ min: 0 }]}
+        yAxis={[{ dataKey: 'label', scaleType: 'band' }]}
+      />
     </div>
   );
 }
 
-function LeadOpportunities({ leads }) {
-  if (!leads.length) {
-    return <EmptyState description="Los leads con score alto apareceran aqui." title="Sin oportunidades priorizadas" />;
-  }
-
+function RecentList({ emptyDescription, emptyTitle, icon: Icon, items, renderItem, title }) {
   return (
-    <div className="dashboard-list">
-      {leads.map((lead) => (
-        <article className="dashboard-list-item scored-lead" key={lead.id}>
-          <span className="list-avatar">{lead.score}</span>
-          <div>
-            <strong>{lead.nombre_cliente}</strong>
-            <p>{lead.interes ?? lead.telefono ?? 'Sin interes registrado'}</p>
-          </div>
-          <span className={`status-badge ${lead.prioridad === 'CRITICA' ? 'danger' : 'info'}`}>
-            {priorityLabels[lead.prioridad] ?? lead.prioridad}
-          </span>
-        </article>
-      ))}
-    </div>
-  );
-}
-
-function ScoreSummary({ items }) {
-  const total = items.reduce((sum, item) => sum + Number(item.total ?? 0), 0);
-
-  if (!total) {
-    return <EmptyState description="Aun no hay leads con score en el periodo." title="Sin scoring comercial" />;
-  }
-
-  return (
-    <div className="lead-funnel-bars">
-      {items.map((item) => (
-        <div className="lead-funnel-row" key={item.prioridad}>
-          <span>{priorityLabels[item.prioridad] ?? item.prioridad}</span>
-          <div className="bar-track">
-            <div className="bar-fill" style={{ width: `${(item.total / total) * 100}%` }} />
-          </div>
-          <strong>{item.total}</strong>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function IndustryOptimization({ items }) {
-  if (!items.length) {
-    return <EmptyState description="No hay datos suficientes por industria." title="Sin optimizacion por industria" />;
-  }
-
-  return (
-    <div className="dashboard-list">
-      {items.slice(0, 5).map((item) => (
-        <article className="dashboard-list-item" key={item.tipo_negocio}>
-          <span className="list-avatar">{Math.round(item.score_promedio)}</span>
-          <div>
-            <strong>{item.tipo_negocio}</strong>
-            <p>{item.leads} leads · {item.tasa_conversion}% conversion</p>
-          </div>
-          <span className="status-badge info">{item.empresas} emp.</span>
-        </article>
-      ))}
-    </div>
-  );
-}
-
-function AIUsagePanel({ isSuperAdmin, usage }) {
-  const data = usage ?? emptyDashboard.ai_usage;
-  const limit = data.limit;
-  const used = Number(data.total_requests ?? 0);
-  const usagePercent = limit ? Math.min((used / Number(limit)) * 100, 100) : 0;
-  const companies = data.by_company ?? [];
-
-  return (
-    <article className="panel-section chart-panel">
-      <div className="section-header dashboard-section-header">
+    <article className="dashboard-card dashboard-list-card">
+      <header className="dashboard-card-header">
         <div>
-          <h2>Consumo IA</h2>
-          <p>{isSuperAdmin ? 'Consumo global mensual por empresa.' : `Uso mensual del plan ${data.month}.`}</p>
+          <h2>{title}</h2>
+          <p>Ultimos movimientos registrados.</p>
         </div>
-        <Bot size={22} aria-hidden="true" />
-      </div>
-
-      <div className="dashboard-bar-list">
-        <div className="dashboard-bar-row">
-          <div>
-            <strong>{used} mensajes IA</strong>
-            <span>{limit ? `${data.remaining} disponibles de ${limit}` : 'Sin limite mensual configurado'}</span>
-          </div>
-          <div className="bar-track">
-            <div className="bar-fill" style={{ width: `${limit ? usagePercent : 100}%` }} />
-          </div>
-        </div>
-      </div>
-
-      <div className="executive-focus-grid">
-        <article>
-          <strong>{Number(data.total_tokens ?? 0).toLocaleString('es-MX')}</strong>
-          <span>Tokens totales</span>
-          <small>{Number(data.tokens_input ?? 0).toLocaleString('es-MX')} in / {Number(data.tokens_output ?? 0).toLocaleString('es-MX')} out</small>
-          <em className="good">{data.month}</em>
-        </article>
-        <article>
-          <strong>{formatCurrency(data.costo_estimado)}</strong>
-          <span>Costo estimado</span>
-          <small>Depende de tarifas configuradas en backend</small>
-          <em className="review">IA</em>
-        </article>
-      </div>
-
-      {isSuperAdmin && companies.length ? (
-        <div className="dashboard-list">
-          {companies.slice(0, 6).map((company) => (
-            <article className="dashboard-list-item" key={company.tenant_id}>
-              <span className="list-avatar">{company.total_requests}</span>
-              <div>
-                <strong>{company.empresa_nombre}</strong>
-                <p>{company.plan_label} - {Number(company.total_tokens ?? 0).toLocaleString('es-MX')} tokens</p>
-              </div>
-              <span className="status-badge info">{formatCurrency(company.costo_estimado)}</span>
-            </article>
-          ))}
-        </div>
-      ) : null}
+        <span>
+          <Icon size={20} aria-hidden="true" />
+        </span>
+      </header>
+      {items.length ? <div className="dashboard-modern-list">{items.slice(0, 5).map(renderItem)}</div> : <EmptyState description={emptyDescription} title={emptyTitle} />}
     </article>
+  );
+}
+
+function QuickActions({ canViewConversations, canViewCustomers, canViewOrders, canViewProducts }) {
+  const actions = [
+    canViewCustomers ? { icon: UserPlus, label: 'Nuevo lead', to: '/leads' } : null,
+    canViewOrders ? { icon: ClipboardList, label: 'Nuevo pedido', to: '/pedidos' } : null,
+    canViewProducts ? { icon: Package, label: 'Nuevo producto', to: '/productos' } : null,
+    canViewProducts ? { icon: Wrench, label: 'Nuevo servicio', to: '/servicios' } : null,
+    canViewConversations ? { icon: MessageSquareText, label: 'Abrir conversaciones', to: '/conversaciones' } : null
+  ].filter(Boolean);
+
+  if (!actions.length) {
+    return null;
+  }
+
+  return (
+    <section className="dashboard-card dashboard-actions-card">
+      <header className="dashboard-card-header">
+        <div>
+          <h2>Centro de operaciones</h2>
+          <p>Accesos rapidos para operar ventas, catalogo y atencion.</p>
+        </div>
+        <span>
+          <Sparkles size={20} aria-hidden="true" />
+        </span>
+      </header>
+      <div className="dashboard-actions-grid">
+        {actions.map((action) => {
+          const Icon = action.icon;
+          return (
+            <Link className="dashboard-action-button" key={action.label} to={action.to}>
+              <span><Icon size={20} aria-hidden="true" /></span>
+              <strong>{action.label}</strong>
+              <ArrowRight size={16} aria-hidden="true" />
+            </Link>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
 export function CommercialDashboard() {
   const { user } = useAuth();
   const [dashboard, setDashboard] = useState(emptyDashboard);
-  const [filters, setFilters] = useState({
-    fecha_inicio: thirtyDaysAgo(),
-    fecha_fin: today()
-  });
+  const [filters, setFilters] = useState({ fecha_inicio: thirtyDaysAgo(), fecha_fin: today() });
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
+  const companyName = user?.empresa?.nombre ?? 'Nexus IA';
   const metrics = dashboard.metrics ?? emptyDashboard.metrics;
-  const aiUsage = dashboard.ai_usage ?? emptyDashboard.ai_usage;
-  const intelligence = dashboard.inteligencia ?? emptyIntelligence;
   const whatsapp = metrics.whatsapp ?? emptyDashboard.metrics.whatsapp;
+  const aiUsage = dashboard.ai_usage ?? emptyDashboard.ai_usage;
+  const salesByDay = dashboard.ventas_por_dia ?? dashboard.sales_by_day ?? [];
+  const dailyActivity = dashboard.daily_activity ?? [];
+  const leadTrend = dailyActivity.map((item) => Number(item.leads ?? 0));
+  const conversationTrend = dailyActivity.map((item) => Number(item.conversaciones ?? 0));
+  const salesTotal = sumValues(salesByDay, ['ventas', 'total', 'monto']);
+  const ordersByStatus = dashboard.pedidos_por_estado ?? dashboard.orders_by_status ?? [];
+  const ordersTotal = sumValues(ordersByStatus, ['total', 'cantidad', 'value']);
   const whatsappConnected = whatsapp.estado === 'CONNECTED' || Number(whatsapp.conectadas ?? 0) > 0;
-  const totalConsultations = useMemo(
-    () =>
-      [...dashboard.productos_mas_consultados, ...dashboard.servicios_mas_consultados].reduce(
-        (sum, item) => sum + Number(item.consultas ?? 0),
-        0
-      ),
-    [dashboard.productos_mas_consultados, dashboard.servicios_mas_consultados]
-  );
-  const role = normalizeRole(user?.rol);
-  const isSuperAdmin = role === 'super_admin';
-  const isOwner = role === 'owner';
-  const isSeller = role === 'seller';
-  const isSupport = role === 'support';
-  const isViewer = role === 'viewer';
-  const canViewReports = hasPermission(user, 'reports.view');
-  const canViewCustomers = hasPermission(user, 'customers.view');
-  const canViewConversations = hasPermission(user, 'conversations.view');
-  const canViewOrders = hasPermission(user, 'orders.view');
-  const canViewProducts = hasPermission(user, 'products.view');
-  const dashboardTitle = isSuperAdmin
-    ? 'Métricas globales de Nexus IA'
-    : isOwner
-      ? 'Métricas de tu empresa'
-      : isSeller
-        ? 'Panel comercial'
-        : isSupport
-          ? 'Panel de soporte'
-          : 'Reportes de solo lectura';
-  const dashboardDescription = isSuperAdmin
-    ? 'Empresas, actividad comercial, WhatsApp y salud operativa de la plataforma.'
-    : isOwner
-      ? 'Salud, ventas, WhatsApp y riesgos de tu negocio.'
-      : isSeller
-        ? 'Conversaciones, leads y pedidos disponibles para seguimiento comercial.'
-        : isSupport
-          ? 'Conversaciones pendientes y clientes que requieren atención.'
-          : 'Indicadores disponibles en modo lectura.';
+
+  const permissions = useMemo(() => ({
+    customers: hasPermission(user, 'customers.view'),
+    conversations: hasPermission(user, 'conversations.view'),
+    orders: hasPermission(user, 'orders.view'),
+    products: hasPermission(user, 'products.view'),
+    reports: hasPermission(user, 'reports.view')
+  }), [user]);
 
   async function loadDashboard(nextFilters = filters) {
     try {
@@ -566,10 +422,7 @@ export function CommercialDashboard() {
 
   function handleFilterChange(event) {
     const { name, value } = event.target;
-    setFilters((currentFilters) => ({
-      ...currentFilters,
-      [name]: value
-    }));
+    setFilters((currentFilters) => ({ ...currentFilters, [name]: value }));
   }
 
   function handleFilterSubmit(event) {
@@ -577,256 +430,139 @@ export function CommercialDashboard() {
     loadDashboard(filters);
   }
 
+  const kpis = [
+    permissions.reports ? {
+      detail: salesByDay.length ? `Periodo ${formatDate(filters.fecha_inicio)} - ${formatDate(filters.fecha_fin)}` : 'Sin serie de ventas conectada',
+      icon: TrendingUp,
+      label: 'Ventas',
+      trend: salesByDay.map((item) => Number(item.ventas ?? item.total ?? item.monto ?? 0)),
+      value: salesByDay.length ? formatCurrency(salesTotal) : 'Sin datos'
+    } : null,
+    permissions.orders ? {
+      detail: ordersByStatus.length ? 'Pedidos registrados por estado' : 'Modulo listo para operar pedidos',
+      icon: ClipboardList,
+      label: 'Pedidos',
+      trend: [],
+      value: ordersByStatus.length ? compactNumber(ordersTotal) : 'Sin datos'
+    } : null,
+    permissions.customers ? {
+      detail: `${dashboard.totals.tasa_conversion ?? 0}% conversion`,
+      icon: Users,
+      label: 'Leads',
+      trend: leadTrend,
+      value: compactNumber(dashboard.totals.total_leads || metrics.leads_hoy)
+    } : null,
+    permissions.conversations ? {
+      detail: 'Conversaciones recibidas hoy',
+      icon: MessageCircle,
+      label: 'Conversaciones',
+      tone: 'mint',
+      trend: conversationTrend,
+      value: compactNumber(metrics.conversaciones_hoy)
+    } : null,
+    permissions.customers ? {
+      detail: `${dashboard.totals.leads_ganados ?? 0} oportunidades ganadas`,
+      icon: UserPlus,
+      label: 'Clientes',
+      trend: leadTrend,
+      value: compactNumber(dashboard.totals.leads_ganados ?? 0)
+    } : null
+  ].filter(Boolean);
+
   return (
-    <section className="commercial-dashboard enterprise-dashboard" aria-label="Dashboard empresarial">
-      <div className="dashboard-hero enterprise-hero">
-        <div>
-          <p className="eyebrow">Dashboard</p>
-          <h2>{dashboardTitle}</h2>
-          <p>{dashboardDescription}</p>
-        </div>
-        <div className={whatsappConnected ? 'whatsapp-pill connected' : 'whatsapp-pill disconnected'}>
-          {whatsappConnected ? <CheckCircle2 size={18} aria-hidden="true" /> : <CircleOff size={18} aria-hidden="true" />}
-          <span>{whatsappConnected ? 'WhatsApp conectado' : 'WhatsApp desconectado'}</span>
-        </div>
-      </div>
+    <section className="commercial-dashboard premium-dashboard" aria-label="Dashboard ejecutivo">
+      <ExecutiveHeader
+        aiUsage={aiUsage}
+        companyName={companyName}
+        filters={filters}
+        isLoading={isLoading}
+        isWhatsAppConnected={whatsappConnected}
+        onFilterChange={handleFilterChange}
+        onFilterSubmit={handleFilterSubmit}
+        user={user}
+        whatsapp={whatsapp}
+      />
 
       {error ? <ErrorState message={error} onRetry={() => loadDashboard(filters)} /> : null}
-
-      <div className="dashboard-control-row">
-        <form className="dashboard-filters enterprise-filters" onSubmit={handleFilterSubmit}>
-          <label className="field-group" htmlFor="dashboard-start-date">
-            <span>Fecha inicio</span>
-            <input
-              id="dashboard-start-date"
-              name="fecha_inicio"
-              onChange={handleFilterChange}
-              type="date"
-              value={filters.fecha_inicio}
-            />
-          </label>
-          <label className="field-group" htmlFor="dashboard-end-date">
-            <span>Fecha fin</span>
-            <input
-              id="dashboard-end-date"
-              name="fecha_fin"
-              onChange={handleFilterChange}
-              type="date"
-              value={filters.fecha_fin}
-            />
-          </label>
-          <button className="primary-button" disabled={isLoading} type="submit">
-            {isLoading ? 'Actualizando...' : 'Aplicar filtros'}
-          </button>
-        </form>
-
-        {(isSuperAdmin || isOwner) && canViewReports ? <ExecutiveIntelligenceOverview intelligence={intelligence} /> : null}
-      </div>
-
       {isLoading ? <LoadingState message="Cargando indicadores del negocio..." /> : null}
 
-      {(isSuperAdmin || isOwner) && canViewReports ? <ExecutiveFocusCards intelligence={intelligence} /> : null}
+      <section className="dashboard-kpi-grid" aria-label="KPIs principales">
+        {kpis.map((kpi) => <KpiCard key={kpi.label} {...kpi} />)}
+      </section>
 
-      <div className="enterprise-metrics-grid dashboard-kpi-row">
-        {isSuperAdmin ? (
-          <MetricTile icon={ShieldCheck} label="Empresas activas" value={dashboard.totals.empresas_activas} detail="Tenants operando en Nexus IA" />
+      <section className="dashboard-main-grid" aria-label="Actividad comercial">
+        {permissions.reports ? (
+          <ChartCard description="Evolucion del periodo seleccionado." icon={TrendingUp} title="Evolucion comercial" wide>
+            <SalesTrendChart dailyActivity={dailyActivity} salesByDay={salesByDay} />
+          </ChartCard>
         ) : null}
-        {canViewCustomers ? <MetricTile icon={Users} label="Leads del dia" value={metrics.leads_hoy} detail="Nuevos contactos hoy" /> : null}
-        {canViewConversations ? (
-          <MetricTile
-            icon={MessageSquareText}
-            label={isSupport ? 'Pendientes de respuesta' : 'Conversaciones del dia'}
-            value={isSupport ? intelligence.conversaciones.conversaciones_sin_respuesta : metrics.conversaciones_hoy}
-            detail={isSupport ? 'Conversaciones sin respuesta registrada' : 'Mensajes recibidos hoy'}
-            tone="green"
-          />
-        ) : null}
-        {canViewProducts && (isSuperAdmin || isOwner) ? (
-          <MetricTile
-            icon={PackageCheck}
-            label="Productos activos"
-            value={metrics.productos_activos}
-            detail="Disponibles en catalogo"
-            tone="purple"
-          />
-        ) : null}
-        {canViewProducts && (isSuperAdmin || isOwner) ? (
-          <MetricTile
-            icon={Wrench}
-            label="Servicios activos"
-            value={metrics.servicios_activos}
-            detail="Servicios publicados"
-            tone="amber"
-          />
-        ) : null}
-        {(isSuperAdmin || isOwner) ? (
-          <MetricTile
-            icon={PlugZap}
-            label="WhatsApp"
-            value={`${whatsapp.conectadas}/${whatsapp.total}`}
-            detail={`${whatsapp.desconectadas} desconectadas`}
-            tone={whatsappConnected ? 'green' : 'red'}
-          />
-        ) : null}
-        {(isSuperAdmin || isOwner) ? (
-          <MetricTile
-            icon={Bot}
-            label="Consumo IA"
-            value={aiUsage.limit ? `${aiUsage.total_requests}/${aiUsage.limit}` : aiUsage.total_requests}
-            detail={`${Number(aiUsage.total_tokens ?? 0).toLocaleString('es-MX')} tokens este mes`}
-            tone="amber"
-          />
-        ) : null}
-        {canViewReports ? (
-          <MetricTile
-            icon={TrendingUp}
-            label="Conversion"
-            value={`${dashboard.totals.tasa_conversion}%`}
-            detail={`${dashboard.totals.leads_ganados} leads ganados`}
-          />
-        ) : null}
-      </div>
 
-      {canViewReports || canViewCustomers ? (
-        <div className="enterprise-dashboard-grid">
-          {canViewReports ? (
-            <article className="panel-section chart-panel activity-chart-panel">
-              <div className="section-header dashboard-section-header">
+        {permissions.reports ? (
+          <ChartCard description="Leads y conversaciones por dia." icon={MessageSquareText} title="Actividad diaria">
+            <DailyActivityChart items={dailyActivity} />
+          </ChartCard>
+        ) : null}
+
+        {permissions.customers ? (
+          <ChartCard description="Distribucion por etapa comercial." icon={Users} title="Estado de leads">
+            <LeadStateChart states={dashboard.lead_states ?? []} />
+          </ChartCard>
+        ) : null}
+
+        {permissions.products ? (
+          <ChartCard description="Productos y servicios con mas consultas." icon={Package} title="Interes del catalogo">
+            <ConsultationOriginChart products={dashboard.productos_mas_consultados ?? []} services={dashboard.servicios_mas_consultados ?? []} />
+          </ChartCard>
+        ) : null}
+      </section>
+
+      <section className="dashboard-activity-grid" aria-label="Actividad reciente">
+        {permissions.customers ? (
+          <RecentList
+            emptyDescription="Los nuevos leads apareceran aqui automaticamente."
+            emptyTitle="Sin leads recientes"
+            icon={UserPlus}
+            items={dashboard.leads_recientes ?? []}
+            title="Ultimos leads"
+            renderItem={(lead) => (
+              <article className="dashboard-modern-list-item" key={lead.id}>
+                <span>{lead.nombre_cliente?.charAt(0) ?? 'L'}</span>
                 <div>
-                  <h2>Actividad diaria</h2>
-                  <p>Movimiento del periodo.</p>
+                  <strong>{lead.nombre_cliente ?? 'Lead sin nombre'}</strong>
+                  <p>{lead.interes ?? lead.telefono ?? 'Sin interes registrado'}</p>
                 </div>
-                <BarChart3 size={22} aria-hidden="true" />
-              </div>
-              <DailyActivityChart items={dashboard.daily_activity} />
-            </article>
-          ) : null}
-
-          {canViewCustomers ? (
-            <article className="panel-section chart-panel">
-              <div className="section-header dashboard-section-header">
-                <div>
-                  <h2>Embudo de leads</h2>
-                  <p>Distribucion por estado.</p>
-                </div>
-                <Users size={22} aria-hidden="true" />
-              </div>
-              <LeadStateChart states={dashboard.lead_states} />
-            </article>
-          ) : null}
-        </div>
-      ) : null}
-
-      {(isSuperAdmin || isOwner || isSeller || isSupport) ? (
-        <div className="enterprise-dashboard-grid">
-          {(isSuperAdmin || isOwner || isSeller) && canViewReports ? (
-            <article className="panel-section chart-panel">
-              <div className="section-header dashboard-section-header">
-                <div>
-                  <h2>Recomendaciones comerciales</h2>
-                  <p>Prioridades accionables.</p>
-                </div>
-                <TrendingUp size={22} aria-hidden="true" />
-              </div>
-              <RecommendationList items={dashboard.recomendaciones} />
-            </article>
-          ) : null}
-
-          {canViewCustomers ? (
-            <article className="panel-section chart-panel">
-              <div className="section-header dashboard-section-header">
-                <div>
-                  <h2>{isSupport ? 'Clientes por atender' : 'Oportunidades prioritarias'}</h2>
-                  <p>{isSupport ? 'Leads abiertos que pueden requerir seguimiento.' : 'Mayor probabilidad comercial.'}</p>
-                </div>
-                <Users size={22} aria-hidden="true" />
-              </div>
-              <LeadOpportunities leads={dashboard.oportunidades_prioritarias} />
-            </article>
-          ) : null}
-        </div>
-      ) : null}
-
-      {(isSuperAdmin || isOwner || isViewer) && canViewReports ? <div className="enterprise-dashboard-grid">
-        {(isSuperAdmin || isOwner) ? <AIUsagePanel isSuperAdmin={isSuperAdmin} usage={aiUsage} /> : null}
-
-        <article className="panel-section chart-panel">
-          <div className="section-header dashboard-section-header">
-            <div>
-              <h2>Scoring de leads</h2>
-              <p>Distribucion de prioridad en el periodo.</p>
-            </div>
-            <BarChart3 size={22} aria-hidden="true" />
-          </div>
-          <ScoreSummary items={dashboard.scoring_leads} />
-        </article>
-
-        <article className="panel-section chart-panel">
-          <div className="section-header dashboard-section-header">
-            <div>
-              <h2>Optimizacion por industria</h2>
-              <p>Rendimiento por tipo de negocio.</p>
-            </div>
-            <Activity size={22} aria-hidden="true" />
-          </div>
-          <IndustryOptimization items={dashboard.optimizacion_industria} />
-        </article>
-      </div> : null}
-
-      {(canViewProducts || canViewOrders) ? <div className="enterprise-dashboard-grid">
-        {canViewProducts && (isSuperAdmin || isOwner) ? <article className="panel-section chart-panel">
-          <div className="section-header dashboard-section-header">
-            <div>
-              <h2>Productos mas consultados</h2>
-              <p>{totalConsultations} consultas detectadas en catalogo.</p>
-            </div>
-            <PackageSearch size={22} aria-hidden="true" />
-          </div>
-          <ConsultationBars
-            emptyDescription="Sin productos consultados en el periodo seleccionado."
-            items={dashboard.productos_mas_consultados}
+                <em>{lead.estado ?? 'Nuevo'}</em>
+              </article>
+            )}
           />
-        </article> : null}
+        ) : null}
 
-        {canViewProducts && (isSuperAdmin || isOwner) ? <article className="panel-section chart-panel">
-          <div className="section-header dashboard-section-header">
-            <div>
-              <h2>Servicios mas consultados</h2>
-              <p>Interes capturado desde conversaciones y leads.</p>
-            </div>
-            <Wrench size={22} aria-hidden="true" />
-          </div>
-          <ConsultationBars
-            emptyDescription="Sin servicios consultados en el periodo seleccionado."
-            items={dashboard.servicios_mas_consultados}
+        {permissions.reports ? (
+          <RecentList
+            emptyDescription="Los eventos importantes del panel apareceran aqui."
+            emptyTitle="Sin actividad reciente"
+            icon={Sparkles}
+            items={dashboard.actividad_reciente ?? []}
+            title="Actividad reciente"
+            renderItem={(item) => (
+              <article className="dashboard-modern-list-item" key={item.id}>
+                <span><Sparkles size={16} aria-hidden="true" /></span>
+                <div>
+                  <strong>{item.descripcion ?? `${item.accion ?? 'Actividad'} en ${item.modulo ?? 'panel'}`}</strong>
+                  <p>{item.empresa_nombre ?? companyName} - {formatDateTime(item.fecha)}</p>
+                </div>
+              </article>
+            )}
           />
-        </article> : null}
-        {canViewOrders && (isSeller || isViewer) ? <OrdersPendingPanel /> : null}
-      </div> : null}
+        ) : null}
+      </section>
 
-      <div className="enterprise-dashboard-grid lower-grid">
-        {canViewCustomers ? <article className="panel-section">
-          <div className="section-header dashboard-section-header">
-            <div>
-              <h2>{isSupport ? 'Clientes recientes' : 'Leads recientes'}</h2>
-              <p>Ultimos prospectos capturados.</p>
-            </div>
-            <Clock3 size={22} aria-hidden="true" />
-          </div>
-          <RecentLeads leads={dashboard.leads_recientes} />
-        </article> : null}
-
-        {canViewReports && (isSuperAdmin || isOwner || isViewer) ? <article className="panel-section">
-          <div className="section-header dashboard-section-header">
-            <div>
-              <h2>Actividad reciente</h2>
-              <p>Eventos operativos del panel.</p>
-            </div>
-            <Activity size={22} aria-hidden="true" />
-          </div>
-          <RecentActivity items={dashboard.actividad_reciente} />
-        </article> : null}
-      </div>
+      <QuickActions
+        canViewConversations={permissions.conversations}
+        canViewCustomers={permissions.customers}
+        canViewOrders={permissions.orders}
+        canViewProducts={permissions.products}
+      />
     </section>
   );
 }

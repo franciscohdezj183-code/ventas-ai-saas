@@ -6,7 +6,7 @@ export function getStockStatus(product) {
   const stock = Number(product.stock ?? 0);
 
   if (stock <= 0) {
-    return { label: 'Agotado', tone: 'danger' };
+    return { label: 'Sin stock', tone: 'danger' };
   }
 
   if (stock <= 5) {
@@ -56,16 +56,16 @@ function ProductImage({ product, size = 'sm' }) {
 function ProductActions({ onDeactivate, onEdit, onView, product }) {
   return (
     <div className="table-actions product-actions">
-      <button aria-label="Ver detalle" onClick={() => onView(product)} type="button">
+      <button className="product-action view" aria-label="Ver detalle" onClick={() => onView(product)} type="button" title="Ver detalle">
         <Eye size={16} aria-hidden="true" />
       </button>
       <Can permission="products.manage">
-        <button aria-label="Editar producto" onClick={() => onEdit(product)} type="button">
+        <button className="product-action edit" aria-label="Editar producto" onClick={() => onEdit(product)} type="button" title="Editar">
           <Pencil size={16} aria-hidden="true" />
         </button>
       </Can>
       <Can permission="products.manage">
-        <button aria-label="Desactivar producto" onClick={() => onDeactivate(product)} type="button">
+        <button className="product-action deactivate" aria-label="Desactivar producto" onClick={() => onDeactivate(product)} type="button" title="Desactivar">
           <PowerOff size={16} aria-hidden="true" />
         </button>
       </Can>

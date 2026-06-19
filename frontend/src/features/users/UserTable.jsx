@@ -2,6 +2,14 @@ import { Edit3, Power, Trash2 } from 'lucide-react';
 import { Can } from '../../components/Can.jsx';
 import { DataTable, StatusBadge } from '../../components/ui/index.js';
 
+const roleAccessLabels = {
+  super_admin: 'Acceso global',
+  owner: 'Administra empresa',
+  seller: 'Ventas y clientes',
+  support: 'Soporte y conversaciones',
+  viewer: 'Solo lectura'
+};
+
 function formatDate(value) {
   return value ? new Date(value).toLocaleDateString('es-MX', { dateStyle: 'medium' }) : '-';
 }
@@ -28,19 +36,25 @@ export function UserTable({ isLoading, onDelete, onEdit, onToggle, users }) {
     { key: 'empresa', header: 'Empresa', render: (user) => user.empresa_nombre },
     { key: 'rol', header: 'Rol', render: (user) => <span className={`role-pill ${String(user.rol).toLowerCase()}`}>{user.rol}</span> },
     { key: 'estado', header: 'Estado', render: (user) => <StatusBadge status={user.estado}>{user.estado}</StatusBadge> },
+    {
+      key: 'permisos',
+      header: 'Permisos',
+      render: (user) => <span className="permission-summary">{roleAccessLabels[String(user.rol).toLowerCase()] ?? 'Acceso personalizado'}</span>
+    },
     { key: 'fecha_creacion', header: 'Creado', render: (user) => formatDate(user.fecha_creacion) },
     {
       key: 'acciones',
       header: 'Acciones',
       render: (user) => (
-        <div className="table-actions">
+        <div className="table-actions user-actions">
           <Can permission="users.manage">
-            <button aria-label="Editar usuario" onClick={() => onEdit(user)} type="button">
+            <button className="user-action edit" aria-label="Editar usuario" onClick={() => onEdit(user)} type="button" title="Editar">
               <Edit3 size={16} aria-hidden="true" />
             </button>
           </Can>
           <Can permission="users.manage">
             <button
+              className={user.estado === 'ACTIVO' ? 'user-action suspend' : 'user-action activate'}
               aria-label={user.estado === 'ACTIVO' ? 'Desactivar usuario' : 'Activar usuario'}
               onClick={() => onToggle(user)}
               title={user.estado === 'ACTIVO' ? 'Desactivar' : 'Activar'}
@@ -50,7 +64,7 @@ export function UserTable({ isLoading, onDelete, onEdit, onToggle, users }) {
             </button>
           </Can>
           <Can permission="users.manage">
-            <button aria-label="Eliminar usuario" onClick={() => onDelete(user)} type="button">
+            <button className="user-action delete" aria-label="Eliminar usuario" onClick={() => onDelete(user)} type="button" title="Eliminar">
               <Trash2 size={16} aria-hidden="true" />
             </button>
           </Can>

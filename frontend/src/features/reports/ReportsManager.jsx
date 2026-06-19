@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
+import { BarChart } from '@mui/x-charts/BarChart';
+import { LineChart } from '@mui/x-charts/LineChart';
+import { PieChart } from '@mui/x-charts/PieChart';
 import {
   Bot,
   Boxes,
   Building2,
+  CalendarDays,
   MessageCircle,
   ShoppingBag,
   TrendingUp,
@@ -47,6 +51,10 @@ const emptyReports = {
     costo_estimado: 0
   },
   mensajes_por_dia: [],
+  ventas_por_dia: [],
+  pedidos_por_periodo: [],
+  pedidos_por_estado: [],
+  leads_por_origen: [],
   desglose_empresas: []
 };
 
@@ -97,6 +105,25 @@ function BarList({ emptyTitle, items, labelKey, valueKey }) {
   );
 }
 
+function chartHasData(items, valueKey) {
+  return items.length > 0 && items.some((item) => Number(item[valueKey] ?? 0) > 0);
+}
+
+function ReportChartCard({ children, description, icon: Icon, title }) {
+  return (
+    <article className="panel-section report-chart-card">
+      <div className="section-header dashboard-section-header">
+        <div>
+          <h2>{title}</h2>
+          <p>{description}</p>
+        </div>
+        <Icon size={22} aria-hidden="true" />
+      </div>
+      {children}
+    </article>
+  );
+}
+
 export function ReportsManager() {
   const { user } = useAuth();
   const isSuperAdmin = isSuperAdminRole(user?.rol);
@@ -116,6 +143,40 @@ export function ReportsManager() {
     () => (reports.mensajes_por_dia ?? []).map((item) => ({ ...item, label: item.fecha.slice(5) })),
     [reports.mensajes_por_dia]
   );
+  const salesOverTime = useMemo(
+    () => (reports.ventas_por_dia ?? reports.ventas_en_tiempo ?? reports.sales_over_time ?? dailyMessages)
+      .map((item) => ({
+        label: item.label ?? item.fecha?.slice(5) ?? item.periodo ?? item.date ?? '',
+        ventas: Number(item.ventas ?? item.ventas_estimadas ?? item.total_ventas ?? item.total ?? 0)
+      })),
+    [dailyMessages, reports]
+  );
+  const ordersByPeriod = useMemo(
+    () => (reports.pedidos_por_periodo ?? reports.pedidos_por_dia ?? reports.orders_by_period ?? dailyMessages)
+      .map((item) => ({
+        label: item.label ?? item.fecha?.slice(5) ?? item.periodo ?? item.date ?? '',
+        pedidos: Number(item.pedidos ?? item.total_pedidos ?? item.orders ?? 0)
+      })),
+    [dailyMessages, reports]
+  );
+  const ordersByStatus = useMemo(
+    () => (reports.pedidos_por_estado ?? reports.orders_by_status ?? [])
+      .map((item, id) => ({
+        id,
+        label: item.estado ?? item.status ?? item.label ?? 'Sin estado',
+        value: Number(item.total ?? item.pedidos ?? item.value ?? 0)
+      })),
+    [reports]
+  );
+  const leadsByOrigin = useMemo(
+    () => (reports.leads_por_origen ?? reports.leads_by_origin ?? [])
+      .map((item) => ({
+        origen: item.origen ?? item.source ?? item.label ?? 'Sin origen',
+        leads: Number(item.total ?? item.leads ?? item.value ?? 0)
+      })),
+    [reports]
+  );
+  const topProducts = reports.productos_mas_consultados ?? [];
 
   async function loadReports(nextFilters = filters) {
     try {
@@ -153,7 +214,7 @@ export function ReportsManager() {
   }
 
   return (
-    <section className="commercial-dashboard enterprise-dashboard" aria-label="Reportes">
+    <section className="commercial-dashboard enterprise-dashboard reports-page" aria-label="Reportes">
       <div className="dashboard-hero enterprise-hero">
         <div>
           <p className="eyebrow">Reportes</p>
@@ -167,11 +228,17 @@ export function ReportsManager() {
       <form className="dashboard-filters enterprise-filters" onSubmit={handleSubmit}>
         <label className="field-group" htmlFor="reports-start-date">
           <span>Fecha inicio</span>
-          <input id="reports-start-date" name="fecha_inicio" onChange={handleFilterChange} type="date" value={filters.fecha_inicio} />
+          <div className="report-date-input">
+            <CalendarDays size={17} aria-hidden="true" />
+            <input id="reports-start-date" name="fecha_inicio" onChange={handleFilterChange} type="date" value={filters.fecha_inicio} />
+          </div>
         </label>
         <label className="field-group" htmlFor="reports-end-date">
           <span>Fecha fin</span>
-          <input id="reports-end-date" name="fecha_fin" onChange={handleFilterChange} type="date" value={filters.fecha_fin} />
+          <div className="report-date-input">
+            <CalendarDays size={17} aria-hidden="true" />
+            <input id="reports-end-date" name="fecha_fin" onChange={handleFilterChange} type="date" value={filters.fecha_fin} />
+          </div>
         </label>
         {isSuperAdmin ? (
           <label className="field-group" htmlFor="reports-company">
@@ -205,31 +272,86 @@ export function ReportsManager() {
       </div>
 
       <div className="enterprise-dashboard-grid">
-        <article className="panel-section chart-panel">
-          <div className="section-header dashboard-section-header">
-            <div>
-              <h2>Mensajes por dia</h2>
-              <p>Volumen diario de conversaciones.</p>
-            </div>
-            <MessageCircle size={22} aria-hidden="true" />
-          </div>
-          <BarList emptyTitle="Sin mensajes" items={dailyMessages} labelKey="label" valueKey="mensajes" />
-        </article>
+        <ReportChartCard icon={TrendingUp} title="Ventas en el tiempo" description="Evolucion de ventas reportadas para el periodo.">
+          {chartHasData(salesOverTime, 'ventas') ? (
+            <LineChart
+              height={260}
+              series={[{ area: true, curve: 'monotoneX', data: salesOverTime.map((item) => item.ventas), label: 'Ventas' }]}
+              xAxis={[{ data: salesOverTime.map((item) => item.label), scaleType: 'point' }]}
+            />
+          ) : (
+            <EmptyState title="Sin ventas" description="Aun no hay ventas para graficar en el periodo seleccionado." />
+          )}
+        </ReportChartCard>
 
-        <article className="panel-section chart-panel">
-          <div className="section-header dashboard-section-header">
-            <div>
-              <h2>Productos mas consultados</h2>
-              <p>Consultas detectadas en conversaciones y leads.</p>
-            </div>
-            <Boxes size={22} aria-hidden="true" />
-          </div>
-          <BarList emptyTitle="Sin productos consultados" items={reports.productos_mas_consultados ?? []} labelKey="nombre" valueKey="consultas" />
-        </article>
+        <ReportChartCard icon={ShoppingBag} title="Pedidos por periodo" description="Volumen de pedidos agrupado por fecha o periodo.">
+          {chartHasData(ordersByPeriod, 'pedidos') ? (
+            <BarChart
+              height={260}
+              series={[{ data: ordersByPeriod.map((item) => item.pedidos), label: 'Pedidos' }]}
+              xAxis={[{ data: ordersByPeriod.map((item) => item.label), scaleType: 'band' }]}
+            />
+          ) : (
+            <EmptyState title="Sin pedidos" description="Aun no hay pedidos para el periodo seleccionado." />
+          )}
+        </ReportChartCard>
+      </div>
+
+      <div className="enterprise-dashboard-grid">
+        <ReportChartCard icon={MessageCircle} title="Mensajes por dia" description="Volumen diario de conversaciones.">
+          {chartHasData(dailyMessages, 'mensajes') ? (
+            <BarChart
+              height={260}
+              series={[{ data: dailyMessages.map((item) => Number(item.mensajes ?? 0)), label: 'Mensajes' }]}
+              xAxis={[{ data: dailyMessages.map((item) => item.label), scaleType: 'band' }]}
+            />
+          ) : (
+            <EmptyState title="Sin mensajes" description="Aun no hay datos para el periodo seleccionado." />
+          )}
+        </ReportChartCard>
+
+        <ReportChartCard icon={ShoppingBag} title="Pedidos por estado" description="Distribucion operativa de pedidos.">
+          {ordersByStatus.length && ordersByStatus.some((item) => item.value > 0) ? (
+            <PieChart
+              height={260}
+              series={[{ data: ordersByStatus, innerRadius: 58, outerRadius: 98, paddingAngle: 3 }]}
+              slotProps={{ legend: { direction: 'row', position: { horizontal: 'middle', vertical: 'bottom' } } }}
+            />
+          ) : (
+            <EmptyState title="Sin estados" description="Aun no hay distribucion de pedidos por estado." />
+          )}
+        </ReportChartCard>
+      </div>
+
+      <div className="enterprise-dashboard-grid">
+        <ReportChartCard icon={UserPlus} title="Leads por origen" description="Canales que generan nuevos clientes.">
+          {chartHasData(leadsByOrigin, 'leads') ? (
+            <BarChart
+              height={260}
+              series={[{ data: leadsByOrigin.map((item) => item.leads), label: 'Leads' }]}
+              xAxis={[{ data: leadsByOrigin.map((item) => item.origen), scaleType: 'band' }]}
+            />
+          ) : (
+            <EmptyState title="Sin leads por origen" description="Aun no hay datos de origen para este periodo." />
+          )}
+        </ReportChartCard>
+
+        <ReportChartCard icon={Boxes} title="Productos mas consultados" description="Consultas detectadas en conversaciones y leads.">
+          {chartHasData(topProducts, 'consultas') ? (
+            <BarChart
+              height={260}
+              layout="horizontal"
+              series={[{ data: topProducts.map((item) => Number(item.consultas ?? 0)), label: 'Consultas' }]}
+              yAxis={[{ data: topProducts.map((item) => item.nombre), scaleType: 'band' }]}
+            />
+          ) : (
+            <EmptyState title="Sin productos consultados" description="Aun no hay datos para el periodo seleccionado." />
+          )}
+        </ReportChartCard>
       </div>
 
       {isSuperAdmin ? (
-        <article className="panel-section chart-panel">
+        <article className="panel-section chart-panel reports-table-card">
           <div className="section-header dashboard-section-header">
             <div>
               <h2>Desglose por empresa</h2>

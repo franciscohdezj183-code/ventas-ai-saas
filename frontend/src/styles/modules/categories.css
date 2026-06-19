@@ -1,0 +1,271 @@
+/* Categories module styles.
+   Split from global.css so module-owned styling stays close to its product area. */
+
+.categories-page {
+  gap: 20px;
+}
+
+.categories-unified-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 20px;
+  align-items: center;
+  padding: 22px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background:
+    linear-gradient(135deg, rgba(24, 119, 242, 0.08), rgba(47, 191, 113, 0.07)),
+    #ffffff;
+  box-shadow: var(--shadow-sm);
+}
+
+.categories-unified-header > div:first-child,
+.categories-unified-header > div:last-child {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.categories-unified-header > div:last-child {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.categories-header-icon {
+  display: inline-grid;
+  width: 50px;
+  height: 50px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: var(--radius);
+  background: var(--color-blue-soft);
+  color: var(--color-blue);
+}
+
+.categories-unified-header h1 {
+  margin: 2px 0 6px;
+  font-size: 2rem;
+  letter-spacing: 0;
+  line-height: 1.05;
+}
+
+.categories-header-metric {
+  display: grid;
+  min-width: 170px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: #ffffff;
+}
+
+.categories-header-metric strong {
+  color: var(--color-text);
+  font-size: 1.45rem;
+  line-height: 1;
+}
+
+.categories-header-metric span {
+  color: var(--color-muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.categories-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.category-summary-card {
+  display: grid;
+  gap: 8px;
+  min-height: 132px;
+  padding: 18px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: #ffffff;
+  box-shadow: var(--shadow-sm);
+}
+
+.category-summary-card span {
+  color: var(--color-muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.category-summary-card strong {
+  color: var(--color-text);
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.category-summary-card p {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+.category-summary-card.product {
+  border-color: #b9cff7;
+  background: linear-gradient(135deg, #ffffff, var(--color-blue-soft));
+}
+
+.category-summary-card.service {
+  border-color: #ffe3a8;
+  background: linear-gradient(135deg, #ffffff, var(--color-warning-soft));
+}
+
+.category-summary-card.active {
+  border-color: #bfe8d2;
+  background: linear-gradient(135deg, #ffffff, var(--color-green-soft));
+}
+
+.categories-directory-panel {
+  display: grid;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.categories-toolbar {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) auto auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid var(--color-border);
+  background: #ffffff;
+}
+
+.category-filter-group {
+  display: grid;
+  grid-template-columns: 22px minmax(140px, 1fr) minmax(140px, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface-soft);
+}
+
+.category-filter-group svg {
+  color: var(--color-muted);
+}
+
+.category-filter-group select,
+.category-company-filter {
+  min-height: 38px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0 10px;
+  background: #ffffff;
+  color: var(--color-text);
+  font: inherit;
+  font-weight: 800;
+  outline: 0;
+}
+
+.category-filter-group select {
+  min-height: 36px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.categories-visible-count {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--color-muted);
+  font-size: 0.82rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.category-table-name {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 190px;
+}
+
+.category-table-icon {
+  display: inline-grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: var(--radius);
+  background: var(--color-blue-soft);
+  color: var(--color-blue);
+}
+
+.category-table-name > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.category-type-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  width: max-content;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--color-blue-soft);
+  color: var(--color-blue-dark);
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.category-type-badge.servicio {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+}
+
+@media (max-width: 1180px) {
+
+  .categories-unified-header > div:last-child {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .category-filter-group {
+    grid-template-columns: 22px 1fr 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+
+  .categories-unified-header {
+    padding: 18px;
+  }
+
+  .categories-unified-header > div:first-child {
+    align-items: flex-start;
+  }
+
+  .categories-unified-header h1 {
+    font-size: 1.65rem;
+  }
+
+  .categories-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .category-filter-group {
+    grid-template-columns: 1fr;
+    padding: 10px;
+  }
+
+  .category-company-filter {
+    width: 100%;
+  }
+}

@@ -1,0 +1,352 @@
+/* Settings module styles.
+   Owns company settings and shared settings form UI. */
+
+.settings-page {
+  gap: 20px;
+  padding-bottom: 96px;
+}
+
+.settings-unified-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 20px;
+  align-items: center;
+  padding: 22px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background:
+    linear-gradient(135deg, rgba(24, 119, 242, 0.08), rgba(47, 191, 113, 0.07)),
+    #ffffff;
+  box-shadow: var(--shadow-sm);
+}
+
+.settings-unified-header > div:first-child,
+.settings-header-summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.settings-header-icon {
+  display: inline-grid;
+  width: 50px;
+  height: 50px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: var(--radius);
+  background: var(--color-blue-soft);
+  color: var(--color-blue);
+}
+
+.settings-unified-header h1 {
+  margin: 2px 0 6px;
+  font-size: 2rem;
+  letter-spacing: 0;
+  line-height: 1.05;
+}
+
+.settings-header-summary {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.settings-header-summary div {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--color-muted);
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.settings-header-summary div.active {
+  border-color: #bfe8d2;
+  background: var(--color-green-soft);
+  color: var(--color-green-dark);
+}
+
+.settings-form {
+  display: grid;
+  gap: 18px;
+}
+
+.settings-form-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+  gap: 18px;
+  align-items: start;
+}
+
+.settings-form-main,
+.settings-aside {
+  display: grid;
+  gap: 18px;
+}
+
+.settings-aside {
+  position: sticky;
+  top: 96px;
+}
+
+.settings-section,
+.settings-preview-card {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: #ffffff;
+  box-shadow: var(--shadow-sm);
+}
+
+.settings-section header,
+.settings-preview-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.settings-section header > span,
+.settings-preview-header > span {
+  display: inline-grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: var(--radius);
+  background: var(--color-surface-soft);
+  color: var(--color-blue);
+}
+
+.settings-section h2,
+.settings-preview-card h2 {
+  margin: 0 0 4px;
+  font-size: 1.05rem;
+  letter-spacing: 0;
+}
+
+.settings-section p,
+.settings-preview-card p {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+.settings-section-body {
+  display: grid;
+  gap: 14px;
+}
+
+.settings-message-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.settings-form textarea {
+  min-height: 132px;
+  line-height: 1.5;
+}
+
+.settings-chat-preview {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, #f8fafc, #ffffff);
+}
+
+.settings-chat-preview small {
+  color: var(--color-blue);
+  font-weight: 900;
+}
+
+.settings-chat-preview p {
+  width: fit-content;
+  max-width: 100%;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--color-blue);
+  color: #ffffff;
+  overflow-wrap: anywhere;
+}
+
+.settings-preview-meta {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--color-muted);
+  font-weight: 800;
+}
+
+.settings-preview-meta svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.settings-switch-list {
+  display: grid;
+  gap: 12px;
+}
+
+.settings-switch {
+  position: relative;
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface-soft);
+  cursor: pointer;
+}
+
+.settings-switch input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.settings-switch-control {
+  position: relative;
+  width: 52px;
+  height: 30px;
+  border-radius: 999px;
+  background: #d8e1ea;
+  transition: background 160ms ease;
+}
+
+.settings-switch-control::after {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: var(--shadow-sm);
+  transition: transform 160ms ease;
+  content: "";
+}
+
+.settings-switch input:checked + .settings-switch-control {
+  background: var(--color-green);
+}
+
+.settings-switch input:checked + .settings-switch-control::after {
+  transform: translateX(22px);
+}
+
+.settings-switch-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.settings-switch-copy strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-text);
+}
+
+.settings-switch-copy small {
+  color: var(--color-muted);
+  line-height: 1.4;
+}
+
+.settings-save-bar {
+  position: sticky;
+  bottom: 16px;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(12px);
+}
+
+.settings-save-bar > div:first-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.settings-save-bar strong,
+.settings-save-bar span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-save-bar span {
+  color: var(--color-muted);
+  font-weight: 800;
+}
+
+.settings-save-bar > div:last-child {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 1180px) {
+
+  .settings-aside {
+    position: static;
+  }
+
+  .settings-header-summary {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 520px) {
+
+  .settings-unified-header {
+    padding: 18px;
+  }
+
+  .settings-unified-header > div:first-child {
+    align-items: flex-start;
+  }
+
+  .settings-unified-header h1 {
+    font-size: 1.65rem;
+  }
+
+  .settings-header-summary {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .settings-header-summary div {
+    justify-content: center;
+  }
+
+  .settings-section,
+  .settings-preview-card {
+    padding: 16px;
+  }
+
+  .settings-save-bar {
+    align-items: stretch;
+    flex-direction: column;
+    bottom: 10px;
+  }
+}

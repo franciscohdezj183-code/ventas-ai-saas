@@ -1,0 +1,253 @@
+/* ReportesPage module styles.
+   Owns analytics dashboard filters, metrics, MUI charts, summary tables, loading, and empty states. */
+
+.reports-page {
+  --reports-card-bg: color-mix(in srgb, var(--color-surface) 96%, transparent);
+  --reports-border: color-mix(in srgb, var(--color-border) 78%, transparent);
+  gap: 20px;
+}
+
+.reports-page .dashboard-hero {
+  position: relative;
+  overflow: hidden;
+  min-height: 150px;
+  border: 1px solid var(--reports-border);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(24, 119, 242, 0.12), rgba(47, 191, 113, 0.08)),
+    var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.reports-page .dashboard-hero::after {
+  position: absolute;
+  right: 24px;
+  bottom: -68px;
+  width: 260px;
+  height: 160px;
+  border: 1px solid color-mix(in srgb, var(--color-blue) 18%, transparent);
+  border-radius: 48%;
+  background: color-mix(in srgb, var(--color-blue-soft) 70%, transparent);
+  content: '';
+  transform: rotate(-8deg);
+}
+
+.reports-page .dashboard-hero > div {
+  position: relative;
+  z-index: 1;
+}
+
+.reports-page .dashboard-hero h2 {
+  margin: 2px 0 6px;
+  color: var(--color-heading);
+  font-size: clamp(1.8rem, 2.5vw, 2.35rem);
+  letter-spacing: 0;
+  line-height: 1.1;
+}
+
+.reports-page .dashboard-hero p:not(.eyebrow) {
+  max-width: 760px;
+  margin: 0;
+  color: var(--color-muted);
+  line-height: 1.52;
+}
+
+.reports-page .enterprise-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr)) auto;
+  gap: 12px;
+  align-items: end;
+  padding: 16px;
+  border: 1px solid var(--reports-border);
+  border-radius: 8px;
+  background: var(--reports-card-bg);
+  box-shadow: var(--shadow-sm);
+}
+
+.report-date-input {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--reports-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+
+.report-date-input svg {
+  color: var(--color-muted);
+}
+
+.report-date-input input,
+.reports-page .enterprise-filters select {
+  width: 100%;
+  min-height: 40px;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-weight: 800;
+  outline: 0;
+}
+
+.reports-page .enterprise-filters select {
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--reports-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+
+.reports-page .enterprise-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.reports-page .enterprise-metric {
+  position: relative;
+  overflow: hidden;
+  min-height: 122px;
+  border: 1px solid var(--reports-border);
+  border-radius: 8px;
+  background: var(--reports-card-bg);
+  box-shadow: var(--shadow-sm);
+}
+
+.reports-page .enterprise-metric::after {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  background: var(--color-blue-soft);
+  content: '';
+}
+
+.reports-page .enterprise-metric.green::after {
+  background: var(--color-green-soft);
+}
+
+.reports-page .enterprise-metric.amber::after {
+  background: var(--color-warning-soft);
+}
+
+.reports-page .enterprise-metric.purple::after {
+  background: color-mix(in srgb, var(--color-blue-soft) 65%, var(--color-danger-soft));
+}
+
+.reports-page .enterprise-metric strong {
+  color: var(--color-heading);
+}
+
+.reports-page .enterprise-dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.report-chart-card,
+.reports-table-card {
+  overflow: hidden;
+  border: 1px solid var(--reports-border);
+  border-radius: 8px;
+  background: var(--reports-card-bg);
+  box-shadow: var(--shadow-sm);
+}
+
+.report-chart-card .section-header,
+.reports-table-card .section-header {
+  border-bottom: 1px solid var(--reports-border);
+}
+
+.report-chart-card h2,
+.reports-table-card h2 {
+  color: var(--color-heading);
+  letter-spacing: 0;
+}
+
+.report-chart-card .empty-state,
+.reports-table-card .empty-state,
+.reports-page .loading-state-card {
+  margin: 18px;
+  border: 1px solid var(--reports-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+
+.report-chart-card .MuiChartsSurface-root,
+.report-chart-card svg {
+  overflow: visible;
+}
+
+.reports-page .dashboard-bar-list {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+}
+
+.reports-page .dashboard-bar-row {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--reports-border);
+  border-radius: 8px;
+  background: var(--color-surface-soft);
+}
+
+.reports-page .dashboard-bar-row > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.reports-page .dashboard-bar-row strong {
+  color: var(--color-heading);
+}
+
+.reports-page .dashboard-bar-row span {
+  color: var(--color-muted);
+  font-weight: 900;
+}
+
+.reports-page .bar-track {
+  overflow: hidden;
+  height: 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-border) 55%, transparent);
+}
+
+.reports-page .bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--color-blue), var(--color-green));
+}
+
+@media (max-width: 1180px) {
+
+  .reports-page .enterprise-metrics-grid,
+  .reports-page .enterprise-dashboard-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .reports-page .enterprise-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+
+  .reports-page .enterprise-metrics-grid,
+  .reports-page .enterprise-dashboard-grid,
+  .reports-page .enterprise-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .reports-page .dashboard-hero {
+    padding: 18px;
+  }
+}
