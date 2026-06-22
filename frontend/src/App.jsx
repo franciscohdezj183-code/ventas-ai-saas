@@ -21,7 +21,37 @@ import {
 import { LoginPage } from './features/auth/LoginPage.jsx';
 import { AdminLayout } from './layouts/AdminLayout.jsx';
 import { DashboardPage } from './pages/DashboardPage.jsx';
-import { ProtectedRoute, RoleRoute } from './routes/ProtectedRoute.jsx';
+import { hasPermission } from './config/permissions.js';
+import { useAuth } from './context/AuthContext.jsx';
+import { PermissionRoute, ProtectedRoute, RoleRoute } from './routes/ProtectedRoute.jsx';
+
+const homeRouteCandidates = [
+  { path: '/', permission: 'reports.view' },
+  { path: '/conversaciones', permission: 'conversations.view' },
+  { path: '/leads', permission: 'customers.view' },
+  { path: '/pedidos', permission: 'orders.view' },
+  { path: '/productos', permission: 'products.view' }
+];
+
+function HomeRoute() {
+  const { user } = useAuth();
+
+  if (!user) {
+    return null;
+  }
+
+  const firstAllowedRoute = homeRouteCandidates.find((route) => hasPermission(user, route.permission));
+
+  if (!firstAllowedRoute) {
+    return null;
+  }
+
+  if (firstAllowedRoute.path !== '/') {
+    return <Navigate to={firstAllowedRoute.path} replace />;
+  }
+
+  return <DashboardPage />;
+}
 
 export function App() {
   return (
@@ -35,32 +65,120 @@ export function App() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<DashboardPage />} />
+        <Route index element={<HomeRoute />} />
         <Route
           path="mi-empresa"
           element={
             <RoleRoute roles={['owner']}>
-              <OwnerCompanyPage />
+              <PermissionRoute permission="subscriptions.view">
+                <OwnerCompanyPage />
+              </PermissionRoute>
             </RoleRoute>
           }
         />
-        <Route path="inicio-guiado" element={<OnboardingPage />} />
-        <Route path="empresas" element={<CompaniesPage />} />
-        <Route path="usuarios" element={<UsersPage />} />
-        <Route path="categorias" element={<CategoriesPage />} />
-        <Route path="productos" element={<ProductsPage />} />
-        <Route path="servicios" element={<ServicesPage />} />
-        <Route path="leads" element={<LeadsPage />} />
-        <Route path="conversaciones" element={<ConversationsPage />} />
-        <Route path="pedidos" element={<OrdersPage />} />
-        <Route path="reportes" element={<ReportsPage />} />
-        <Route path="whatsapp" element={<WhatsAppPage />} />
-        <Route path="configuracion" element={<SettingsPage />} />
+        <Route
+          path="inicio-guiado"
+          element={
+            <PermissionRoute permission="tenants.view">
+              <OnboardingPage />
+            </PermissionRoute>
+          }
+        />
+        <Route
+          path="empresas"
+          element={
+            <PermissionRoute permission="tenants.view">
+              <CompaniesPage />
+            </PermissionRoute>
+          }
+        />
+        <Route
+          path="usuarios"
+          element={
+            <PermissionRoute permission="users.view">
+              <UsersPage />
+            </PermissionRoute>
+          }
+        />
+        <Route
+          path="categorias"
+          element={
+            <PermissionRoute permission="products.view">
+              <CategoriesPage />
+            </PermissionRoute>
+          }
+        />
+        <Route
+          path="productos"
+          element={
+            <PermissionRoute permission="products.view">
+              <ProductsPage />
+            </PermissionRoute>
+          }
+        />
+        <Route
+          path="servicios"
+          element={
+            <PermissionRoute permission="products.view">
+              <ServicesPage />
+            </PermissionRoute>
+          }
+        />
+        <Route
+          path="leads"
+          element={
+            <PermissionRoute permission="customers.view">
+              <LeadsPage />
+            </PermissionRoute>
+          }
+        />
+        <Route
+          path="conversaciones"
+          element={
+            <PermissionRoute permission="conversations.view">
+              <ConversationsPage />
+            </PermissionRoute>
+          }
+        />
+        <Route
+          path="pedidos"
+          element={
+            <PermissionRoute permission="orders.view">
+              <OrdersPage />
+            </PermissionRoute>
+          }
+        />
+        <Route
+          path="reportes"
+          element={
+            <PermissionRoute permission="reports.view">
+              <ReportsPage />
+            </PermissionRoute>
+          }
+        />
+        <Route
+          path="whatsapp"
+          element={
+            <PermissionRoute permission="whatsapp.view">
+              <WhatsAppPage />
+            </PermissionRoute>
+          }
+        />
+        <Route
+          path="configuracion"
+          element={
+            <PermissionRoute permission="ai_config.view">
+              <SettingsPage />
+            </PermissionRoute>
+          }
+        />
         <Route
           path="suscripciones"
           element={
             <RoleRoute roles={['super_admin']}>
-              <PlansPage />
+              <PermissionRoute permission="subscriptions.view">
+                <PlansPage />
+              </PermissionRoute>
             </RoleRoute>
           }
         />
@@ -68,7 +186,9 @@ export function App() {
           path="consumo-ia"
           element={
             <RoleRoute roles={['super_admin']}>
-              <AIUsagePage />
+              <PermissionRoute permission="reports.view">
+                <AIUsagePage />
+              </PermissionRoute>
             </RoleRoute>
           }
         />
@@ -76,7 +196,9 @@ export function App() {
           path="super-admin"
           element={
             <RoleRoute roles={['super_admin']}>
-              <SuperAdminPage />
+              <PermissionRoute permission="tenants.view">
+                <SuperAdminPage />
+              </PermissionRoute>
             </RoleRoute>
           }
         />
@@ -84,7 +206,9 @@ export function App() {
           path="prompts-bot"
           element={
             <RoleRoute roles={['SUPER_ADMIN']}>
-              <BotPromptsPage />
+              <PermissionRoute permission="ai_config.view">
+                <BotPromptsPage />
+              </PermissionRoute>
             </RoleRoute>
           }
         />

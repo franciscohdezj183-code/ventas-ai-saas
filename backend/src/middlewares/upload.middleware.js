@@ -124,7 +124,7 @@ function validateUploadedFileSignature({ required, validator, message }) {
 export function uploadProductImage(req, res, next) {
   uploadProductImageRaw(req, res, (error) => {
     if (error) {
-      next(error);
+      next(normalizeMulterError(error));
       return;
     }
 
@@ -139,7 +139,7 @@ export function uploadProductImage(req, res, next) {
 export function uploadCompanyLogo(req, res, next) {
   uploadCompanyLogoRaw(req, res, (error) => {
     if (error) {
-      next(error);
+      next(normalizeMulterError(error));
       return;
     }
 
@@ -181,10 +181,26 @@ const uploadProductsXlsxRaw = multer({
   }
 }).single('archivo');
 
+function normalizeMulterError(error) {
+  if (!error) {
+    return null;
+  }
+
+  if (error instanceof multer.MulterError) {
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return createHttpError(400, 'El archivo excede el tamano maximo permitido');
+    }
+
+    return createHttpError(400, 'El archivo enviado no es valido');
+  }
+
+  return error;
+}
+
 export function uploadProductsXlsx(req, res, next) {
   uploadProductsXlsxRaw(req, res, (error) => {
     if (error) {
-      next(error);
+      next(normalizeMulterError(error));
       return;
     }
 

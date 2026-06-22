@@ -35,6 +35,10 @@ export async function authenticate(req, res, next) {
       throw createHttpError(401, 'Authenticated user is not active');
     }
 
+    if (!user.empresa_activo || user.empresa_estado !== 'ACTIVA') {
+      throw createHttpError(403, 'Authenticated company is not active');
+    }
+
     req.auth = {
       token,
       payload,

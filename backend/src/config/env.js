@@ -32,10 +32,53 @@ function booleanEnv(name, fallback = true) {
 
 function validateUrl(value, name) {
   try {
-    return new URL(value).origin;
+    const parsedUrl = new URL(value);
+
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      throw new Error();
+    }
+
+    return parsedUrl.origin;
   } catch {
     throw new Error(`Invalid URL environment variable: ${name}`);
   }
+}
+
+function optionalStringEnv(name) {
+  const value = process.env[name];
+  return value === undefined || value === '' ? null : value;
+}
+
+function isLocalHostname(hostname) {
+  const normalizedHostname = hostname.toLowerCase();
+
+  return (
+    normalizedHostname === 'localhost' ||
+    normalizedHostname === '0.0.0.0' ||
+    normalizedHostname === '::1' ||
+    normalizedHostname === '[::1]' ||
+    normalizedHostname.startsWith('127.') ||
+    normalizedHostname.endsWith('.local')
+  );
+}
+
+function isIpAddress(hostname) {
+  return /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) || hostname.includes(':');
+}
+
+function isProductionOrigin(origin) {
+  const parsedUrl = new URL(origin);
+
+  return (
+    parsedUrl.protocol === 'https:' &&
+    !isLocalHostname(parsedUrl.hostname) &&
+    !isIpAddress(parsedUrl.hostname) &&
+    parsedUrl.hostname.includes('.')
+  );
+}
+
+function hasEnvValue(name) {
+  return process.env[name] !== undefined && process.env[name] !== '';
 }
 
 function validateEnv(nextEnv) {
@@ -54,8 +97,30 @@ function validateEnv(nextEnv) {
   if (!nextEnv.db.database) errors.push('DB_NAME is required');
 
   if (nextEnv.nodeEnv === 'production') {
-    if (!nextEnv.apiUrl.startsWith('https://')) {
-      errors.push('API_URL must use https in production');
+    const requiredProductionEnv = [
+      'API_URL',
+      'FRONTEND_URL',
+      'CORS_ORIGINS',
+      'JWT_SECRET',
+      'DB_HOST',
+      'DB_PORT',
+      'DB_USER',
+      'DB_PASSWORD',
+      'DB_NAME',
+      'OPENAI_API_KEY'
+    ];
+    const missingProductionEnv = requiredProductionEnv.filter((name) => !hasEnvValue(name));
+
+    if (missingProductionEnv.length > 0) {
+      errors.push(`Missing required production environment variables: ${missingProductionEnv.join(', ')}`);
+    }
+
+    if (!isProductionOrigin(nextEnv.apiUrl)) {
+      errors.push('API_URL must use an https production domain and cannot point to localhost or an IP address');
+    }
+
+    if (!isProductionOrigin(nextEnv.frontendUrl)) {
+      errors.push('FRONTEND_URL must use an https production domain and cannot point to localhost or an IP address');
     }
 
     if (nextEnv.jwt.secret === 'change_this_secret_in_production' || nextEnv.jwt.secret.length < 32) {
@@ -64,6 +129,12 @@ function validateEnv(nextEnv) {
 
     if (nextEnv.cors.allowedOrigins.length === 0) {
       errors.push('CORS_ORIGINS or FRONTEND_URL must include at least one production origin');
+    }
+
+    const invalidCorsOrigins = nextEnv.cors.allowedOrigins.filter((origin) => !isProductionOrigin(origin));
+
+    if (invalidCorsOrigins.length > 0) {
+      errors.push('CORS_ORIGINS must only include https production domains in production');
     }
   }
 
@@ -74,13 +145,15 @@ function validateEnv(nextEnv) {
 
 const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:5173';
 const apiUrl = process.env.API_URL ?? `http://localhost:${process.env.PORT ?? 4000}`;
+const normalizedFrontendUrl = validateUrl(frontendUrl, 'FRONTEND_URL');
+const normalizedApiUrl = validateUrl(apiUrl, 'API_URL');
 const corsOrigins = listEnv('CORS_ORIGINS', frontendUrl).map((origin) => validateUrl(origin, 'CORS_ORIGINS'));
 
 export const env = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
   port: numberEnv('PORT', 4000),
-  apiUrl,
-  frontendUrl,
+  apiUrl: normalizedApiUrl,
+  frontendUrl: normalizedFrontendUrl,
   cors: {
     allowedOrigins: corsOrigins
   },
@@ -97,7 +170,9 @@ export const env = {
   },
   whatsapp: {
     sessionPath: process.env.WHATSAPP_SESSION_PATH ?? 'storage/whatsapp',
-    headless: booleanEnv('WHATSAPP_HEADLESS', true)
+    headless: booleanEnv('WHATSAPP_HEADLESS', true),
+    puppeteerExecutablePath: optionalStringEnv('WHATSAPP_PUPPETEER_EXECUTABLE_PATH'),
+    puppeteerArgs: listEnv('WHATSAPP_PUPPETEER_ARGS')
   },
   openai: {
     apiKey: process.env.OPENAI_API_KEY ?? '',

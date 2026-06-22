@@ -7,6 +7,7 @@ import pkg from 'whatsapp-web.js';
 import { env } from '../../config/env.js';
 import { query } from '../../config/database.js';
 import { createHttpError } from '../../utils/http-error.js';
+import { logger } from '../../utils/logger.js';
 import { decryptField, encryptField } from '../../utils/crypto-field.js';
 import { processIncomingCustomerMessage } from '../ai/ai.service.js';
 import {
@@ -26,6 +27,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const uploadsPath = path.resolve(__dirname, '../../../uploads');
 const CHROMIUM_LOCK_FILES = ['SingletonLock', 'SingletonSocket', 'SingletonCookie', 'lockfile'];
+const DEFAULT_PUPPETEER_ARGS = [
+  '--no-sandbox',
+  '--disable-setuid-sandbox',
+  '--disable-dev-shm-usage'
+];
 const DEFAULT_RECONNECT_BASE_DELAY_MS = 5000;
 const DEFAULT_RECONNECT_MAX_DELAY_MS = 60000;
 const DEFAULT_RECONNECT_MAX_ATTEMPTS = 8;
@@ -67,6 +73,10 @@ function sessionRootPath() {
   return path.resolve(process.cwd(), env.whatsapp.sessionPath);
 }
 
+function ensureSessionRootPath() {
+  fs.mkdirSync(sessionRootPath(), { recursive: true });
+}
+
 function sessionPathForCompany(companyId) {
   return path.join(sessionRootPath(), `session-${clientIdForCompany(companyId)}`);
 }
@@ -91,6 +101,26 @@ async function cleanupChromiumLockFiles(companyId) {
       }
     })
   );
+}
+
+function puppeteerArgs() {
+  return Array.from(new Set([
+    ...DEFAULT_PUPPETEER_ARGS,
+    ...(env.whatsapp.puppeteerArgs ?? [])
+  ].filter(Boolean)));
+}
+
+function puppeteerOptions() {
+  const options = {
+    headless: env.whatsapp.headless,
+    args: puppeteerArgs()
+  };
+
+  if (env.whatsapp.puppeteerExecutablePath) {
+    options.executablePath = env.whatsapp.puppeteerExecutablePath;
+  }
+
+  return options;
 }
 
 async function withCompanyOperationLock(companyId, operation) {
@@ -127,6 +157,12 @@ function pushSessionEvent(session, type, message) {
     ...(session.state.events ?? [])
   ].slice(0, 12);
   persistWhatsappStatus(session.state).catch(() => {});
+  logger.info('whatsapp_session_event', {
+    empresaId: session.companyId,
+    type,
+    status: session.state.status,
+    message
+  });
 }
 
 async function ensureWhatsappStatusTable() {
@@ -434,11 +470,14 @@ function attachClientEvents(session) {
   });
 
   session.client.on('auth_failure', (message) => {
-    clearAuthReadyTimer(session);
-    session.state.status = 'AUTH_FAILED';
-    session.state.last_error = message;
-    session.state.updated_at = new Date().toISOString();
-    pushSessionEvent(session, 'AUTH_FAILED', message || 'Fallo de autenticacion');
+    cleanupAuthFailedSession(session, message || 'Fallo de autenticacion').catch((error) => {
+      session.state.last_error = error.message;
+      session.state.updated_at = new Date().toISOString();
+      logger.error('whatsapp_auth_failure_cleanup_error', {
+        empresaId: session.companyId,
+        error
+      });
+    });
   });
 
   session.client.on('disconnected', (reason) => {
@@ -537,6 +576,10 @@ function attachClientEvents(session) {
       session.state.last_error = error.message;
       session.state.updated_at = new Date().toISOString();
       pushSessionEvent(session, 'ERROR', error.message);
+      logger.error('whatsapp_message_processing_error', {
+        empresaId: session.companyId,
+        error
+      });
     }
   });
 }
@@ -575,20 +618,22 @@ function scheduleReconnect(session) {
     withCompanyOperationLock(session.companyId, () => startWhatsappSessionUnlocked(session.companyId, { fromReconnect: true })).catch((error) => {
       session.state.last_error = error.message;
       session.state.updated_at = new Date().toISOString();
+      logger.error('whatsapp_reconnect_error', {
+        empresaId: session.companyId,
+        error
+      });
     });
   }, delay);
 }
 
 function createSession(companyId) {
+  ensureSessionRootPath();
   const client = new Client({
     authStrategy: new LocalAuth({
       clientId: clientIdForCompany(companyId),
       dataPath: sessionRootPath()
     }),
-    puppeteer: {
-      headless: env.whatsapp.headless,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    }
+    puppeteer: puppeteerOptions()
   });
 
   const session = {
@@ -610,6 +655,32 @@ function createSession(companyId) {
   sessions.set(companyId, session);
   lastStatuses.delete(companyId);
   return session;
+}
+
+async function cleanupAuthFailedSession(session, message) {
+  session.destroying = true;
+  clearAuthReadyTimer(session);
+
+  if (session.reconnectTimer) {
+    clearTimeout(session.reconnectTimer);
+    session.reconnectTimer = null;
+  }
+
+  session.state.status = 'AUTH_FAILED';
+  session.state.last_error = message;
+  session.state.qr = null;
+  session.state.qr_image = null;
+  session.state.next_reconnect_at = null;
+  session.state.updated_at = new Date().toISOString();
+  pushSessionEvent(session, 'AUTH_FAILED', message);
+
+  try {
+    await destroyClientQuietly(session.client);
+  } finally {
+    session.clientDestroyed = true;
+    sessions.delete(session.companyId);
+    lastStatuses.set(session.companyId, session.state);
+  }
 }
 
 async function cleanupFailedSession(session, error) {
@@ -679,6 +750,10 @@ async function startWhatsappSessionUnlocked(id, { fromReconnect = false } = {}) 
   try {
     await session.client.initialize();
   } catch (error) {
+    logger.error('whatsapp_session_initialize_error', {
+      empresaId: id,
+      error
+    });
     await cleanupFailedSession(session, error);
 
     if (isBrowserAlreadyRunningError(error)) {

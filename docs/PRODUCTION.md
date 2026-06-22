@@ -1,208 +1,444 @@
-# Guia de produccion
+# Guia de despliegue en VPS Linux
 
-Esta guia resume los pasos minimos antes de publicar el proyecto.
+Esta guia deja el proyecto listo para produccion con Node.js, PM2, Nginx,
+MySQL y HTTPS con Certbot.
 
-## Seguridad
-
-- Cambiar `JWT_SECRET` por un secreto largo y aleatorio.
-- Configurar `FIELD_ENCRYPTION_KEY` para cifrar campos sensibles.
-- Usar `API_URL=https://...` en produccion.
-- Definir `CORS_ORIGINS` con dominios exactos separados por coma, por ejemplo `https://app.tudominio.com`.
-- Ajustar `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_MAX` y `AUTH_RATE_LIMIT_MAX` segun trafico real.
-- Mantener `JSON_BODY_LIMIT` bajo, por ejemplo `1mb`, salvo que exista una razon operativa.
-- No subir `.env`.
-- No subir `backend/storage/whatsapp`.
-- No subir `.wwebjs_auth` ni `.wwebjs_cache`.
-- No subir `backend/uploads`.
-- No subir `node_modules`, `dist` ni builds generados.
-- No usar usuario MySQL `root`.
-- Configurar `NODE_ENV=production`.
-- Configurar `FRONTEND_URL` y `CORS_ORIGINS` con dominios reales.
-- Ejecutar `npm audit --workspaces`.
-- Ejecutar `npm test -w backend`.
-
-## Variables obligatorias
-
-En produccion la API falla al iniciar si faltan o son inseguras:
-
-```env
-NODE_ENV=production
-PORT=4000
-API_URL=https://api.tudominio.com
-FRONTEND_URL=https://app.tudominio.com
-CORS_ORIGINS=https://app.tudominio.com
-JWT_SECRET=un_secreto_largo_de_32_caracteres_o_mas
-FIELD_ENCRYPTION_KEY=otro_secreto_largo_para_cifrado_de_campos
-DB_HOST=...
-DB_PORT=3306
-DB_USER=ventas_ai
-DB_PASSWORD=...
-DB_NAME=ventas_ai_saas
-```
-
-Opcionales recomendadas:
-
-```env
-JSON_BODY_LIMIT=1mb
-RATE_LIMIT_WINDOW_MS=900000
-RATE_LIMIT_MAX=300
-AUTH_RATE_LIMIT_MAX=20
-WHATSAPP_SESSION_PATH=/var/lib/ventas-ai/whatsapp
-WHATSAPP_HEADLESS=true
-WHATSAPP_RECONNECT_BASE_DELAY_MS=5000
-WHATSAPP_RECONNECT_MAX_DELAY_MS=60000
-WHATSAPP_RECONNECT_MAX_ATTEMPTS=8
-WHATSAPP_WORKER_MONITOR_INTERVAL_MS=60000
-WHATSAPP_WORKER_START_STAGGER_MS=3000
-HANDOFF_JOB_ENABLED=true
-OPENAI_AUTO_REPLY=false
-```
-
-## Autenticacion
-
-El proyecto usa JWT Bearer. Para una version productiva con varias instancias:
-
-- Mover blacklist de logout a Redis.
-- Usar access tokens cortos.
-- Evaluar refresh tokens rotados.
-- El rate limiting ya esta activo en API general y `/api/auth/login`; si escalas a varias instancias, mover contadores a Redis.
-
-## WhatsApp
-
-`whatsapp-web.js` guarda sesiones locales. Para produccion:
-
-- Usar un volumen persistente para `WHATSAPP_SESSION_PATH`.
-- No versionar sesiones.
-- Confirmar que `.gitignore` cubre `backend/storage/whatsapp`, `.wwebjs_auth` y `.wwebjs_cache`.
-- Ejecutar WhatsApp en un worker o servicio separado con `npm run worker:whatsapp -w backend`.
-- El worker inicia empresas activas con WhatsApp habilitado y monitorea sesiones cada `WHATSAPP_WORKER_MONITOR_INTERVAL_MS`.
-- Las sesiones tienen lock por empresa, backoff exponencial y limpieza de locks locales de Chromium (`SingletonLock`, `SingletonSocket`, `SingletonCookie`).
-- El estado de sesiones se persiste en `whatsapp_session_status`, por lo que `/api/health` y el panel pueden ver snapshots aunque WhatsApp viva en el worker.
-- Ajustar `WHATSAPP_RECONNECT_BASE_DELAY_MS`, `WHATSAPP_RECONNECT_MAX_DELAY_MS` y `WHATSAPP_RECONNECT_MAX_ATTEMPTS` segun estabilidad del servidor.
-- Si el worker es el responsable de WhatsApp, ejecuta la API con `HANDOFF_JOB_ENABLED=false` y deja el worker con `HANDOFF_JOB_ENABLED=true` para evitar jobs duplicados.
-
-## OpenAI
-
-Antes de activar respuestas automaticas:
-
-- Mantener `OPENAI_AUTO_REPLY=false` durante pruebas.
-- Verificar que OpenAI solo devuelva JSON de intencion.
-- No enviar catalogos completos a OpenAI.
-- No permitir que OpenAI defina precios, stock, productos ni datos de negocio.
-- Validar siempre el JSON antes de ejecutar herramientas.
-- Agregar auditoria de intenciones y herramientas ejecutadas.
-- Agregar handoff humano.
-- Limitar toda herramienta MCP por `empresa_id`.
-- Configurar limites de plan y consumo IA antes de activar `OPENAI_AUTO_REPLY=true`.
-- Revisar `/api/ai/usage/monthly` para detectar abuso o costos inesperados.
-
-## Planes y billing
-
-El proyecto ya tiene configuracion de planes y limites. Antes de vender en
-produccion:
-
-- Validar limites Starter, Business y Enterprise con datos reales.
-- Conectar pasarela de pago.
-- Agregar webhooks de suscripcion.
-- Suspender o limitar empresas con pago vencido.
-- Revisar mensajes de bloqueo por limite superado.
-
-## Uploads
-
-Para imagenes y Excel:
-
-- Validar extension, MIME y magic bytes.
-- Limitar tamano.
-- Considerar antivirus si recibes archivos de clientes.
-- Usar storage externo o CDN en produccion.
-- No servir archivos sensibles desde el mismo dominio.
-
-## MySQL
-
-- Crear indices adicionales segun consultas reales.
-- Agregar paginacion y filtros server-side.
-- Activar slow query log.
-- Hacer backups periodicos.
-- Usar pool de conexiones con limites adecuados.
-- Ejecutar migraciones SQL nuevas antes de arrancar la version nueva.
-- Ejecutar `npm run migrate -w backend` antes de levantar la API cuando exista una version nueva.
-- Verificar que `schema_migrations` registre todas las migraciones aplicadas.
-
-## Observabilidad
-
-- Los logs salen en JSON por stdout/stderr.
-- Configura el runtime para capturar stdout y enviarlo a tu plataforma de logs.
-- El health check completo vive en `/api/health` e incluye DB, uptime, memoria y sesiones WhatsApp.
-- Los errores HTTP pasan por un handler centralizado.
-- El apagado ordenado escucha `SIGINT` y `SIGTERM`, cierra sesiones WhatsApp y pool MySQL.
-
-## Frontend
-
-- Construir con `npm run build`.
-- Servir `frontend/dist` desde hosting estatico o CDN.
-- Configurar `VITE_API_URL` con la URL real de la API.
-- Usar HTTPS.
-
-## Despliegue sugerido
-
-Separar servicios:
+Los ejemplos usan:
 
 ```text
-frontend: hosting estatico/CDN
-backend: Node.js process manager o contenedor
-mysql: servicio administrado o servidor dedicado
-storage: volumen persistente o servicio externo
-redis: sesiones, rate limit y jobs
+Proyecto: /var/www/ventas-ai-saas
+Backend local: http://127.0.0.1:4000
+Frontend principal: https://app.example.com
+API subdominio: https://api.example.com
+API por path: https://example.com/api
 ```
 
-## Comandos sugeridos
+Reemplaza los dominios y rutas por los reales.
+
+## Requisitos del VPS
+
+```bash
+sudo apt update
+sudo apt install -y nginx mysql-client certbot python3-certbot-nginx
+node --version
+npm --version
+```
+
+Instala PM2 si no existe:
+
+```bash
+sudo npm install -g pm2
+```
+
+Para WhatsApp en Linux instala dependencias de Chromium si tu imagen no las trae:
+
+```bash
+sudo apt install -y chromium-browser fonts-liberation libatk-bridge2.0-0 libatk1.0-0 libcups2 libdrm2 libgbm1 libgtk-3-0 libnss3 libxcomposite1 libxdamage1 libxrandr2 xdg-utils
+```
+
+En algunas distribuciones el binario se llama `chromium` en vez de
+`chromium-browser`.
+
+## Descargar codigo
+
+```bash
+sudo mkdir -p /var/www
+sudo chown -R $USER:$USER /var/www
+cd /var/www
+git clone <REPO_URL> ventas-ai-saas
+cd ventas-ai-saas
+```
+
+Si ya existe el proyecto:
+
+```bash
+cd /var/www/ventas-ai-saas
+git pull
+```
+
+## Variables de entorno
+
+No subas `.env` al repositorio.
 
 Backend:
 
 ```bash
-cd backend
-npm ci --omit=dev
-npm run migrate
-NODE_ENV=production npm start
+cp backend/.env.example backend/.env
+nano backend/.env
 ```
 
-Worker WhatsApp:
+Minimo recomendado para produccion:
 
-```bash
-cd backend
-NODE_ENV=production npm run worker:whatsapp
+```env
+NODE_ENV=production
+PORT=4000
+API_URL=https://api.example.com
+FRONTEND_URL=https://app.example.com
+CORS_ORIGINS=https://app.example.com
+
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_USER=ventas_app
+DB_PASSWORD=replace_with_real_password
+DB_NAME=ventas_ai_saas
+
+JWT_SECRET=replace_with_32_or_more_random_characters
+FIELD_ENCRYPTION_KEY=replace_with_32_or_more_random_characters
+
+OPENAI_API_KEY=replace_with_real_openai_key
+OPENAI_AUTO_REPLY=false
+
+WHATSAPP_SESSION_PATH=storage/whatsapp
+WHATSAPP_HEADLESS=true
+WHATSAPP_PUPPETEER_ARGS=--no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage
+WHATSAPP_PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+```
+
+Si usas API bajo el mismo dominio:
+
+```env
+API_URL=https://example.com
+FRONTEND_URL=https://example.com
+CORS_ORIGINS=https://example.com
 ```
 
 Frontend:
 
 ```bash
-cd frontend
-npm ci
-npm run build
+cp frontend/.env.example frontend/.env.production
+nano frontend/.env.production
 ```
 
-Sirve `frontend/dist` desde hosting estatico/CDN. No lo subas al repositorio.
+Para subdominio API:
 
-## Checklist antes de publicar
+```env
+VITE_API_URL=https://api.example.com/api
+```
 
-- [ ] `.env` configurado sin secretos por defecto.
-- [ ] `CORS_ORIGINS` solo contiene dominios reales.
-- [ ] Rate limits revisados.
-- [ ] MySQL con usuario limitado.
-- [ ] `schema.sql` importado.
-- [ ] Usuario `SUPER_ADMIN` creado.
-- [ ] `npm run build` exitoso.
-- [ ] `npm test -w backend` exitoso.
-- [ ] `npm run test:db -w backend` exitoso contra base de pruebas.
-- [ ] `npm run migrate -w backend` ejecutado.
-- [ ] `npm audit --workspaces` revisado.
-- [ ] HTTPS activo.
-- [ ] Backups configurados.
-- [ ] Logs y monitoreo activos.
-- [ ] `/api/health` responde `ok`.
-- [ ] WhatsApp probado por empresa.
-- [ ] IA probada con `OPENAI_AUTO_REPLY=false`.
-- [ ] Panel Super Admin probado.
-- [ ] Onboarding probado con empresa demo.
-- [ ] Roles `owner`, `seller`, `support` y `viewer` probados.
-- [ ] Pedidos probados por API y frontend.
+Para API bajo `/api` del mismo dominio:
+
+```env
+VITE_API_URL=https://example.com/api
+```
+
+## Instalar dependencias
+
+Desde la raiz del monorepo:
+
+```bash
+npm install
+```
+
+Tambien puedes usar:
+
+```bash
+npm install --workspaces
+```
+
+## Base de datos
+
+Crea la base y usuario con permisos limitados:
+
+```bash
+mysql -u root -p
+```
+
+```sql
+CREATE DATABASE ventas_ai_saas CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'ventas_app'@'localhost' IDENTIFIED BY 'replace_with_real_password';
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, DROP, REFERENCES ON ventas_ai_saas.* TO 'ventas_app'@'localhost';
+FLUSH PRIVILEGES;
+EXIT;
+```
+
+Ejecuta migraciones:
+
+```bash
+npm run migrate --workspace backend
+```
+
+Prueba la conexion:
+
+```bash
+npm run db:check --workspace backend
+```
+
+Crea el primer super admin si no existe:
+
+```bash
+INITIAL_SUPER_ADMIN_NAME="Super Admin" \
+INITIAL_SUPER_ADMIN_EMAIL="admin@example.com" \
+INITIAL_SUPER_ADMIN_PASSWORD="Replace_With_Strong_Password_123!" \
+INITIAL_SUPER_ADMIN_COMPANY_NAME="Admin Company" \
+INITIAL_SUPER_ADMIN_COMPANY_SLUG="admin-company" \
+npm run db:seed:super-admin --workspace backend
+```
+
+## Backend manual
+
+Para una prueba directa:
+
+```bash
+npm run start --workspace backend
+```
+
+Equivalente desde `backend/`:
+
+```bash
+cd backend
+npm run start
+```
+
+El backend debe responder:
+
+```bash
+curl http://127.0.0.1:4000/api/health
+```
+
+## PM2
+
+El ejemplo esta en:
+
+```text
+deploy/ecosystem.config.cjs
+```
+
+Incluye dos procesos:
+
+- `ventas-ai-api`: API Express.
+- `ventas-ai-whatsapp-worker`: worker de WhatsApp con sesiones persistentes.
+
+Inicia PM2 desde la raiz del proyecto:
+
+```bash
+pm2 start deploy/ecosystem.config.cjs
+pm2 status
+pm2 logs
+```
+
+Guarda procesos para reinicio automatico:
+
+```bash
+pm2 save
+pm2 startup
+```
+
+PM2 imprimira un comando con `sudo env PATH=... pm2 startup ...`; copialo y
+ejecutalo exactamente.
+
+Comandos utiles:
+
+```bash
+pm2 logs ventas-ai-api
+pm2 logs ventas-ai-whatsapp-worker
+pm2 restart ventas-ai-api
+pm2 restart ventas-ai-whatsapp-worker
+pm2 reload deploy/ecosystem.config.cjs
+pm2 stop ventas-ai-api
+pm2 delete ventas-ai-api
+```
+
+## Reiniciar backend despues de cambios
+
+Despues de desplegar codigo nuevo:
+
+```bash
+cd /var/www/ventas-ai-saas
+git pull
+npm install
+npm run migrate --workspace backend
+npm run build --workspace frontend
+pm2 restart ventas-ai-api
+pm2 restart ventas-ai-whatsapp-worker
+pm2 save
+```
+
+Si solo cambiaste frontend:
+
+```bash
+npm run build --workspace frontend
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+## Frontend
+
+Construye assets estaticos:
+
+```bash
+npm run build --workspace frontend
+```
+
+Nginx debe servir:
+
+```text
+/var/www/ventas-ai-saas/frontend/dist
+```
+
+No levantes Vite en produccion.
+
+## Nginx
+
+Hay dos plantillas:
+
+```text
+deploy/nginx-main-domain-api-path.conf
+deploy/nginx-api-subdomain.conf
+```
+
+Estas plantillas son configuraciones finales con HTTPS. Si los certificados aun
+no existen, genera primero los certificados con la seccion "HTTPS con Certbot" y
+despues copia la plantilla final.
+
+### Opcion A: dominio principal con API en `/api`
+
+Usa `deploy/nginx-main-domain-api-path.conf`.
+
+```bash
+sudo certbot certonly --nginx -d example.com -d www.example.com
+sudo cp deploy/nginx-main-domain-api-path.conf /etc/nginx/sites-available/ventas-ai-saas
+sudo nano /etc/nginx/sites-available/ventas-ai-saas
+sudo ln -s /etc/nginx/sites-available/ventas-ai-saas /etc/nginx/sites-enabled/ventas-ai-saas
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+Configura:
+
+```text
+server_name example.com www.example.com;
+root /var/www/ventas-ai-saas/frontend/dist;
+proxy_pass http://127.0.0.1:4000/api/;
+client_max_body_size 10m;
+```
+
+### Opcion B: frontend y API en subdominios
+
+Usa `deploy/nginx-api-subdomain.conf`.
+
+```bash
+sudo certbot certonly --nginx -d app.example.com -d api.example.com
+sudo cp deploy/nginx-api-subdomain.conf /etc/nginx/sites-available/ventas-ai-saas
+sudo nano /etc/nginx/sites-available/ventas-ai-saas
+sudo ln -s /etc/nginx/sites-available/ventas-ai-saas /etc/nginx/sites-enabled/ventas-ai-saas
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+Configura:
+
+```text
+server_name app.example.com;
+server_name api.example.com;
+root /var/www/ventas-ai-saas/frontend/dist;
+proxy_pass http://127.0.0.1:4000;
+client_max_body_size 10m;
+```
+
+Las plantillas incluyen soporte WebSocket:
+
+```nginx
+proxy_set_header Upgrade $http_upgrade;
+proxy_set_header Connection $connection_upgrade;
+```
+
+Aunque hoy el backend no expone WebSocket propio, dejarlo listo evita problemas
+si se agrega realtime mas adelante o si una libreria lo requiere.
+
+## HTTPS con Certbot
+
+Antes de Certbot, DNS debe apuntar al VPS.
+
+Dominio principal:
+
+```bash
+sudo certbot certonly --nginx -d example.com -d www.example.com
+```
+
+Subdominios:
+
+```bash
+sudo certbot certonly --nginx -d app.example.com -d api.example.com
+```
+
+Despues de copiar la configuracion Nginx final:
+
+```bash
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+Prueba renovacion:
+
+```bash
+sudo certbot renew --dry-run
+```
+
+## WhatsApp en VPS Linux
+
+El worker se levanta con PM2 y usa `whatsapp-web.js` + Puppeteer en modo
+headless. La sesion se guarda en:
+
+```text
+backend/storage/whatsapp
+```
+
+Esta carpeta debe persistir en disco y no debe borrarse entre reinicios. Esta
+ignorada por git.
+
+Variables recomendadas:
+
+```env
+WHATSAPP_SESSION_PATH=storage/whatsapp
+WHATSAPP_HEADLESS=true
+WHATSAPP_PUPPETEER_ARGS=--no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage
+WHATSAPP_PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+WHATSAPP_RECONNECT_BASE_DELAY_MS=5000
+WHATSAPP_RECONNECT_MAX_DELAY_MS=60000
+WHATSAPP_RECONNECT_MAX_ATTEMPTS=8
+```
+
+Si el binario no existe:
+
+```bash
+which chromium
+which chromium-browser
+which google-chrome
+```
+
+Actualiza `WHATSAPP_PUPPETEER_EXECUTABLE_PATH` con la ruta correcta.
+
+## Logs y monitoreo
+
+```bash
+pm2 logs
+pm2 logs ventas-ai-api
+pm2 logs ventas-ai-whatsapp-worker
+pm2 monit
+curl https://api.example.com/api/health
+```
+
+Si usas API en `/api`:
+
+```bash
+curl https://example.com/api/health
+```
+
+## Checklist final
+
+- [ ] DNS apunta al VPS.
+- [ ] `backend/.env` existe y no usa valores de ejemplo.
+- [ ] `frontend/.env.production` apunta a la API real.
+- [ ] `npm install` ejecutado en raiz.
+- [ ] `npm run migrate --workspace backend` ejecutado.
+- [ ] `npm run db:check --workspace backend` OK.
+- [ ] `npm run build --workspace frontend` OK.
+- [ ] `pm2 start deploy/ecosystem.config.cjs` OK.
+- [ ] `pm2 save` ejecutado.
+- [ ] `pm2 startup` configurado.
+- [ ] Nginx `sudo nginx -t` OK.
+- [ ] Certbot instalado y certificados activos.
+- [ ] `/api/health` responde.
+- [ ] `backend/storage/whatsapp` persiste.
+- [ ] QR de WhatsApp probado desde el panel.
+- [ ] Logs PM2 revisados sin errores repetitivos.

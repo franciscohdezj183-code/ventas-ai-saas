@@ -36,6 +36,9 @@ backend/uploads/*
 backend/uploads/products/*
 !backend/uploads/products/.gitkeep
 
+backend/uploads/companies/*
+!backend/uploads/companies/.gitkeep
+
 backend/uploads/imports/*
 !backend/uploads/imports/.gitkeep
 

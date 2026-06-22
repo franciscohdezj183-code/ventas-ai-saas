@@ -1,5 +1,5 @@
 import { Navigate } from 'react-router-dom';
-import { normalizeRole } from '../config/permissions.js';
+import { hasPermission, normalizeRole } from '../config/permissions.js';
 import { useAuth } from '../context/AuthContext.jsx';
 
 export function ProtectedRoute({ children }) {
@@ -22,6 +22,20 @@ export function RoleRoute({ children, roles }) {
   const normalizedRoles = roles.map((role) => normalizeRole(role)).filter(Boolean);
 
   if (!normalizedRoles.includes(normalizeRole(user.rol))) {
+    return <Navigate to="/" replace />;
+  }
+
+  return children;
+}
+
+export function PermissionRoute({ children, permission }) {
+  const { user } = useAuth();
+
+  if (!user) {
+    return null;
+  }
+
+  if (!hasPermission(user, permission)) {
     return <Navigate to="/" replace />;
   }
 

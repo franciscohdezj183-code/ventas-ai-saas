@@ -1,23 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 
-const mockUsers = [
-  { id: 1, nombre: 'Ana Lopez', email: 'ana@demo.com', rol: 'Admin', ventas: 12800 },
-  { id: 2, nombre: 'Carlos Ruiz', email: 'carlos@demo.com', rol: 'Vendedor', ventas: 9400 },
-  { id: 3, nombre: 'Mariana Diaz', email: 'mariana@demo.com', rol: 'Soporte', ventas: 4200 },
-  { id: 4, nombre: 'Jorge Perez', email: 'jorge@demo.com', rol: 'Vendedor', ventas: 15300 },
-  { id: 5, nombre: 'Lucia Torres', email: 'lucia@demo.com', rol: 'Admin', ventas: 11800 },
-  { id: 6, nombre: 'Diego Ramos', email: 'diego@demo.com', rol: 'Soporte', ventas: 3600 },
-  { id: 7, nombre: 'Paola Medina', email: 'paola@demo.com', rol: 'Vendedor', ventas: 17200 },
-  { id: 8, nombre: 'Miguel Castro', email: 'miguel@demo.com', rol: 'Admin', ventas: 10100 },
-  { id: 9, nombre: 'Sofia Herrera', email: 'sofia@demo.com', rol: 'Vendedor', ventas: 8900 },
-  { id: 10, nombre: 'Raul Navarro', email: 'raul@demo.com', rol: 'Soporte', ventas: 5100 },
-  { id: 11, nombre: 'Elena Vargas', email: 'elena@demo.com', rol: 'Admin', ventas: 22000 },
-  { id: 12, nombre: 'Mateo Silva', email: 'mateo@demo.com', rol: 'Vendedor', ventas: 7900 },
-  { id: 13, nombre: 'Valeria Cruz', email: 'valeria@demo.com', rol: 'Soporte', ventas: 6100 },
-  { id: 14, nombre: 'Oscar Molina', email: 'oscar@demo.com', rol: 'Vendedor', ventas: 13700 },
-  { id: 15, nombre: 'Camila Reyes', email: 'camila@demo.com', rol: 'Admin', ventas: 19500 }
-];
-
 const defaultColumns = [
   { key: 'id', label: 'ID' },
   { key: 'nombre', label: 'Nombre' },
@@ -42,7 +24,7 @@ function compareValues(firstValue, secondValue, direction) {
 
 export function SortablePaginatedTable({
   columns = defaultColumns,
-  data = mockUsers,
+  data = [],
   emptyMessage = 'No hay registros para mostrar.',
   footerStart,
   getRowKey = (row) => row.id,

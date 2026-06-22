@@ -1,7 +1,7 @@
 import { logger } from '../utils/logger.js';
 
 export function errorHandler(error, req, res, next) {
-  const statusCode = error.statusCode ?? (error.message === 'CORS origin not allowed' ? 403 : 500);
+  const statusCode = error.statusCode ?? error.status ?? (error.message === 'CORS origin not allowed' ? 403 : 500);
   const publicMessage = statusCode >= 500 ? 'Internal server error' : error.message;
 
   logger.error('request_error', {

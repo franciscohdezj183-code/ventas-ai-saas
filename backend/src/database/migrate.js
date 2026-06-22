@@ -6,6 +6,7 @@ import { closeDatabase, getConnection } from '../config/database.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const migrationsPath = path.resolve(__dirname, 'migrations');
+const schemaPath = path.resolve(__dirname, 'schema.sql');
 
 async function ensureMigrationsTable(connection) {
   await connection.query(
@@ -24,6 +25,18 @@ async function getAppliedVersions(connection) {
   return new Set(rows.map((row) => row.version));
 }
 
+async function hasApplicationTables(connection) {
+  const [rows] = await connection.query(
+    `SELECT COUNT(*) AS total
+     FROM information_schema.tables
+     WHERE table_schema = DATABASE()
+       AND table_type = 'BASE TABLE'
+       AND table_name <> 'schema_migrations'`
+  );
+
+  return Number(rows[0]?.total ?? 0) > 0;
+}
+
 async function listMigrationFiles() {
   const entries = await fs.readdir(migrationsPath, { withFileTypes: true });
 
@@ -40,6 +53,26 @@ function splitSqlStatements(sql) {
     .filter(Boolean);
 }
 
+async function runStatements(connection, statements) {
+  for (const statement of statements) {
+    await connection.query(statement);
+  }
+}
+
+async function applyBaselineSchema(connection) {
+  const sql = await fs.readFile(schemaPath, 'utf8');
+  const statements = splitSqlStatements(sql);
+
+  await runStatements(connection, statements);
+}
+
+async function markMigrationsApplied(connection, migrationFiles) {
+  for (const fileName of migrationFiles) {
+    const version = fileName.replace(/\.sql$/i, '');
+    await connection.query('INSERT IGNORE INTO schema_migrations (version) VALUES (?)', [version]);
+  }
+}
+
 async function runMigration(connection, fileName) {
   const version = fileName.replace(/\.sql$/i, '');
   const sql = await fs.readFile(path.join(migrationsPath, fileName), 'utf8');
@@ -48,9 +81,7 @@ async function runMigration(connection, fileName) {
   await connection.beginTransaction();
 
   try {
-    for (const statement of statements) {
-      await connection.query(statement);
-    }
+    await runStatements(connection, statements);
 
     await connection.query('INSERT INTO schema_migrations (version) VALUES (?)', [version]);
     await connection.commit();
@@ -66,9 +97,18 @@ async function main() {
   const connection = await getConnection();
 
   try {
+    const shouldBootstrap = !(await hasApplicationTables(connection));
     await ensureMigrationsTable(connection);
-    const appliedVersions = await getAppliedVersions(connection);
     const migrationFiles = await listMigrationFiles();
+
+    if (shouldBootstrap) {
+      await applyBaselineSchema(connection);
+      await markMigrationsApplied(connection, migrationFiles);
+      console.info('Baseline schema applied. Historical migrations marked as applied.');
+      return;
+    }
+
+    const appliedVersions = await getAppliedVersions(connection);
     const pendingMigrations = migrationFiles.filter((fileName) => !appliedVersions.has(fileName.replace(/\.sql$/i, '')));
 
     if (pendingMigrations.length === 0) {
@@ -86,6 +126,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(error);
+  console.error(error.message);
   process.exit(1);
 });

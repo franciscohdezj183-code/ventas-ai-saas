@@ -10,11 +10,28 @@ import { errorHandler } from './middlewares/error.middleware.js';
 import { createRateLimiter } from './middlewares/rate-limit.middleware.js';
 import { requestLogger } from './middlewares/request-logger.middleware.js';
 import { sanitizeInput } from './middlewares/sanitize-input.middleware.js';
+import { createHttpError } from './utils/http-error.js';
 
 export const app = express();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const uploadsPath = path.resolve(__dirname, '../uploads');
+const publicUploads = [
+  {
+    route: '/uploads/products',
+    directory: path.join(uploadsPath, 'products')
+  },
+  {
+    route: '/uploads/companies',
+    directory: path.join(uploadsPath, 'companies')
+  }
+];
+
+function setStaticUploadHeaders(res, filePath) {
+  if (path.extname(filePath).toLowerCase() === '.jfif') {
+    res.setHeader('Content-Type', 'image/jpeg');
+  }
+}
 
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
@@ -45,7 +62,7 @@ app.use(
         return;
       }
 
-      callback(new Error('CORS origin not allowed'));
+      callback(createHttpError(403, 'CORS origin not allowed'));
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -61,16 +78,14 @@ app.use(
   })
 );
 app.use(requestLogger);
-app.use(
-  '/uploads',
-  express.static(uploadsPath, {
-    setHeaders(res, filePath) {
-      if (path.extname(filePath).toLowerCase() === '.jfif') {
-        res.setHeader('Content-Type', 'image/jpeg');
-      }
-    }
-  })
-);
+for (const upload of publicUploads) {
+  app.use(
+    upload.route,
+    express.static(upload.directory, {
+      setHeaders: setStaticUploadHeaders
+    })
+  );
+}
 
 app.use('/api', apiRouter);
 

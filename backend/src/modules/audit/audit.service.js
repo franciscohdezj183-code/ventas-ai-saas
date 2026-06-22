@@ -1,4 +1,5 @@
 import { query } from '../../config/database.js';
+import { logger } from '../../utils/logger.js';
 
 function nullableNumber(value) {
   const numberValue = Number(value);
@@ -47,7 +48,7 @@ export async function createAuditLog({
       ]
     );
   } catch (error) {
-    console.error('Audit log failed:', error);
+    logger.error('audit_log_failed', { error });
   }
 }
 

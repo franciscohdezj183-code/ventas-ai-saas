@@ -1,3 +1,6 @@
+const SENSITIVE_KEY_PATTERN = /(^|[_-])(authorization|cookie|password|passwd|secret|token|api[_-]?key|access[_-]?token|refresh[_-]?token|jwt|qr|code|session)($|[_-])/i;
+const SENSITIVE_VALUE_PATTERN = /(bearer\s+)[a-z0-9._~+/=-]+|((?:token|password|secret|api[_-]?key|code)=)[^&\s]+/gi;
+
 function serializeError(error) {
   if (!error) {
     return undefined;
@@ -12,18 +15,63 @@ function serializeError(error) {
   };
 }
 
+function redactString(value) {
+  return value.replace(SENSITIVE_VALUE_PATTERN, (match, bearerPrefix, keyPrefix) => {
+    if (bearerPrefix) {
+      return `${bearerPrefix}[REDACTED]`;
+    }
+
+    return `${keyPrefix}[REDACTED]`;
+  });
+}
+
+function sanitizeForLog(value, key = '', seen = new WeakSet()) {
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  if (SENSITIVE_KEY_PATTERN.test(String(key))) {
+    return '[REDACTED]';
+  }
+
+  if (value instanceof Error) {
+    return serializeError(value);
+  }
+
+  if (typeof value === 'string') {
+    return redactString(value);
+  }
+
+  if (typeof value !== 'object') {
+    return value;
+  }
+
+  if (seen.has(value)) {
+    return '[Circular]';
+  }
+
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeForLog(item, key, seen));
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).map(([entryKey, entryValue]) => [
+      entryKey,
+      sanitizeForLog(entryValue, entryKey, seen)
+    ])
+  );
+}
+
 function write(level, message, meta = {}) {
   const entry = {
     level,
     message,
     timestamp: new Date().toISOString(),
     service: 'ventas-ai-saas-api',
-    ...meta
+    ...sanitizeForLog(meta)
   };
-
-  if (entry.error instanceof Error) {
-    entry.error = serializeError(entry.error);
-  }
 
   const line = JSON.stringify(entry);
 

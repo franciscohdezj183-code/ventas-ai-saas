@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import mysql from 'mysql2/promise';
 import { env } from './env.js';
+import { logger } from '../utils/logger.js';
 
 dotenv.config();
 
@@ -33,11 +34,11 @@ function createPool() {
   const newPool = mysql.createPool(databaseConfig);
 
   newPool.on?.('error', (error) => {
-    console.error('MySQL pool error:', error);
+    logger.error('mysql_pool_error', { error });
 
     if (isRetryableDatabaseError(error)) {
       reconnectDatabase().catch((reconnectError) => {
-        console.error('MySQL reconnection failed:', reconnectError);
+        logger.error('mysql_reconnection_failed', { error: reconnectError });
       });
     }
   });
@@ -59,7 +60,7 @@ async function destroyCurrentPool() {
   try {
     await pool.end();
   } catch (error) {
-    console.error('Error closing MySQL pool:', error);
+    logger.error('mysql_pool_close_error', { error });
   }
 }
 
@@ -77,13 +78,13 @@ export async function reconnectDatabase(maxAttempts = 3) {
       try {
         pool = createPool();
         await checkDatabaseConnection();
-        console.info('MySQL connection restored');
+        logger.info('mysql_connection_restored');
         return pool;
       } catch (error) {
         lastError = error;
         const delay = Math.min(1000 * attempt, 5000);
 
-        console.error(`MySQL reconnect attempt ${attempt} failed:`, error);
+        logger.error('mysql_reconnect_attempt_failed', { error, attempt });
 
         if (attempt < maxAttempts) {
           await wait(delay);
@@ -135,7 +136,7 @@ export async function checkDatabaseConnection() {
     await connection.ping();
     return true;
   } catch (error) {
-    console.error('MySQL connection error:', error);
+    logger.error('mysql_connection_error', { error });
     throw error;
   } finally {
     connection?.release();

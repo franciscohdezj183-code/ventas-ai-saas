@@ -33,11 +33,59 @@ CREATE TABLE IF NOT EXISTS usuarios (
   fecha_creacion TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   fecha_actualizacion TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
+  UNIQUE KEY usuarios_email_unique (email),
   UNIQUE KEY usuarios_empresa_email_unique (empresa_id, email),
   KEY usuarios_empresa_id_index (empresa_id),
   KEY usuarios_empresa_id_id_index (empresa_id, id),
   KEY usuarios_rol_index (rol),
   CONSTRAINT usuarios_empresa_id_foreign
+    FOREIGN KEY (empresa_id) REFERENCES empresas (id)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS subscriptions (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  empresa_id BIGINT UNSIGNED NOT NULL,
+  plan VARCHAR(40) NOT NULL,
+  status ENUM('TRIALING','ACTIVE','PAST_DUE','CANCELED','SUSPENDED') NOT NULL DEFAULT 'ACTIVE',
+  provider VARCHAR(80) NULL,
+  provider_customer_id VARCHAR(160) NULL,
+  provider_subscription_id VARCHAR(160) NULL,
+  current_period_start DATETIME NULL,
+  current_period_end DATETIME NULL,
+  cancel_at_period_end TINYINT(1) NOT NULL DEFAULT 0,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY subscriptions_empresa_id_index (empresa_id),
+  KEY subscriptions_status_index (status),
+  CONSTRAINT subscriptions_empresa_id_foreign
+    FOREIGN KEY (empresa_id) REFERENCES empresas (id)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS subscription_invoices (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  subscription_id BIGINT UNSIGNED NOT NULL,
+  empresa_id BIGINT UNSIGNED NOT NULL,
+  provider_invoice_id VARCHAR(160) NULL,
+  amount_cents INT UNSIGNED NOT NULL DEFAULT 0,
+  currency VARCHAR(8) NOT NULL DEFAULT 'MXN',
+  status ENUM('DRAFT','OPEN','PAID','VOID','UNCOLLECTIBLE') NOT NULL DEFAULT 'DRAFT',
+  hosted_invoice_url VARCHAR(255) NULL,
+  due_at DATETIME NULL,
+  paid_at DATETIME NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY subscription_invoices_subscription_index (subscription_id),
+  KEY subscription_invoices_empresa_index (empresa_id),
+  CONSTRAINT subscription_invoices_subscription_foreign
+    FOREIGN KEY (subscription_id) REFERENCES subscriptions (id)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE,
+  CONSTRAINT subscription_invoices_empresa_foreign
     FOREIGN KEY (empresa_id) REFERENCES empresas (id)
     ON DELETE CASCADE
     ON UPDATE CASCADE
@@ -57,6 +105,7 @@ CREATE TABLE IF NOT EXISTS categorias (
   KEY categorias_empresa_id_index (empresa_id),
   KEY categorias_empresa_id_id_index (empresa_id, id),
   KEY categorias_tipo_index (tipo),
+  FULLTEXT KEY categorias_fulltext_search (nombre, descripcion),
   CONSTRAINT categorias_empresa_id_foreign
     FOREIGN KEY (empresa_id) REFERENCES empresas (id)
     ON DELETE CASCADE
@@ -82,6 +131,8 @@ CREATE TABLE IF NOT EXISTS productos (
   KEY productos_categoria_id_index (categoria_id),
   KEY productos_empresa_categoria_index (empresa_id, categoria_id),
   KEY productos_estado_index (estado),
+  KEY productos_empresa_estado_nombre_index (empresa_id, estado, nombre),
+  FULLTEXT KEY productos_fulltext_search (nombre, descripcion, sku),
   CONSTRAINT productos_empresa_id_foreign
     FOREIGN KEY (empresa_id) REFERENCES empresas (id)
     ON DELETE CASCADE
@@ -109,6 +160,8 @@ CREATE TABLE IF NOT EXISTS servicios (
   KEY servicios_categoria_id_index (categoria_id),
   KEY servicios_empresa_categoria_index (empresa_id, categoria_id),
   KEY servicios_estado_index (estado),
+  KEY servicios_empresa_estado_nombre_index (empresa_id, estado, nombre),
+  FULLTEXT KEY servicios_fulltext_search (nombre, descripcion),
   CONSTRAINT servicios_empresa_id_foreign
     FOREIGN KEY (empresa_id) REFERENCES empresas (id)
     ON DELETE CASCADE
@@ -128,6 +181,10 @@ CREATE TABLE IF NOT EXISTS leads (
   interes VARCHAR(180) NULL,
   estado ENUM('NUEVO', 'EN_PROCESO', 'CONTACTADO', 'COTIZADO', 'GANADO', 'PERDIDO') NOT NULL DEFAULT 'NUEVO',
   notas TEXT NULL,
+  score INT UNSIGNED NOT NULL DEFAULT 0,
+  prioridad ENUM('BAJA','MEDIA','ALTA','CRITICA') NOT NULL DEFAULT 'BAJA',
+  score_detalle_json JSON NULL,
+  score_actualizado_at DATETIME NULL,
   fecha_creacion TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   fecha_actualizacion TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
@@ -136,6 +193,8 @@ CREATE TABLE IF NOT EXISTS leads (
   KEY leads_email_index (email),
   KEY leads_telefono_index (telefono),
   KEY leads_estado_index (estado),
+  KEY leads_prioridad_index (prioridad),
+  KEY leads_score_index (score),
   CONSTRAINT leads_empresa_id_foreign
     FOREIGN KEY (empresa_id) REFERENCES empresas (id)
     ON DELETE CASCADE
@@ -159,6 +218,7 @@ CREATE TABLE IF NOT EXISTS conversaciones (
   KEY conversaciones_telefono_cliente_index (telefono_cliente),
   KEY conversaciones_estado_index (estado),
   KEY conversaciones_empresa_cliente_estado_index (empresa_id, telefono_cliente, estado),
+  KEY conversaciones_empresa_cliente_fecha_index (empresa_id, telefono_cliente, fecha),
   KEY conversaciones_agente_usuario_index (agente_usuario_id),
   KEY conversaciones_fecha_index (fecha),
   CONSTRAINT conversaciones_empresa_id_foreign
@@ -258,6 +318,27 @@ CREATE TABLE IF NOT EXISTS configuracion_empresas (
     ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS whatsapp_session_status (
+  empresa_id BIGINT UNSIGNED NOT NULL,
+  status VARCHAR(40) NOT NULL DEFAULT 'DISCONNECTED',
+  qr MEDIUMTEXT NULL,
+  qr_image MEDIUMTEXT NULL,
+  phone VARCHAR(80) NULL,
+  connected_at DATETIME NULL,
+  last_error TEXT NULL,
+  reconnect_attempt INT UNSIGNED NOT NULL DEFAULT 0,
+  next_reconnect_at DATETIME NULL,
+  events_json JSON NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (empresa_id),
+  KEY whatsapp_session_status_status_index (status),
+  KEY whatsapp_session_status_updated_at_index (updated_at),
+  CONSTRAINT whatsapp_session_status_empresa_foreign
+    FOREIGN KEY (empresa_id) REFERENCES empresas (id)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS conversacion_contexto (
   empresa_id BIGINT UNSIGNED NOT NULL,
   telefono_cliente VARCHAR(40) NOT NULL,
@@ -313,6 +394,12 @@ CREATE TABLE IF NOT EXISTS bot_response_settings (
   mensaje_asesor TEXT NULL,
   mensaje_fuera_horario TEXT NULL,
   reglas_adicionales TEXT NULL,
+  sinonimos_json JSON NULL,
+  handoff_timeout_minutos INT UNSIGNED NULL,
+  handoff_mensaje_tomar TEXT NULL,
+  handoff_mensaje_declinar TEXT NULL,
+  handoff_mensaje_expirado TEXT NULL,
+  handoff_mensaje_reactivar TEXT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
