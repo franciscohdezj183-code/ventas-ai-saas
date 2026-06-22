@@ -740,6 +740,113 @@ describe('messageOrchestrator', () => {
     assert.match(result.respuesta, /Diseño de logotipo/);
   });
 
+  it('uses product strategy to route service questions to an advisor', async () => {
+    const calls = [];
+    const mcpClient = {
+      async callTool(toolName, args) {
+        calls.push({ toolName, args });
+
+        if (toolName === 'crear_lead') {
+          return {
+            lead_id: 81,
+            telefono: args.telefono,
+            interes: args.interes
+          };
+        }
+
+        if (toolName === 'guardar_conversacion') {
+          return { conversacion_id: 110 };
+        }
+
+        throw new Error(`Unexpected tool: ${toolName}`);
+      }
+    };
+
+    const result = await orchestrateIncomingMessage({
+      empresaId: 1,
+      phone: '5215550000000@c.us',
+      message: 'busco mesa',
+      contexto: { nombre: 'Demo', tipo_negocio: 'PRODUCTOS' },
+      interpreter: async () => ({
+        intencion: 'BUSCAR_SERVICIO',
+        herramienta_mcp: 'buscar_servicios',
+        parametros: { texto: 'mesa' },
+        confianza: 0.8,
+        requiere_respuesta_ia: false
+      }),
+      mcpClient,
+      handoffManager: noopHandoffManager,
+      contextStore: {
+        async find() {
+          return null;
+        },
+        async save() {}
+      }
+    });
+
+    assert.equal(result.intencion, 'HABLAR_ASESOR');
+    assert.equal(result.herramienta_mcp, 'crear_lead');
+    assert.equal(calls.some((call) => call.toolName === 'buscar_servicios'), false);
+    assert.equal(calls.some((call) => call.toolName === 'buscar_productos'), false);
+    assert.equal(calls.some((call) => call.toolName === 'crear_lead'), true);
+    assert.match(result.respuesta, /asesor/);
+  });
+
+  it('uses service strategy for service businesses', async () => {
+    const calls = [];
+    const mcpClient = {
+      async callTool(toolName, args) {
+        calls.push({ toolName, args });
+
+        if (toolName === 'buscar_servicios') {
+          return {
+            servicios: [
+              {
+                id: 91,
+                nombre: 'Instalacion electrica',
+                precio: 1200,
+                tipo_precio: 'DESDE',
+                duracion: 90
+              }
+            ]
+          };
+        }
+
+        if (toolName === 'guardar_conversacion') {
+          return { conversacion_id: 111 };
+        }
+
+        throw new Error(`Unexpected tool: ${toolName}`);
+      }
+    };
+
+    const result = await orchestrateIncomingMessage({
+      empresaId: 1,
+      phone: '5215550000000@c.us',
+      message: 'instalacion electrica',
+      contexto: { nombre: 'Demo', tipo_negocio: 'SERVICIOS' },
+      interpreter: async () => ({
+        intencion: 'BUSCAR_PRODUCTO',
+        herramienta_mcp: 'buscar_productos',
+        parametros: { texto: 'instalacion electrica' },
+        confianza: 0.8,
+        requiere_respuesta_ia: false
+      }),
+      mcpClient,
+      contextStore: {
+        async find() {
+          return null;
+        },
+        async save() {}
+      }
+    });
+
+    assert.equal(result.herramienta_mcp, 'buscar_servicios');
+    assert.equal(calls.some((call) => call.toolName === 'buscar_productos'), false);
+    assert.equal(calls.some((call) => call.toolName === 'buscar_servicios'), true);
+    assert.match(result.respuesta, /Instalacion electrica/);
+  });
+
   it('normalizes customer text for intent and MCP search without changing saved message', async () => {
     const calls = [];
     let interpreterInput = null;

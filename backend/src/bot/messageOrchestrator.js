@@ -11,6 +11,7 @@ import {
 import { getBotResponseProfile } from '../modules/bot-prompts/bot-prompts.service.js';
 import { registerAIUsage } from '../modules/ai-usage/ai-usage.service.js';
 import { mcpClient as defaultMcpClient } from '../mcp/mcpClient.js';
+import { getBusinessStrategy } from './business-types/business-strategy.factory.js';
 
 function normalizePhone(value) {
   return String(value ?? '')
@@ -836,6 +837,7 @@ export async function orchestrateIncomingMessage({
   const cleanPhone = normalizePhone(phone);
   const conversationContext = await contextStore.find({ empresaId, phone: cleanPhone });
   const contextoEmpresa = contexto ?? (await getMinimalCompanyContext(empresaId, mcpClient));
+  const businessStrategy = getBusinessStrategy(contextoEmpresa);
   const normalizedMessage = normalizarTextoBusqueda(message, contextoEmpresa.response_profile?.sinonimos);
   const blockedTopics = parseBlockedTopics(contextoEmpresa.temas_bloqueados);
 
@@ -913,7 +915,14 @@ export async function orchestrateIncomingMessage({
       usageSnapshot = usage;
     }
   });
-  const intent = applyConversationContext(validateIntentJson(interpretedIntent), normalizedMessage, conversationContext);
+  const intent = businessStrategy.prepareIntent(
+    applyConversationContext(validateIntentJson(interpretedIntent), normalizedMessage, conversationContext),
+    {
+      companyContext: contextoEmpresa,
+      conversationContext,
+      normalizedMessage
+    }
+  );
   intent.sinonimos = contextoEmpresa.response_profile?.sinonimos ?? null;
   let toolResult = null;
   let notificationResult = null;
@@ -936,20 +945,18 @@ export async function orchestrateIncomingMessage({
       })
     );
 
-    if (intent.herramienta_mcp === 'buscar_productos' && (toolResult?.productos?.length ?? 0) === 0) {
-      const serviceResult = await mcpClient.callTool('buscar_servicios', {
-        empresa_id: empresaId,
-        texto: intent.parametros?.texto ? normalizarTextoBusqueda(intent.parametros.texto) : normalizedMessage
-      });
+    const strategyResolution = await businessStrategy.resolveAfterTool({
+      intent,
+      toolResult,
+      mcpClient,
+      empresaId,
+      normalizedMessage,
+      normalizeSearchText: normalizarTextoBusqueda
+    });
 
-      if ((serviceResult?.servicios?.length ?? 0) > 0) {
-        toolResult = serviceResult;
-        responseIntent = {
-          ...intent,
-          intencion: 'BUSCAR_SERVICIO',
-          herramienta_mcp: 'buscar_servicios'
-        };
-      }
+    if (strategyResolution) {
+      toolResult = strategyResolution.toolResult;
+      responseIntent = strategyResolution.responseIntent;
     }
   } else if (activeHandoffExists) {
     toolResult = {

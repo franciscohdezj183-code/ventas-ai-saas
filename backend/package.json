@@ -10,7 +10,7 @@
     "db:check": "node src/database/check-connection.js",
     "db:seed:super-admin": "node src/database/seed-super-admin.js",
     "worker:whatsapp": "node src/workers/whatsapp.worker.js",
-    "test": "set NODE_ENV=test&& node --test src/ai/intentInterpreter.test.js src/database/schema.test.js src/middlewares/company-scope.middleware.test.js src/middlewares/roles.middleware.test.js src/middlewares/security-hardening.test.js src/mcp/mcpClient.test.js src/bot/messageOrchestrator.test.js src/test/integration.test.js",
+    "test": "set NODE_ENV=test&& node --test src/ai/intentInterpreter.test.js src/database/schema.test.js src/middlewares/company-scope.middleware.test.js src/middlewares/roles.middleware.test.js src/middlewares/security-hardening.test.js src/mcp/mcpClient.test.js src/bot/business-types/business-strategy.factory.test.js src/bot/messageOrchestrator.test.js src/test/integration.test.js",
     "test:db": "set NODE_ENV=test&& set RUN_DB_TESTS=true&& node --test src/test/integration.test.js",
     "start": "node src/server.js"
   },
