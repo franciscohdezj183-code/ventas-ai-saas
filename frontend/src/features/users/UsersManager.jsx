@@ -1,26 +1,76 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Filter, Plus, Search, ShieldCheck, UserRound, Users } from 'lucide-react';
-import { Can } from '../../components/Can.jsx';
-import { ConfirmModal, ErrorState } from '../../components/ui/index.js';
+import { ShieldCheck, UserRound } from 'lucide-react';
+import { ConfirmModal } from '../../components/ui/index.js';
 import { isSuperAdminRole, normalizeRole } from '../../config/permissions.js';
 import { fetchCompanies } from '../companies/companiesApi.js';
 import { createUser, deleteUser, fetchUsers, updateUser } from './usersApi.js';
+import { GlobalUsersPage } from './GlobalUsersPage.jsx';
 import { UserForm } from './UserForm.jsx';
-import { UserTable } from './UserTable.jsx';
-
-function getApiError(error) {
-  return error?.response?.data?.message ?? 'No se pudo completar la operacion.';
-}
 
 const initialFilters = {
   query: '',
   empresa_id: '',
   rol: '',
-  estado: ''
+  estado: '',
+  sort: 'created_desc',
+  pageSize: 8
 };
+
+function getApiError(error) {
+  return error?.response?.data?.message ?? 'No se pudo completar la operacion.';
+}
+
+function getEmail(user) {
+  return user?.correo || user?.email || '';
+}
+
+function getCompanyName(user) {
+  return user?.empresa_nombre || user?.empresa?.nombre || '';
+}
+
+function getCreatedTime(user) {
+  const value = user?.fecha_creacion || user?.created_at || user?.createdAt || '';
+  const time = value ? new Date(value).getTime() : 0;
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function getLastAccessTime(user) {
+  const value = user?.ultimo_acceso || user?.last_login || user?.lastLogin || user?.updated_at || '';
+  const time = value ? new Date(value).getTime() : 0;
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function getStatus(user) {
+  return user?.estado === 'ACTIVO' ? 'ACTIVO' : 'INACTIVO';
+}
+
+function sortUsers(users, sort) {
+  const nextUsers = [...users];
+
+  return nextUsers.sort((firstUser, secondUser) => {
+    if (sort === 'name_asc') {
+      return String(firstUser.nombre || '').localeCompare(String(secondUser.nombre || ''), 'es');
+    }
+
+    if (sort === 'name_desc') {
+      return String(secondUser.nombre || '').localeCompare(String(firstUser.nombre || ''), 'es');
+    }
+
+    if (sort === 'created_asc') {
+      return getCreatedTime(firstUser) - getCreatedTime(secondUser);
+    }
+
+    if (sort === 'last_access_desc') {
+      return getLastAccessTime(secondUser) - getLastAccessTime(firstUser);
+    }
+
+    return getCreatedTime(secondUser) - getCreatedTime(firstUser);
+  });
+}
 
 export function UsersManager() {
   const [companies, setCompanies] = useState([]);
+  const [currentPage, setCurrentPage] = useState(1);
   const [editingUser, setEditingUser] = useState(null);
   const [error, setError] = useState('');
   const [filters, setFilters] = useState(initialFilters);
@@ -29,10 +79,11 @@ export function UsersManager() {
   const [isSaving, setIsSaving] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [pendingToggle, setPendingToggle] = useState(null);
+  const [selectedUser, setSelectedUser] = useState(null);
   const [users, setUsers] = useState([]);
 
   const stats = useMemo(() => {
-    const active = users.filter((user) => user.estado === 'ACTIVO').length;
+    const active = users.filter((user) => getStatus(user) === 'ACTIVO').length;
     const admins = users.filter((user) => isSuperAdminRole(user.rol)).length;
 
     return {
@@ -46,28 +97,38 @@ export function UsersManager() {
   const filteredUsers = useMemo(() => {
     const query = filters.query.trim().toLowerCase();
 
-    return users.filter((user) => {
-      const email = user.correo || user.email || '';
+    const nextUsers = users.filter((user) => {
       const matchesQuery =
         !query ||
-        user.nombre?.toLowerCase().includes(query) ||
-        email.toLowerCase().includes(query) ||
-        user.empresa_nombre?.toLowerCase().includes(query);
+        String(user.nombre || '').toLowerCase().includes(query) ||
+        getEmail(user).toLowerCase().includes(query) ||
+        getCompanyName(user).toLowerCase().includes(query);
       const matchesCompany = !filters.empresa_id || String(user.empresa_id) === String(filters.empresa_id);
       const matchesRole = !filters.rol || normalizeRole(user.rol) === normalizeRole(filters.rol);
-      const matchesStatus = !filters.estado || user.estado === filters.estado;
+      const matchesStatus = !filters.estado || getStatus(user) === filters.estado;
 
       return matchesQuery && matchesCompany && matchesRole && matchesStatus;
     });
+
+    return sortUsers(nextUsers, filters.sort);
   }, [filters, users]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / filters.pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedUsers = useMemo(() => {
+    const start = (safePage - 1) * filters.pageSize;
+    return filteredUsers.slice(start, start + filters.pageSize);
+  }, [filteredUsers, filters.pageSize, safePage]);
+
+  const hasFilters = Boolean(filters.query || filters.empresa_id || filters.rol || filters.estado || filters.sort !== initialFilters.sort);
 
   async function loadData() {
     try {
       setIsLoading(true);
       setError('');
       const [nextUsers, nextCompanies] = await Promise.all([fetchUsers(), fetchCompanies()]);
-      setUsers(nextUsers);
-      setCompanies(nextCompanies);
+      setUsers(Array.isArray(nextUsers) ? nextUsers : []);
+      setCompanies(Array.isArray(nextCompanies) ? nextCompanies : []);
     } catch (requestError) {
       setError(getApiError(requestError));
     } finally {
@@ -78,6 +139,36 @@ export function UsersManager() {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  function handleFilterChange(name, value) {
+    setFilters((currentFilters) => ({
+      ...currentFilters,
+      [name]: value
+    }));
+    setCurrentPage(1);
+  }
+
+  function handleClearFilters() {
+    setFilters(initialFilters);
+    setCurrentPage(1);
+  }
+
+  function handleCreate() {
+    setEditingUser(null);
+    setIsFormOpen(true);
+  }
+
+  function handleEdit(user) {
+    setSelectedUser(null);
+    setEditingUser(user);
+    setIsFormOpen(true);
+  }
 
   async function handleSubmit(payload) {
     try {
@@ -109,6 +200,7 @@ export function UsersManager() {
       setError('');
       await deleteUser(user.id);
       setPendingDelete(null);
+      setSelectedUser(null);
       await loadData();
     } catch (requestError) {
       setError(getApiError(requestError));
@@ -125,12 +217,13 @@ export function UsersManager() {
       setError('');
       await updateUser(user.id, {
         nombre: user.nombre,
-        correo: user.correo || user.email,
+        correo: getEmail(user),
         rol: user.rol,
         empresa_id: user.empresa_id,
-        estado: user.estado === 'ACTIVO' ? 'INACTIVO' : 'ACTIVO'
+        estado: getStatus(user) === 'ACTIVO' ? 'INACTIVO' : 'ACTIVO'
       });
       setPendingToggle(null);
+      setSelectedUser(null);
       await loadData();
     } catch (requestError) {
       setError(getApiError(requestError));
@@ -140,130 +233,34 @@ export function UsersManager() {
   }
 
   return (
-    <div className="resource-page users-page">
-      <div className="users-unified-header">
-        <div>
-          <span className="users-header-icon">
-            <Users size={22} aria-hidden="true" />
-          </span>
-          <div>
-            <p className="eyebrow">Accesos</p>
-            <h1>Usuarios</h1>
-            <p>Administra accesos, roles, empresas y estado de operacion del panel.</p>
-          </div>
-        </div>
-        <div>
-          <Can permission="users.manage">
-            <button
-              className="primary-button"
-              onClick={() => {
-                setEditingUser(null);
-                setIsFormOpen(true);
-              }}
-              type="button"
-            >
-              <Plus size={18} aria-hidden="true" />
-              Nuevo usuario
-            </button>
-          </Can>
-        </div>
-      </div>
-
-      {error ? <ErrorState message={error} onRetry={loadData} /> : null}
-
-      <div className="users-summary-grid">
-        <article className="user-summary-card">
-          <span>Total</span>
-          <strong>{stats.total}</strong>
-          <p>Usuarios con acceso registrado.</p>
-        </article>
-        <article className="user-summary-card active">
-          <span>Activos</span>
-          <strong>{stats.active}</strong>
-          <p>Usuarios habilitados para operar.</p>
-        </article>
-        <article className="user-summary-card inactive">
-          <span>Inactivos</span>
-          <strong>{stats.inactive}</strong>
-          <p>Accesos pausados temporalmente.</p>
-        </article>
-        <article className="user-summary-card admin">
-          <span>SUPER_ADMIN</span>
-          <strong>{stats.admins}</strong>
-          <p>Usuarios con administracion global.</p>
-        </article>
-      </div>
-
-      <section className="panel-section users-directory-panel">
-        <div className="users-toolbar">
-          <label className="product-search" htmlFor="users-search">
-            <Search size={18} aria-hidden="true" />
-            <input
-              id="users-search"
-              onChange={(event) => setFilters((current) => ({ ...current, query: event.target.value }))}
-              placeholder="Buscar usuario, correo o empresa"
-              type="search"
-              value={filters.query}
-            />
-          </label>
-
-          <div className="user-filter-group">
-            <Filter size={18} aria-hidden="true" />
-            <select
-              aria-label="Empresa"
-              onChange={(event) => setFilters((current) => ({ ...current, empresa_id: event.target.value }))}
-              value={filters.empresa_id}
-            >
-              <option value="">Todas las empresas</option>
-              {companies.map((company) => (
-                <option key={company.id} value={company.id}>
-                  {company.nombre}
-                </option>
-              ))}
-            </select>
-            <select
-              aria-label="Rol"
-              onChange={(event) => setFilters((current) => ({ ...current, rol: event.target.value }))}
-              value={filters.rol}
-            >
-              <option value="">Todos los roles</option>
-              <option value="super_admin">super_admin</option>
-              <option value="owner">owner</option>
-              <option value="seller">seller</option>
-              <option value="support">support</option>
-              <option value="viewer">viewer</option>
-            </select>
-            <select
-              aria-label="Estado"
-              onChange={(event) => setFilters((current) => ({ ...current, estado: event.target.value }))}
-              value={filters.estado}
-            >
-              <option value="">Todos los estados</option>
-              <option value="ACTIVO">ACTIVO</option>
-              <option value="INACTIVO">INACTIVO</option>
-            </select>
-          </div>
-
-          <span className="users-visible-count">
-            {filteredUsers.length} de {users.length} visibles
-          </span>
-        </div>
-
-        <UserTable
-          isLoading={isLoading}
-          onDelete={setPendingDelete}
-          onEdit={(user) => {
-            setEditingUser(user);
-            setIsFormOpen(true);
-          }}
-          onToggle={setPendingToggle}
-          users={filteredUsers}
-        />
-      </section>
+    <>
+      <GlobalUsersPage
+        companies={companies}
+        currentPage={safePage}
+        error={error}
+        filters={filters}
+        hasFilters={hasFilters}
+        isLoading={isLoading}
+        onClearFilters={handleClearFilters}
+        onCreate={handleCreate}
+        onDelete={setPendingDelete}
+        onEdit={handleEdit}
+        onFilterChange={handleFilterChange}
+        onPageChange={setCurrentPage}
+        onRefresh={loadData}
+        onToggle={setPendingToggle}
+        onView={setSelectedUser}
+        pageSize={filters.pageSize}
+        paginatedUsers={paginatedUsers}
+        selectedUser={selectedUser}
+        stats={stats}
+        totalFiltered={filteredUsers.length}
+        usersTotal={users.length}
+      />
 
       {isFormOpen ? (
         <div className="modal-backdrop" role="presentation">
-          <article className="catalog-modal wide" role="dialog" aria-modal="true" aria-labelledby="user-form-title">
+          <article className="catalog-modal wide global-users-form-modal" role="dialog" aria-modal="true" aria-labelledby="user-form-title">
             <button
               className="modal-close icon-button"
               onClick={() => {
@@ -284,9 +281,9 @@ export function UsersManager() {
                 )}
               </span>
               <div>
-                <p className="eyebrow">Usuario</p>
+                <p className="eyebrow">Usuario global</p>
                 <h2 id="user-form-title">{editingUser ? 'Editar usuario' : 'Nuevo usuario'}</h2>
-                <p>Define quien puede operar el panel y a que empresa pertenece.</p>
+                <p>Define quien puede operar el panel, su rol y la empresa vinculada.</p>
               </div>
             </div>
             <UserForm
@@ -314,17 +311,17 @@ export function UsersManager() {
       />
 
       <ConfirmModal
-        confirmLabel={pendingToggle?.estado === 'ACTIVO' ? 'Desactivar' : 'Activar'}
+        confirmLabel={getStatus(pendingToggle) === 'ACTIVO' ? 'Desactivar' : 'Activar'}
         description={
-          pendingToggle?.estado === 'ACTIVO'
+          getStatus(pendingToggle) === 'ACTIVO'
             ? `Se pausara el acceso de ${pendingToggle?.nombre ?? 'este usuario'} sin eliminarlo.`
             : `Se reactivara el acceso de ${pendingToggle?.nombre ?? 'este usuario'}.`
         }
         onCancel={() => setPendingToggle(null)}
         onConfirm={() => handleToggle(pendingToggle)}
         open={Boolean(pendingToggle)}
-        title={pendingToggle?.estado === 'ACTIVO' ? 'Desactivar usuario' : 'Activar usuario'}
+        title={getStatus(pendingToggle) === 'ACTIVO' ? 'Desactivar usuario' : 'Activar usuario'}
       />
-    </div>
+    </>
   );
 }

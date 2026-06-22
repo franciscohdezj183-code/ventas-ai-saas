@@ -1,16 +1,29 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
+  Bell,
   Bot,
+  Building2,
+  CheckCircle2,
+  ChevronRight,
   Clock,
   CreditCard,
+  Globe2,
+  HelpCircle,
+  KeyRound,
   MapPin,
   MessageSquare,
   PackageCheck,
-  Phone,
+  Palette,
+  PlugZap,
+  RefreshCw,
   RotateCcw,
   Save,
+  Search,
+  ShieldCheck,
+  SlidersHorizontal,
   Smartphone,
-  Sparkles
+  Sparkles,
+  UploadCloud
 } from 'lucide-react';
 import { Can } from '../../components/Can.jsx';
 
@@ -68,36 +81,740 @@ function validateSettings(form, canSelectCompany) {
   return errors;
 }
 
-function SettingsSection({ children, description, icon: Icon, title }) {
+const settingsCatalog = [
+  {
+    id: 'empresa',
+    icon: Building2,
+    title: 'Empresa',
+    description: 'Informacion del negocio',
+    keywords: ['empresa', 'negocio', 'nombre', 'contacto', 'telefono', 'direccion', 'logo', 'horario', 'rfc'],
+    help: ['Mantiene la identidad operativa del negocio.', 'Esta informacion puede aparecer en respuestas al cliente.', 'El logo no tiene campo editable en este modulo.']
+  },
+  {
+    id: 'ia',
+    icon: Sparkles,
+    title: 'Inteligencia Artificial',
+    description: 'Comportamiento basico',
+    keywords: ['ia', 'inteligencia', 'openai', 'asistente', 'tono', 'prompt', 'faq', 'restricciones'],
+    help: ['Aqui solo vive la configuracion basica de atencion automatizada.', 'Plantillas, prompts avanzados y pruebas viven en Configuracion IA.', 'Usa microcopy claro para evitar respuestas ambiguas.']
+  },
+  {
+    id: 'whatsapp',
+    icon: Smartphone,
+    title: 'WhatsApp',
+    description: 'Canal y sesiones',
+    keywords: ['whatsapp', 'numero', 'canal', 'sesion', 'imagenes', 'pedidos'],
+    help: ['Activa o pausa el canal para esta empresa.', 'La conexion tecnica y el QR viven en el modulo WhatsApp.', 'El numero mostrado sale de la configuracion de contacto.']
+  },
+  {
+    id: 'seguridad',
+    icon: ShieldCheck,
+    title: 'Seguridad',
+    description: 'Usuarios y acceso',
+    keywords: ['seguridad', 'usuarios', 'roles', 'permisos', '2fa', 'password', 'sesiones'],
+    help: ['Los roles y accesos se administran en Usuarios.', 'No se inventan campos que no existen en backend.', 'Esta pagina solo muestra el estado disponible.']
+  },
+  {
+    id: 'notificaciones',
+    icon: Bell,
+    title: 'Notificaciones',
+    description: 'Alertas y mensajes',
+    keywords: ['notificaciones', 'correo', 'push', 'recordatorio', 'mensaje', 'alerta'],
+    help: ['Actualmente los mensajes configurables son los textos operativos.', 'Correo, push y recordatorios no tienen campos en este endpoint.', 'Usa mensajes breves y accionables.']
+  },
+  {
+    id: 'facturacion',
+    icon: CreditCard,
+    title: 'Facturacion',
+    description: 'Plan y pagos',
+    keywords: ['facturacion', 'billing', 'pago', 'plan', 'facturas', 'renovacion', 'metodo'],
+    help: ['Las politicas de pago ayudan a responder condiciones comerciales.', 'Planes y suscripciones viven en su modulo dedicado.', 'No se muestran datos de tarjeta aqui.']
+  },
+  {
+    id: 'apariencia',
+    icon: Palette,
+    title: 'Apariencia',
+    description: 'Tema e idioma',
+    keywords: ['apariencia', 'tema', 'idioma', 'oscuro', 'claro', 'zona horaria'],
+    help: ['Tema claro/oscuro se controla desde la interfaz global.', 'Idioma y zona horaria no tienen campos en este endpoint.', 'Se muestra como configuracion no disponible.']
+  },
+  {
+    id: 'integraciones',
+    icon: PlugZap,
+    title: 'Integraciones',
+    description: 'Servicios externos',
+    keywords: ['integraciones', 'api', 'webhook', 'openai', 'whatsapp', 'servicios'],
+    help: ['OpenAI avanzado vive en Configuracion IA.', 'WhatsApp tecnico vive en el modulo WhatsApp.', 'Aqui se resume el estado operativo.']
+  },
+  {
+    id: 'sistema',
+    icon: SlidersHorizontal,
+    title: 'Sistema',
+    description: 'Configuraciones avanzadas',
+    keywords: ['sistema', 'avanzado', 'estado', 'resumen', 'operacion'],
+    help: ['Resumen del estado actual de la configuracion.', 'No se exponen campos tecnicos internos.', 'Evita cambios accidentales de operacion.']
+  }
+];
+
+function serializeForm(form) {
+  return JSON.stringify(form);
+}
+
+function PlatformHero({ isDirty, isSaving, onRefresh, onReset, settings }) {
   return (
-    <section className="settings-section">
-      <header>
+    <section className="platform-settings-hero">
+      <div className="platform-settings-hero-copy">
         <span>
-          <Icon size={19} aria-hidden="true" />
+          <SlidersHorizontal size={24} aria-hidden="true" />
         </span>
         <div>
-          <h2>{title}</h2>
-          <p>{description}</p>
+          <p className="eyebrow">Settings center</p>
+          <h1>Configuracion</h1>
+          <p>Administra todas las opciones de tu plataforma desde un solo lugar.</p>
         </div>
-      </header>
-      <div className="settings-section-body">{children}</div>
+      </div>
+      <div className="platform-settings-hero-actions">
+        {isDirty ? <em>Tienes cambios sin guardar.</em> : <em>Todo guardado.</em>}
+        <button className="platform-settings-button ghost" onClick={onRefresh} type="button">
+          <RefreshCw size={16} aria-hidden="true" />
+          Actualizar
+        </button>
+        <Can role="owner">
+          {settings?.fecha_creacion ? (
+            <button className="platform-settings-button ghost" disabled={isSaving} onClick={onReset} type="button">
+              <RotateCcw size={16} aria-hidden="true" />
+              Restaurar
+            </button>
+          ) : null}
+          <button className="platform-settings-button primary" disabled={isSaving} type="submit">
+            <Save size={16} aria-hidden="true" />
+            {isSaving ? 'Guardando...' : 'Guardar cambios'}
+          </button>
+        </Can>
+      </div>
     </section>
   );
 }
 
-function SettingSwitch({ checked, description, icon: Icon, id, label, name, onChange }) {
+function GlobalSettingsSearch({ onChange, query, resultCount }) {
   return (
-    <label className="settings-switch" htmlFor={id}>
+    <label className="platform-settings-search" htmlFor="platform-settings-search">
+      <Search size={18} aria-hidden="true" />
+      <input
+        id="platform-settings-search"
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="Buscar configuracion: WhatsApp, idioma, OpenAI, pagos..."
+        type="search"
+        value={query}
+      />
+      <strong>{resultCount} resultados</strong>
+    </label>
+  );
+}
+
+function SettingsSidebar({ activeId, changedFields, items, onSelect }) {
+  return (
+    <aside className="platform-settings-sidebar" aria-label="Navegacion de configuracion">
+      {items.map((item) => {
+        const Icon = item.icon;
+        const isActive = item.id === activeId;
+        const hasChanges = changedFields.some((field) => item.fields?.includes(field));
+
+        return (
+          <button
+            aria-current={isActive ? 'page' : undefined}
+            className={isActive ? 'active' : ''}
+            key={item.id}
+            onClick={() => onSelect(item.id)}
+            type="button"
+          >
+            <span className="platform-settings-sidebar-icon">
+              <Icon size={18} aria-hidden="true" />
+            </span>
+            <span className="platform-settings-sidebar-copy">
+              <strong>{item.title}</strong>
+              <small>{item.description}</small>
+            </span>
+            {hasChanges ? <i aria-label="Tiene cambios" /> : <ChevronRight size={16} aria-hidden="true" />}
+          </button>
+        );
+      })}
+    </aside>
+  );
+}
+
+function SettingsField({ as = 'input', children, error, help, id, label, ...props }) {
+  const Component = as;
+
+  return (
+    <label className={`platform-settings-field ${props.className ?? ''}`} htmlFor={id}>
+      <span>{label}</span>
+      {as === 'input' ? (
+        <input id={id} {...props} />
+      ) : (
+        <Component id={id} {...props}>
+          {children}
+        </Component>
+      )}
+      {error ? <small className="error">{error}</small> : help ? <small>{help}</small> : null}
+    </label>
+  );
+}
+
+function SettingsSwitch({ checked, description, icon: Icon, id, label, name, onChange }) {
+  return (
+    <label className="platform-settings-switch" htmlFor={id}>
       <input checked={checked} id={id} name={name} onChange={onChange} type="checkbox" />
-      <span className="settings-switch-control" aria-hidden="true" />
-      <span className="settings-switch-copy">
+      <span aria-hidden="true" />
+      <div>
         <strong>
-          <Icon size={18} aria-hidden="true" />
+          <Icon size={17} aria-hidden="true" />
           {label}
         </strong>
         <small>{description}</small>
-      </span>
+      </div>
     </label>
+  );
+}
+
+function SettingsGroup({ children, description, icon: Icon, title }) {
+  return (
+    <section className="platform-settings-group">
+      <header>
+        <span>
+          <Icon size={18} aria-hidden="true" />
+        </span>
+        <div>
+          <h3>{title}</h3>
+          <p>{description}</p>
+        </div>
+      </header>
+      <div className="platform-settings-group-body">{children}</div>
+    </section>
+  );
+}
+
+function ReadOnlyGrid({ items }) {
+  return (
+    <div className="platform-settings-readonly-grid">
+      {items.map((item) => (
+        <div key={item.label}>
+          <span>{item.label}</span>
+          <strong>{item.value}</strong>
+          {item.help ? <small>{item.help}</small> : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EmptyConfig({ title }) {
+  return (
+    <section className="platform-settings-empty">
+      <span>
+        <HelpCircle size={22} aria-hidden="true" />
+      </span>
+      <h3>{title}</h3>
+      <p>No hay campos editables para esta categoria en el endpoint actual.</p>
+    </section>
+  );
+}
+
+function EmpresaPage({ canSelectCompany, companies, errors, form, onChange }) {
+  return (
+    <>
+      <SettingsGroup
+        description="Define la entidad sobre la que se aplican estos ajustes."
+        icon={Building2}
+        title="Informacion principal"
+      >
+        <div className="platform-settings-grid">
+          {canSelectCompany ? (
+            <SettingsField
+              as="select"
+              className="wide"
+              error={errors.empresa_id}
+              help="Selecciona la empresa que quieres administrar."
+              id="settings-company"
+              label="Empresa"
+              name="empresa_id"
+              onChange={onChange}
+              value={form.empresa_id}
+            >
+              <option value="">Selecciona una empresa</option>
+              {companies.map((company) => (
+                <option key={company.id} value={company.id}>
+                  {company.nombre}
+                </option>
+              ))}
+            </SettingsField>
+          ) : null}
+          <SettingsField
+            help="Nombre publico o interno del asistente de esta empresa."
+            id="settings-bot-name"
+            label="Nombre del bot"
+            name="nombre_bot"
+            onChange={onChange}
+            placeholder="Asistente Nexus IA"
+            type="text"
+            value={form.nombre_bot}
+          />
+          <SettingsField
+            help="Telefono principal para contacto o referencia."
+            id="settings-owner-phone"
+            label="Telefono dueno"
+            name="telefono_dueno"
+            onChange={onChange}
+            placeholder="+52 55 0000 0000"
+            type="tel"
+            value={form.telefono_dueno}
+          />
+        </div>
+      </SettingsGroup>
+
+      <SettingsGroup
+        description="Datos que ayudan al cliente a ubicar y contactar al negocio."
+        icon={MapPin}
+        title="Direccion y horario"
+      >
+        <div className="platform-settings-grid">
+          <SettingsField
+            className="wide"
+            help="Direccion publica que puede compartirse con clientes."
+            id="settings-address"
+            label="Direccion"
+            name="direccion"
+            onChange={onChange}
+            placeholder="Direccion publica para clientes"
+            type="text"
+            value={form.direccion}
+          />
+          <SettingsField
+            as="textarea"
+            className="wide"
+            help="Impacta las respuestas fuera de horario."
+            id="settings-hours"
+            label="Horario atencion"
+            name="horario_atencion"
+            onChange={onChange}
+            placeholder="Lunes a viernes 9:00 a 18:00"
+            value={form.horario_atencion}
+          />
+        </div>
+      </SettingsGroup>
+
+      <SettingsGroup
+        description="Este modulo aun no recibe archivo de logo desde el backend."
+        icon={UploadCloud}
+        title="Logo"
+      >
+        <EmptyConfig title="Logo no disponible" />
+      </SettingsGroup>
+    </>
+  );
+}
+
+function IAPage({ form, onChange }) {
+  return (
+    <>
+      <SettingsGroup
+        description="Esta configuracion permite que la atencion automatizada responda conversaciones de clientes."
+        icon={Sparkles}
+        title="Estado y personalidad"
+      >
+        <div className="platform-settings-stack">
+          <Can role="owner">
+            <SettingsSwitch
+              checked={form.activo_ia}
+              description="Permite respuestas automaticas usando los datos configurados."
+              icon={Bot}
+              id="settings-ai-active"
+              label="Atencion automatizada"
+              name="activo_ia"
+              onChange={onChange}
+            />
+          </Can>
+          <SettingsField
+            help="Para prompts, plantillas y pruebas usa el modulo Configuracion IA."
+            id="settings-tone"
+            label="Tono de respuesta"
+            name="tono_respuesta"
+            onChange={onChange}
+            placeholder="Cercano, profesional, breve"
+            type="text"
+            value={form.tono_respuesta}
+          />
+        </div>
+      </SettingsGroup>
+
+      <SettingsGroup
+        description="Informacion base para orientar respuestas sin entrar al editor avanzado de IA."
+        icon={MessageSquare}
+        title="Conocimiento base"
+      >
+        <div className="platform-settings-grid">
+          <SettingsField
+            as="textarea"
+            help="Reglas comerciales, condiciones especiales y contexto del negocio."
+            id="settings-business-instructions"
+            label="Instrucciones del negocio"
+            name="instrucciones_negocio"
+            onChange={onChange}
+            placeholder="Reglas comerciales, estilo de atencion..."
+            value={form.instrucciones_negocio}
+          />
+          <SettingsField
+            as="textarea"
+            help="Temas que deben evitarse o escalarse."
+            id="settings-blocked-topics"
+            label="Temas bloqueados"
+            name="temas_bloqueados"
+            onChange={onChange}
+            placeholder="Un tema por linea o separado por comas"
+            value={form.temas_bloqueados}
+          />
+          <SettingsField
+            as="textarea"
+            help="Preguntas frecuentes para respuestas consistentes."
+            id="settings-custom-faq"
+            label="FAQ personalizada"
+            name="faq_personalizada"
+            onChange={onChange}
+            placeholder="Pregunta: respuesta"
+            value={form.faq_personalizada}
+          />
+          <SettingsField
+            as="textarea"
+            help="Mensaje seguro si la automatizacion no puede responder."
+            id="settings-fallback"
+            label="Mensaje de respaldo"
+            name="fallback_message"
+            onChange={onChange}
+            placeholder="Mensaje cuando no se debe o no se puede responder"
+            value={form.fallback_message}
+          />
+        </div>
+      </SettingsGroup>
+    </>
+  );
+}
+
+function WhatsAppPage({ form, onChange }) {
+  return (
+    <>
+      <SettingsGroup
+        description="Controla la participacion de WhatsApp en la operacion de esta empresa."
+        icon={Smartphone}
+        title="Conexion operativa"
+      >
+        <ReadOnlyGrid
+          items={[
+            { label: 'Estado', value: form.activo_whatsapp ? 'Activo' : 'Pausado' },
+            { label: 'Numero conectado', value: form.telefono_dueno || 'No configurado' },
+            { label: 'Sesion', value: form.activo_whatsapp ? 'Habilitada' : 'Pausada' }
+          ]}
+        />
+        <Can role="owner">
+          <SettingsSwitch
+            checked={form.activo_whatsapp}
+            description="Habilita el canal WhatsApp para la empresa seleccionada."
+            icon={Smartphone}
+            id="settings-whatsapp-active"
+            label="WhatsApp activo"
+            name="activo_whatsapp"
+            onChange={onChange}
+          />
+        </Can>
+      </SettingsGroup>
+
+      <SettingsGroup
+        description="Automatizaciones disponibles para la atencion por WhatsApp."
+        icon={PackageCheck}
+        title="Automatizaciones"
+      >
+        <div className="platform-settings-grid">
+          <Can role="owner">
+            <SettingsSwitch
+              checked={form.auto_pedidos}
+              description="Permite automatizar intenciones de pedido cuando el flujo este disponible."
+              icon={PackageCheck}
+              id="settings-auto-orders"
+              label="Auto pedidos"
+              name="auto_pedidos"
+              onChange={onChange}
+            />
+            <SettingsSwitch
+              checked={form.envio_imagenes}
+              description="Permite enviar imagenes de productos cuando existan."
+              icon={Smartphone}
+              id="settings-send-images"
+              label="Envio de imagenes"
+              name="envio_imagenes"
+              onChange={onChange}
+            />
+          </Can>
+        </div>
+      </SettingsGroup>
+    </>
+  );
+}
+
+function NotificationsPage({ form, onChange }) {
+  return (
+    <SettingsGroup
+      description="Mensajes que el cliente puede recibir durante la atencion."
+      icon={Bell}
+      title="Mensajes operativos"
+    >
+      <div className="platform-settings-grid">
+        <SettingsField
+          as="textarea"
+          help="Primer mensaje que vera el cliente."
+          id="settings-welcome"
+          label="Mensaje bienvenida"
+          name="mensaje_bienvenida"
+          onChange={onChange}
+          placeholder="Hola, gracias por escribirnos. Como podemos ayudarte?"
+          value={form.mensaje_bienvenida}
+        />
+        <SettingsField
+          as="textarea"
+          help="Se usa cuando el cliente escribe fuera de horario."
+          id="settings-after-hours"
+          label="Mensaje fuera de horario"
+          name="mensaje_fuera_horario"
+          onChange={onChange}
+          placeholder="En este momento estamos fuera de horario..."
+          value={form.mensaje_fuera_horario}
+        />
+      </div>
+    </SettingsGroup>
+  );
+}
+
+function BillingPage({ form, onChange }) {
+  return (
+    <>
+      <Can permission="billing.view" fallback={<EmptyConfig title="Facturacion no disponible" />}>
+        <SettingsGroup
+          description="Define metodos de pago, anticipos, facturacion y condiciones."
+          icon={CreditCard}
+          title="Politicas de pago"
+        >
+          <SettingsField
+            as="textarea"
+            help="Impacta respuestas sobre pagos, anticipos y facturacion."
+            id="settings-payments"
+            label="Politica pagos"
+            name="politica_pagos"
+            onChange={onChange}
+            placeholder="Metodos de pago, anticipos y facturacion"
+            value={form.politica_pagos}
+          />
+        </SettingsGroup>
+      </Can>
+      <SettingsGroup
+        description="Planes, metodo de pago y renovacion viven en Suscripciones."
+        icon={CreditCard}
+        title="Plan y renovacion"
+      >
+        <EmptyConfig title="Plan gestionado en Suscripciones" />
+      </SettingsGroup>
+    </>
+  );
+}
+
+function SecurityPage() {
+  return (
+    <SettingsGroup
+      description="La seguridad depende de roles, permisos y sesiones de usuario."
+      icon={KeyRound}
+      title="Accesos"
+    >
+      <ReadOnlyGrid
+        items={[
+          { label: 'Usuarios', value: 'Gestionado en Usuarios' },
+          { label: 'Roles', value: 'Permisos existentes' },
+          { label: '2FA', value: 'Sin campo editable' },
+          { label: 'Sesiones', value: 'Sin campo editable' }
+        ]}
+      />
+    </SettingsGroup>
+  );
+}
+
+function AppearancePage() {
+  return (
+    <SettingsGroup
+      description="Preferencias visuales disponibles en la plataforma."
+      icon={Palette}
+      title="Tema e idioma"
+    >
+      <ReadOnlyGrid
+        items={[
+          { label: 'Modo claro', value: 'Compatible' },
+          { label: 'Modo oscuro', value: 'Compatible' },
+          { label: 'Idioma', value: 'Sin campo editable' },
+          { label: 'Zona horaria', value: 'Sin campo editable' }
+        ]}
+      />
+    </SettingsGroup>
+  );
+}
+
+function IntegrationsPage({ form }) {
+  return (
+    <SettingsGroup
+      description="Servicios externos relacionados con esta configuracion."
+      icon={PlugZap}
+      title="Servicios conectados"
+    >
+      <ReadOnlyGrid
+        items={[
+          { label: 'OpenAI / IA', value: form.activo_ia ? 'Operativo' : 'Pausado', help: 'Avanzado en Configuracion IA' },
+          { label: 'WhatsApp', value: form.activo_whatsapp ? 'Operativo' : 'Pausado', help: 'Conexion en modulo WhatsApp' },
+          { label: 'API', value: 'Sin campo editable' },
+          { label: 'Webhooks', value: 'Sin campo editable' }
+        ]}
+      />
+    </SettingsGroup>
+  );
+}
+
+function SystemPage({ form, onChange }) {
+  return (
+    <>
+      <SettingsGroup
+        description="Reglas operativas generales para entrega y servicio."
+        icon={PackageCheck}
+        title="Politicas de entrega"
+      >
+        <SettingsField
+          as="textarea"
+          help="Zonas, tiempos y condiciones de entrega."
+          id="settings-delivery"
+          label="Politica entrega"
+          name="politica_entrega"
+          onChange={onChange}
+          value={form.politica_entrega}
+        />
+      </SettingsGroup>
+      <SettingsGroup
+        description="Vista resumida del estado actual."
+        icon={SlidersHorizontal}
+        title="Resumen del sistema"
+      >
+        <ReadOnlyGrid
+          items={[
+            { label: 'Empresa', value: form.empresa_id ? `ID ${form.empresa_id}` : 'No seleccionada' },
+            { label: 'Atencion automatizada', value: form.activo_ia ? 'Activa' : 'Pausada' },
+            { label: 'WhatsApp', value: form.activo_whatsapp ? 'Activo' : 'Pausado' }
+          ]}
+        />
+      </SettingsGroup>
+    </>
+  );
+}
+
+function CategoryContent({ activeId, canSelectCompany, companies, errors, form, onChange }) {
+  if (activeId === 'empresa') {
+    return <EmpresaPage canSelectCompany={canSelectCompany} companies={companies} errors={errors} form={form} onChange={onChange} />;
+  }
+
+  if (activeId === 'ia') {
+    return <IAPage form={form} onChange={onChange} />;
+  }
+
+  if (activeId === 'whatsapp') {
+    return <WhatsAppPage form={form} onChange={onChange} />;
+  }
+
+  if (activeId === 'seguridad') {
+    return <SecurityPage />;
+  }
+
+  if (activeId === 'notificaciones') {
+    return <NotificationsPage form={form} onChange={onChange} />;
+  }
+
+  if (activeId === 'facturacion') {
+    return <BillingPage form={form} onChange={onChange} />;
+  }
+
+  if (activeId === 'apariencia') {
+    return <AppearancePage />;
+  }
+
+  if (activeId === 'integraciones') {
+    return <IntegrationsPage form={form} />;
+  }
+
+  return <SystemPage form={form} onChange={onChange} />;
+}
+
+function InsightPanel({ activeCategory, form, isDirty, settings }) {
+  return (
+    <aside className="platform-settings-insights" aria-label="Ayuda de configuracion">
+      <section>
+        <header>
+          <span>
+            <HelpCircle size={18} aria-hidden="true" />
+          </span>
+          <div>
+            <h3>Consejos</h3>
+            <p>{activeCategory.title}</p>
+          </div>
+        </header>
+        <ul>
+          {activeCategory.help.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      </section>
+      <section>
+        <header>
+          <span>
+            <CheckCircle2 size={18} aria-hidden="true" />
+          </span>
+          <div>
+            <h3>Estado</h3>
+            <p>{isDirty ? 'Pendiente de guardar' : 'Sin cambios pendientes'}</p>
+          </div>
+        </header>
+        <ReadOnlyGrid
+          items={[
+            { label: 'Empresa', value: settings?.empresa_nombre ?? 'Sin empresa' },
+            { label: 'Actualizacion', value: settings?.fecha_actualizacion ? new Date(settings.fecha_actualizacion).toLocaleDateString('es-MX') : 'Sin registro' },
+            { label: 'Automatizacion', value: form.activo_ia ? 'Activa' : 'Pausada' },
+            { label: 'WhatsApp', value: form.activo_whatsapp ? 'Activo' : 'Pausado' }
+          ]}
+        />
+      </section>
+    </aside>
+  );
+}
+
+function UnsavedChangesBar({ isDirty, isSaving, onReset }) {
+  if (!isDirty) {
+    return null;
+  }
+
+  return (
+    <div className="platform-settings-unsaved" role="status" aria-live="polite">
+      <div>
+        <strong>Tienes cambios sin guardar.</strong>
+        <span>Guarda para aplicar la configuracion o restaura los valores actuales.</span>
+      </div>
+      <div>
+        <button className="platform-settings-button ghost" disabled={isSaving} onClick={onReset} type="button">
+          Descartar
+        </button>
+        <button className="platform-settings-button primary" disabled={isSaving} type="submit">
+          <Save size={16} aria-hidden="true" />
+          {isSaving ? 'Guardando...' : 'Guardar'}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -107,16 +824,78 @@ export function CompanySettingsForm({
   isSaving,
   onDelete,
   onCompanyChange,
+  onRefresh,
   onSubmit,
   settings
 }) {
-  const [form, setForm] = useState(initialForm);
+  const [activeId, setActiveId] = useState('empresa');
   const [errors, setErrors] = useState({});
+  const [form, setForm] = useState(initialForm);
+  const [initialSnapshot, setInitialSnapshot] = useState(serializeForm(initialForm));
+  const [query, setQuery] = useState('');
 
   useEffect(() => {
-    setForm(toFormValue(settings));
+    const nextForm = toFormValue(settings);
+    setForm(nextForm);
+    setInitialSnapshot(serializeForm(nextForm));
     setErrors({});
   }, [settings]);
+
+  const changedFields = useMemo(() => {
+    const initialValue = JSON.parse(initialSnapshot);
+    return Object.keys(form).filter((key) => form[key] !== initialValue[key]);
+  }, [form, initialSnapshot]);
+
+  const isDirty = changedFields.length > 0;
+
+  const catalog = useMemo(() => {
+    return settingsCatalog.map((item) => ({
+      ...item,
+      fields:
+        item.id === 'empresa'
+          ? ['empresa_id', 'nombre_bot', 'telefono_dueno', 'direccion', 'horario_atencion']
+          : item.id === 'ia'
+            ? ['activo_ia', 'tono_respuesta', 'instrucciones_negocio', 'temas_bloqueados', 'faq_personalizada', 'fallback_message']
+            : item.id === 'whatsapp'
+              ? ['activo_whatsapp', 'auto_pedidos', 'envio_imagenes']
+              : item.id === 'notificaciones'
+                ? ['mensaje_bienvenida', 'mensaje_fuera_horario']
+                : item.id === 'facturacion'
+                  ? ['politica_pagos']
+                  : item.id === 'sistema'
+                    ? ['politica_entrega']
+                    : []
+    }));
+  }, []);
+
+  const visibleItems = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+
+    if (!normalizedQuery) {
+      return catalog;
+    }
+
+    return catalog.filter((item) => {
+      return (
+        item.title.toLowerCase().includes(normalizedQuery) ||
+        item.description.toLowerCase().includes(normalizedQuery) ||
+        item.keywords.some((keyword) => keyword.toLowerCase().includes(normalizedQuery))
+      );
+    });
+  }, [catalog, query]);
+
+  useEffect(() => {
+    if (!query.trim() || !visibleItems.length) {
+      return;
+    }
+
+    if (!visibleItems.some((item) => item.id === activeId)) {
+      setActiveId(visibleItems[0].id);
+    }
+  }, [activeId, query, visibleItems]);
+
+  const activeCategory = catalog.find((item) => item.id === activeId) ?? catalog[0];
+  const ActiveCategoryIcon = activeCategory.icon;
 
   function handleChange(event) {
     const { checked, name, type, value } = event.target;
@@ -137,13 +916,19 @@ export function CompanySettingsForm({
     }
   }
 
+  function handleDiscard() {
+    const nextForm = JSON.parse(initialSnapshot);
+    setForm(nextForm);
+    setErrors({});
+  }
+
   function handleSubmit(event) {
     event.preventDefault();
-
     const nextErrors = validateSettings(form, canSelectCompany);
     setErrors(nextErrors);
 
     if (Object.keys(nextErrors).length > 0) {
+      setActiveId('empresa');
       return;
     }
 
@@ -154,322 +939,49 @@ export function CompanySettingsForm({
   }
 
   return (
-    <form className="settings-form" onSubmit={handleSubmit} noValidate>
-      <div className="settings-form-grid">
-        <div className="settings-form-main">
-          <SettingsSection
-            description="Elige la empresa y define la identidad que usara el asistente."
-            icon={Bot}
-            title="Informacion general"
-          >
-            <div className="form-grid">
-              {canSelectCompany ? (
-                <label className="field-group full-field" htmlFor="settings-company">
-                  <span>Empresa</span>
-                  <select id="settings-company" name="empresa_id" onChange={handleChange} value={form.empresa_id}>
-                    <option value="">Selecciona una empresa</option>
-                    {companies.map((company) => (
-                      <option key={company.id} value={company.id}>
-                        {company.nombre}
-                      </option>
-                    ))}
-                  </select>
-                  {errors.empresa_id ? <small>{errors.empresa_id}</small> : null}
-                </label>
-              ) : null}
+    <form className="platform-settings-shell" onSubmit={handleSubmit} noValidate>
+      <PlatformHero
+        isDirty={isDirty}
+        isSaving={isSaving}
+        onRefresh={onRefresh}
+        onReset={() => onDelete(form)}
+        settings={settings}
+      />
 
-              <label className="field-group" htmlFor="settings-bot-name">
-                <span>Nombre del bot</span>
-                <input
-                  id="settings-bot-name"
-                  name="nombre_bot"
-                  onChange={handleChange}
-                  placeholder="Asistente Nexus IA"
-                  type="text"
-                  value={form.nombre_bot}
-                />
-              </label>
+      <GlobalSettingsSearch query={query} onChange={setQuery} resultCount={visibleItems.length} />
 
-              <label className="field-group" htmlFor="settings-tone">
-                <span>Tono de respuesta</span>
-                <input
-                  id="settings-tone"
-                  name="tono_respuesta"
-                  onChange={handleChange}
-                  placeholder="Cercano, profesional, breve"
-                  type="text"
-                  value={form.tono_respuesta}
-                />
-              </label>
+      <section className="platform-settings-layout">
+        <SettingsSidebar activeId={activeId} changedFields={changedFields} items={visibleItems} onSelect={setActiveId} />
+
+        <main className="platform-settings-content" aria-live="polite">
+          <header className="platform-settings-content-header">
+            <span>
+              <ActiveCategoryIcon size={22} aria-hidden="true" />
+            </span>
+            <div>
+              <p className="eyebrow">Categoria</p>
+              <h2>{activeCategory.title}</h2>
+              <p>{activeCategory.description}</p>
             </div>
-          </SettingsSection>
+          </header>
+          {visibleItems.length ? (
+            <CategoryContent
+              activeId={activeCategory.id}
+              canSelectCompany={canSelectCompany}
+              companies={companies}
+              errors={errors}
+              form={form}
+              onChange={handleChange}
+            />
+          ) : (
+            <EmptyConfig title="Sin resultados" />
+          )}
+        </main>
 
-          <SettingsSection
-            description="Datos que el bot puede usar cuando el cliente pide ubicacion o contacto."
-            icon={Phone}
-            title="Datos de contacto"
-          >
-            <div className="form-grid">
-              <label className="field-group" htmlFor="settings-owner-phone">
-                <span>Telefono dueno</span>
-                <input
-                  id="settings-owner-phone"
-                  name="telefono_dueno"
-                  onChange={handleChange}
-                  placeholder="+52 55 0000 0000"
-                  type="tel"
-                  value={form.telefono_dueno}
-                />
-              </label>
+        <InsightPanel activeCategory={activeCategory} form={form} isDirty={isDirty} settings={settings} />
+      </section>
 
-              <label className="field-group" htmlFor="settings-address">
-                <span>Direccion</span>
-                <input
-                  id="settings-address"
-                  name="direccion"
-                  onChange={handleChange}
-                  placeholder="Direccion publica para clientes"
-                  type="text"
-                  value={form.direccion}
-                />
-              </label>
-            </div>
-          </SettingsSection>
-
-          <SettingsSection
-            description="Indica cuando atiende la empresa para ordenar respuestas automaticas."
-            icon={Clock}
-            title="Horarios"
-          >
-            <label className="field-group" htmlFor="settings-hours">
-              <span>Horario atencion</span>
-              <textarea
-                id="settings-hours"
-                name="horario_atencion"
-                onChange={handleChange}
-                placeholder="Lunes a viernes 9:00 a 18:00"
-                value={form.horario_atencion}
-              />
-            </label>
-          </SettingsSection>
-
-          <SettingsSection
-            description="Mensajes base para abrir conversaciones y responder fuera de horario."
-            icon={MessageSquare}
-            title="Mensajes del bot"
-          >
-            <div className="settings-message-grid">
-              <label className="field-group" htmlFor="settings-welcome">
-                <span>Mensaje bienvenida</span>
-                <textarea
-                  id="settings-welcome"
-                  name="mensaje_bienvenida"
-                  onChange={handleChange}
-                  placeholder="Hola, gracias por escribirnos. Como podemos ayudarte?"
-                  value={form.mensaje_bienvenida}
-                />
-              </label>
-
-              <label className="field-group" htmlFor="settings-after-hours">
-                <span>Mensaje fuera de horario</span>
-                <textarea
-                  id="settings-after-hours"
-                  name="mensaje_fuera_horario"
-                  onChange={handleChange}
-                  placeholder="En este momento estamos fuera de horario, te responderemos pronto."
-                  value={form.mensaje_fuera_horario}
-                />
-              </label>
-            </div>
-          </SettingsSection>
-
-          <SettingsSection
-            description="Define comportamiento, limites y respuestas base del asistente de esta empresa."
-            icon={Sparkles}
-            title="Configuracion IA"
-          >
-            <div className="settings-message-grid">
-              <label className="field-group" htmlFor="settings-business-instructions">
-                <span>Instrucciones del negocio</span>
-                <textarea
-                  id="settings-business-instructions"
-                  name="instrucciones_negocio"
-                  onChange={handleChange}
-                  placeholder="Reglas comerciales, estilo de atencion, condiciones especiales..."
-                  value={form.instrucciones_negocio}
-                />
-              </label>
-
-              <label className="field-group" htmlFor="settings-blocked-topics">
-                <span>Temas bloqueados</span>
-                <textarea
-                  id="settings-blocked-topics"
-                  name="temas_bloqueados"
-                  onChange={handleChange}
-                  placeholder="Un tema por linea o separado por comas"
-                  value={form.temas_bloqueados}
-                />
-              </label>
-
-              <label className="field-group" htmlFor="settings-custom-faq">
-                <span>FAQ personalizada</span>
-                <textarea
-                  id="settings-custom-faq"
-                  name="faq_personalizada"
-                  onChange={handleChange}
-                  placeholder="Pregunta: respuesta"
-                  value={form.faq_personalizada}
-                />
-              </label>
-
-              <label className="field-group" htmlFor="settings-fallback">
-                <span>Fallback message</span>
-                <textarea
-                  id="settings-fallback"
-                  name="fallback_message"
-                  onChange={handleChange}
-                  placeholder="Mensaje cuando la IA no debe o no puede responder"
-                  value={form.fallback_message}
-                />
-              </label>
-            </div>
-
-            <div className="settings-switch-list">
-              <Can role="owner">
-                <SettingSwitch
-                  checked={form.auto_pedidos}
-                  description="Permite automatizar intenciones de pedido cuando el flujo este disponible."
-                  icon={PackageCheck}
-                  id="settings-auto-orders"
-                  label="Auto pedidos"
-                  name="auto_pedidos"
-                  onChange={handleChange}
-                />
-                <SettingSwitch
-                  checked={form.envio_imagenes}
-                  description="Permite que el bot envie imagenes de productos cuando existan."
-                  icon={Smartphone}
-                  id="settings-send-images"
-                  label="Envio de imagenes"
-                  name="envio_imagenes"
-                  onChange={handleChange}
-                />
-              </Can>
-            </div>
-          </SettingsSection>
-
-          <SettingsSection
-            description="Aclara zonas, tiempos, condiciones y restricciones de entrega."
-            icon={PackageCheck}
-            title="Politicas de entrega"
-          >
-            <label className="field-group" htmlFor="settings-delivery">
-              <span>Politica entrega</span>
-              <textarea
-                id="settings-delivery"
-                name="politica_entrega"
-                onChange={handleChange}
-                placeholder="Zonas, tiempos y condiciones de entrega"
-                value={form.politica_entrega}
-              />
-            </label>
-          </SettingsSection>
-
-          <Can permission="billing.view">
-            <SettingsSection
-              description="Define metodos de pago, anticipos, facturacion y condiciones."
-              icon={CreditCard}
-              title="Politicas de pago"
-            >
-              <label className="field-group" htmlFor="settings-payments">
-                <span>Politica pagos</span>
-                <textarea
-                  id="settings-payments"
-                  name="politica_pagos"
-                  onChange={handleChange}
-                  placeholder="Metodos de pago, anticipos y facturacion"
-                  value={form.politica_pagos}
-                />
-              </label>
-            </SettingsSection>
-          </Can>
-        </div>
-
-        <aside className="settings-aside">
-          <section className="settings-preview-card">
-            <div className="settings-preview-header">
-              <span>
-                <Sparkles size={19} aria-hidden="true" />
-              </span>
-              <div>
-                <h2>Vista previa</h2>
-                <p>Mensaje inicial que vera el cliente.</p>
-              </div>
-            </div>
-            <div className="settings-chat-preview">
-              <small>{form.nombre_bot || 'Asistente'}</small>
-              <p>
-                {form.mensaje_bienvenida ||
-                  'Hola, gracias por escribirnos. Como podemos ayudarte?'}
-              </p>
-            </div>
-            <div className="settings-preview-meta">
-              <MapPin size={16} aria-hidden="true" />
-              <span>{form.direccion || 'Direccion no configurada'}</span>
-            </div>
-          </section>
-
-          <SettingsSection
-            description="Controla si el asistente responde y si WhatsApp participa en la atencion."
-            icon={Smartphone}
-            title="IA y WhatsApp"
-          >
-            <div className="settings-switch-list">
-              <Can role="owner">
-                <SettingSwitch
-                  checked={form.activo_ia}
-                  description="Permite que el bot responda automaticamente segun la configuracion."
-                  icon={MessageSquare}
-                  id="settings-ai-active"
-                  label="IA activa"
-                  name="activo_ia"
-                  onChange={handleChange}
-                />
-                <SettingSwitch
-                  checked={form.activo_whatsapp}
-                  description="Habilita el canal WhatsApp para la empresa seleccionada."
-                  icon={Smartphone}
-                  id="settings-whatsapp-active"
-                  label="WhatsApp activo"
-                  name="activo_whatsapp"
-                  onChange={handleChange}
-                />
-              </Can>
-            </div>
-          </SettingsSection>
-        </aside>
-      </div>
-
-      <div className="settings-save-bar">
-        <div>
-          <strong>{settings?.empresa_nombre ?? 'Configuracion de empresa'}</strong>
-          <span>{settings?.empresa_tipo_negocio ?? 'Preferencias comerciales y automaticas'}</span>
-        </div>
-        <div>
-          <Can role="owner">
-            {settings?.fecha_creacion ? (
-              <button className="secondary-button" disabled={isSaving} onClick={() => onDelete(form)} type="button">
-                <RotateCcw size={18} aria-hidden="true" />
-                Restablecer
-              </button>
-            ) : null}
-            <button className="primary-button" disabled={isSaving || (canSelectCompany && !form.empresa_id)} type="submit">
-              <Save size={18} aria-hidden="true" />
-              {isSaving ? 'Guardando...' : 'Guardar configuracion'}
-            </button>
-          </Can>
-        </div>
-      </div>
+      <UnsavedChangesBar isDirty={isDirty} isSaving={isSaving} onReset={handleDiscard} />
     </form>
   );
 }

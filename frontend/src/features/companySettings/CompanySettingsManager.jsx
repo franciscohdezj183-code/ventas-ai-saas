@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Bot, Building2, MessageSquare, Smartphone } from 'lucide-react';
-import { ConfirmModal, ErrorState, LoadingState } from '../../components/ui/index.js';
+import { AlertTriangle } from 'lucide-react';
+import { ConfirmModal } from '../../components/ui/index.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { isSuperAdminRole } from '../../config/permissions.js';
 import { fetchCompanies } from '../companies/companiesApi.js';
@@ -141,39 +141,33 @@ export function CompanySettingsManager() {
   }
 
   if (isLoading) {
-    return <LoadingState message="Cargando configuracion..." />;
+    return (
+      <div className="resource-page settings-center-page">
+        <div className="settings-center-skeleton hero" />
+        <div className="settings-center-skeleton search" />
+        <div className="settings-center-skeleton-grid">
+          <div className="settings-center-skeleton sidebar" />
+          <div className="settings-center-skeleton panel" />
+          <div className="settings-center-skeleton preview" />
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="resource-page settings-page">
-      <div className="settings-unified-header">
-        <div>
-          <span className="settings-header-icon">
-            <Bot size={22} aria-hidden="true" />
-          </span>
+    <div className="resource-page settings-center-page">
+      {error ? (
+        <section className="settings-center-error-state">
+          <AlertTriangle size={20} aria-hidden="true" />
           <div>
-            <p className="eyebrow">Operacion</p>
-            <h1>Configuracion de empresa</h1>
-            <p>Personaliza el bot, politicas comerciales, horarios y canales por empresa.</p>
+            <strong>No pudimos cargar la configuracion.</strong>
+            <p>{error}</p>
           </div>
-        </div>
-        <div className="settings-header-summary">
-          <div>
-            <Building2 size={18} aria-hidden="true" />
-            <span>{selectedSettings?.empresa_nombre ?? 'Empresa'}</span>
-          </div>
-          <div className={selectedSettings?.activo_ia ? 'active' : ''}>
-            <MessageSquare size={18} aria-hidden="true" />
-            <span>{selectedSettings?.activo_ia ? 'IA activa' : 'IA pausada'}</span>
-          </div>
-          <div className={selectedSettings?.activo_whatsapp ? 'active' : ''}>
-            <Smartphone size={18} aria-hidden="true" />
-            <span>{selectedSettings?.activo_whatsapp ? 'WhatsApp activo' : 'WhatsApp pausado'}</span>
-          </div>
-        </div>
-      </div>
-
-      {error ? <ErrorState message={error} onRetry={loadData} /> : null}
+          <button className="settings-center-secondary-button" onClick={loadData} type="button">
+            Reintentar
+          </button>
+        </section>
+      ) : null}
 
       <CompanySettingsForm
         canSelectCompany={canSelectCompany}
@@ -181,6 +175,7 @@ export function CompanySettingsManager() {
         isSaving={isSaving}
         onCompanyChange={handleCompanyChange}
         onDelete={handleDelete}
+        onRefresh={loadData}
         onSubmit={handleSubmit}
         settings={selectedSettings}
       />

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { CRM_STATES } from './LeadTable.jsx';
 
 const initialForm = {
   nombre_cliente: '',
@@ -7,6 +8,14 @@ const initialForm = {
   estado: 'NUEVO',
   notas: '',
   empresa_id: ''
+};
+
+const formStates = {
+  NUEVO: 'Pendiente',
+  CONTACTADO: 'Activo',
+  COTIZADO: 'Activo cotizado',
+  GANADO: 'Activo ganado',
+  PERDIDO: 'Inactivo'
 };
 
 function validateLead(form, canSelectCompany) {
@@ -83,98 +92,104 @@ export function LeadForm({ canSelectCompany, companies, isSaving, lead, onCancel
   }
 
   return (
-    <form className="company-form" onSubmit={handleSubmit} noValidate>
-      <div className="form-grid">
-        <label className="field-group" htmlFor="lead-name">
-          <span>Nombre cliente</span>
-          <input
-            id="lead-name"
-            name="nombre_cliente"
-            onChange={handleChange}
-            placeholder="Nombre del cliente"
-            type="text"
-            value={form.nombre_cliente}
-          />
-          {errors.nombre_cliente ? <small>{errors.nombre_cliente}</small> : null}
-        </label>
-
-        <label className="field-group" htmlFor="lead-phone">
-          <span>Telefono</span>
-          <input
-            id="lead-phone"
-            name="telefono"
-            onChange={handleChange}
-            placeholder="+52 55 0000 0000"
-            type="tel"
-            value={form.telefono}
-          />
-          {errors.telefono ? <small>{errors.telefono}</small> : null}
-        </label>
-
-        <label className="field-group" htmlFor="lead-interest">
-          <span>Interes</span>
-          <input
-            id="lead-interest"
-            name="interes"
-            onChange={handleChange}
-            placeholder="Producto o servicio de interes"
-            type="text"
-            value={form.interes}
-          />
-          {errors.interes ? <small>{errors.interes}</small> : null}
-        </label>
-
-        <label className="field-group" htmlFor="lead-status">
-          <span>Estado</span>
-          <select id="lead-status" name="estado" onChange={handleChange} value={form.estado}>
-            <option value="NUEVO">NUEVO</option>
-            <option value="CONTACTADO">CONTACTADO</option>
-            <option value="COTIZADO">COTIZADO</option>
-            <option value="GANADO">GANADO</option>
-            <option value="PERDIDO">PERDIDO</option>
-          </select>
-        </label>
-
-        <label className="field-group full-field" htmlFor="lead-notes">
-          <span>Notas internas</span>
-          <textarea
-            id="lead-notes"
-            name="notas"
-            onChange={handleChange}
-            placeholder="Seguimiento, acuerdos, objeciones o siguiente paso"
-            value={form.notas}
-          />
-        </label>
-
-        {canSelectCompany ? (
-          <label className="field-group full-field" htmlFor="lead-company">
-            <span>Empresa</span>
-            <select
-              id="lead-company"
-              name="empresa_id"
+    <form className="company-form customer-form" onSubmit={handleSubmit} noValidate>
+      <div className="form-grid customer-form-grid">
+          <label className="field-group" htmlFor="lead-name">
+            <span>Nombre completo</span>
+            <input
+              aria-invalid={Boolean(errors.nombre_cliente)}
+              aria-describedby={errors.nombre_cliente ? 'lead-name-error' : undefined}
+              id="lead-name"
+              name="nombre_cliente"
               onChange={handleChange}
-              value={form.empresa_id}
-            >
-              <option value="">Selecciona una empresa</option>
-              {companies.map((company) => (
-                <option key={company.id} value={company.id}>
-                  {company.nombre}
-                </option>
+              placeholder="Nombre del cliente"
+              type="text"
+              value={form.nombre_cliente}
+            />
+            {errors.nombre_cliente ? <small id="lead-name-error">{errors.nombre_cliente}</small> : null}
+          </label>
+
+          <label className="field-group" htmlFor="lead-interest">
+            <span>Interes principal</span>
+            <input
+              aria-invalid={Boolean(errors.interes)}
+              aria-describedby={errors.interes ? 'lead-interest-error' : undefined}
+              id="lead-interest"
+              name="interes"
+              onChange={handleChange}
+              placeholder="Producto o servicio de interes"
+              type="text"
+              value={form.interes}
+            />
+            {errors.interes ? <small id="lead-interest-error">{errors.interes}</small> : null}
+          </label>
+
+          <label className="field-group" htmlFor="lead-phone">
+            <span>Telefono</span>
+            <input
+              aria-invalid={Boolean(errors.telefono)}
+              aria-describedby={errors.telefono ? 'lead-phone-error' : undefined}
+              id="lead-phone"
+              name="telefono"
+              onChange={handleChange}
+              placeholder="+52 55 0000 0000"
+              type="tel"
+              value={form.telefono}
+            />
+            {errors.telefono ? <small id="lead-phone-error">{errors.telefono}</small> : null}
+          </label>
+
+          <label className="field-group" htmlFor="lead-status">
+            <span>Estado</span>
+            <select id="lead-status" name="estado" onChange={handleChange} value={form.estado}>
+              {CRM_STATES.map((state) => (
+                <option key={state} value={state}>{formStates[state]}</option>
               ))}
             </select>
-            {errors.empresa_id ? <small>{errors.empresa_id}</small> : null}
           </label>
-        ) : null}
+
+          {canSelectCompany ? (
+            <label className="field-group" htmlFor="lead-company">
+              <span>Empresa</span>
+              <select
+                aria-invalid={Boolean(errors.empresa_id)}
+                aria-describedby={errors.empresa_id ? 'lead-company-error' : undefined}
+                id="lead-company"
+                name="empresa_id"
+                onChange={handleChange}
+                value={form.empresa_id}
+              >
+                <option value="">Selecciona una empresa</option>
+                {companies.map((company) => (
+                  <option key={company.id} value={company.id}>
+                    {company.nombre}
+                  </option>
+                ))}
+              </select>
+              {errors.empresa_id ? <small id="lead-company-error">{errors.empresa_id}</small> : null}
+            </label>
+          ) : null}
+
+          <label className="field-group full-field" htmlFor="lead-notes">
+            <span>Notas internas</span>
+            <textarea
+              id="lead-notes"
+              name="notas"
+              onChange={handleChange}
+              placeholder="Seguimiento, acuerdos, objeciones o siguiente paso"
+              value={form.notas}
+            />
+          </label>
       </div>
 
-      <div className="form-actions">
+      <div className="form-actions customer-form-actions">
         {isEditing ? (
           <button className="secondary-button" onClick={onCancel} type="button">
             Cancelar
           </button>
         ) : null}
         <button className="primary-button" disabled={isSaving} type="submit">
-          {isSaving ? 'Guardando...' : isEditing ? 'Actualizar lead' : 'Crear lead'}
+          {isSaving ? 'Guardando...' : isEditing ? 'Actualizar cliente' : 'Crear cliente'}
         </button>
       </div>
     </form>

@@ -2,14 +2,12 @@ import {
   Building2,
   ChevronDown,
   LogOut,
-  Menu,
   Moon,
-  PanelLeftClose,
-  PanelLeftOpen,
   ShieldCheck,
   Sun
 } from 'lucide-react';
 import { useState } from 'react';
+import { IoIosMenu } from 'react-icons/io';
 
 export function Topbar({
   companyName = 'Nexus IA',
@@ -28,14 +26,13 @@ export function Topbar({
   const userEmail = user?.email ?? user?.correo ?? 'Sesion activa';
   const userInitial = userName.trim().charAt(0).toUpperCase() || 'N';
   const isDarkTheme = theme === 'dark';
-  const SidebarIcon = isSidebarCollapsed ? PanelLeftOpen : PanelLeftClose;
   const ThemeIcon = isDarkTheme ? Sun : Moon;
 
   return (
     <header className="topbar">
       <div className="topbar-heading">
         <button className="topbar-menu" onClick={onMenuClick} type="button" aria-label="Abrir menu">
-          <Menu size={20} aria-hidden="true" />
+          <IoIosMenu size={24} aria-hidden="true" />
         </button>
         <button
           aria-label={isSidebarCollapsed ? 'Expandir menu' : 'Colapsar menu'}
@@ -44,7 +41,7 @@ export function Topbar({
           title={isSidebarCollapsed ? 'Expandir menu' : 'Colapsar menu'}
           type="button"
         >
-          <SidebarIcon size={19} aria-hidden="true" />
+          <IoIosMenu size={24} aria-hidden="true" />
         </button>
         <div>
           <p className="eyebrow">Panel Nexus IA</p>

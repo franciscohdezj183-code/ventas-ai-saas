@@ -8,6 +8,7 @@ import {
   OnboardingPage,
   OrdersPage,
   OwnerCompanyPage,
+  AIUsagePage,
   PlansPage,
   ProductsPage,
   ReportsPage,
@@ -67,7 +68,7 @@ export function App() {
           path="consumo-ia"
           element={
             <RoleRoute roles={['super_admin']}>
-              <ReportsPage />
+              <AIUsagePage />
             </RoleRoute>
           }
         />

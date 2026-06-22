@@ -35,7 +35,7 @@
 .topbar-title {
   overflow: hidden;
   margin: 0;
-  color: var(--color-heading);
+  color: #2272ff;
   font-size: 1.38rem;
   font-weight: 900;
   line-height: 1.18;
@@ -56,11 +56,11 @@
 .theme-toggle,
 .topbar-company-pill,
 .user-menu-trigger {
-  border-color: var(--color-border);
+  border-color: transparent;
   border-radius: 8px;
   background: var(--color-surface);
   color: var(--color-text);
-  box-shadow: var(--shadow-sm);
+  box-shadow: none;
 }
 
 .topbar-menu,
@@ -84,7 +84,7 @@
 .theme-toggle {
   display: inline-flex;
   min-height: 42px;
-  border: 1px solid var(--color-border);
+  border: 1px solid transparent;
 }
 
 .topbar-sidebar-toggle {
@@ -109,8 +109,8 @@
   min-height: 44px;
   max-width: 280px;
   padding: 0 13px;
-  border: 1px solid var(--color-border);
-  color: #387473;
+  border: 1px solid transparent;
+  color: #2272ff;
 }
 
 .topbar-company-pill div {
@@ -167,11 +167,11 @@
 }
 
 .theme-toggle[aria-pressed="true"] .theme-toggle-track {
-  background: color-mix(in srgb, var(--color-green) 42%, var(--color-surface-soft));
+  background: color-mix(in srgb, #2272ff 42%, var(--color-surface-soft));
 }
 
 .theme-toggle[aria-pressed="true"] .theme-toggle-thumb {
-  color: var(--color-green);
+  color: #2272ff;
   transform: translateX(18px);
 }
 
@@ -191,7 +191,7 @@
   min-height: 46px;
   max-width: 280px;
   padding: 4px 10px 4px 5px;
-  border: 1px solid var(--color-border);
+  border: 1px solid transparent;
   cursor: pointer;
   transition: border-color 180ms ease, background 180ms ease, color 180ms ease, box-shadow 180ms ease;
 }
@@ -213,7 +213,7 @@
 }
 
 .user-menu-trigger small {
-  color: var(--color-green);
+  color: #2272ff;
   font-size: 0.72rem;
   font-weight: 900;
   text-transform: uppercase;
@@ -226,7 +226,7 @@
   flex: 0 0 auto;
   place-items: center;
   border-radius: 8px;
-  background: linear-gradient(135deg, #387473, var(--color-green));
+  background: linear-gradient(135deg, #2272ff, #5a96ff);
   color: #ffffff;
   font-weight: 900;
 }
@@ -284,8 +284,8 @@
   min-height: 34px;
   padding: 0 10px;
   border-radius: 999px;
-  background: var(--color-green-soft);
-  color: var(--color-green-dark);
+  background: color-mix(in srgb, #2272ff 14%, var(--color-surface));
+  color: #2272ff;
   font-size: 0.76rem;
   font-weight: 900;
   text-transform: uppercase;
@@ -325,15 +325,36 @@
 :root[data-theme="dark"] .user-menu-trigger,
 :root[data-theme="dark"] .user-dropdown,
 :root[data-theme="dark"] .logout-button {
-  border-color: var(--color-border);
+  border-color: transparent;
   background: var(--color-surface);
   color: var(--color-text);
+  box-shadow: none;
 }
 
 :root[data-theme="dark"] .topbar-title,
 :root[data-theme="dark"] .topbar-company-pill strong,
 :root[data-theme="dark"] .user-menu-trigger strong {
   color: var(--color-heading);
+}
+
+:root[data-theme="dark"] .topbar-title,
+:root[data-theme="dark"] .topbar-company-pill,
+:root[data-theme="dark"] .theme-toggle[aria-pressed="true"] .theme-toggle-thumb,
+:root[data-theme="dark"] .user-menu-trigger small {
+  color: #2272ff;
+}
+
+:root[data-theme="dark"] .theme-toggle[aria-pressed="true"] .theme-toggle-track,
+:root[data-theme="dark"] .user-dropdown-role {
+  background: rgba(34, 114, 255, 0.14);
+}
+
+:root[data-theme="dark"] .user-avatar {
+  background: linear-gradient(135deg, #2272ff, #5a96ff);
+}
+
+:root[data-theme="dark"] .user-dropdown-role {
+  color: #ffffff;
 }
 
 @media (max-width: 900px) {

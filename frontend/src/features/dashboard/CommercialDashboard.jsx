@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
@@ -20,6 +20,8 @@ import { BarChart } from '@mui/x-charts/BarChart';
 import { LineChart } from '@mui/x-charts/LineChart';
 import { PieChart } from '@mui/x-charts/PieChart';
 import { SparkLineChart } from '@mui/x-charts/SparkLineChart';
+import { GridStack } from 'gridstack';
+import 'gridstack/dist/gridstack.min.css';
 import { EmptyState, ErrorState, LoadingState } from '../../components/ui/index.js';
 import { hasPermission } from '../../config/permissions.js';
 import { useAuth } from '../../context/AuthContext.jsx';
@@ -83,6 +85,53 @@ const leadStateLabels = {
   PERDIDO: 'Perdidos'
 };
 
+function DashboardGridStack({ ariaLabel, cellHeight = 92, className = '', column = 12, items }) {
+  const gridElementRef = useRef(null);
+  const itemSignature = items.map((item) => `${item.id}:${item.x ?? 0}:${item.y ?? 0}:${item.w}:${item.h}`).join('|');
+
+  useEffect(() => {
+    if (!gridElementRef.current || !items.length) {
+      return undefined;
+    }
+
+    const grid = GridStack.init({
+      animate: false,
+      cellHeight,
+      column,
+      disableDrag: true,
+      disableResize: true,
+      margin: 18,
+      staticGrid: true,
+      oneColumnModeDomSort: true
+    }, gridElementRef.current);
+
+    return () => {
+      grid.destroy(false);
+    };
+  }, [cellHeight, column, itemSignature, items.length]);
+
+  return (
+    <section ref={gridElementRef} className={`grid-stack dashboard-gridstack ${className}`} aria-label={ariaLabel}>
+      {items.map((item) => (
+        <div
+          className="grid-stack-item dashboard-gridstack-item"
+          data-card-id={item.id}
+          gs-h={item.h}
+          gs-id={item.id}
+          gs-w={item.w}
+          gs-x={item.x}
+          gs-y={item.y}
+          key={item.id}
+        >
+          <div className="grid-stack-item-content dashboard-gridstack-content">
+            {item.content}
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
 function formatDate(value) {
   return value
     ? new Date(`${value}T00:00:00`).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -116,21 +165,43 @@ function statusLabel(isOk, okText, badText) {
   return isOk ? okText : badText;
 }
 
-function ExecutiveHeader({ aiUsage, companyName, filters, isWhatsAppConnected, onFilterChange, onFilterSubmit, isLoading, user, whatsapp }) {
+function ExecutiveHeader({ companyName, user }) {
   const userName = user?.nombre ?? 'Administrador';
-  const aiHasActivity = Number(aiUsage.total_requests ?? 0) > 0 || Number(aiUsage.total_tokens ?? 0) > 0;
   const currentDate = new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' });
 
   return (
-    <section className="dashboard-executive-header">
+    <section className="dashboard-card dashboard-executive-header">
       <div className="dashboard-header-copy">
         <span className="dashboard-date-pill">
           <CalendarDays size={16} aria-hidden="true" />
           {currentDate}
         </span>
         <h1>Buen dia, {userName}</h1>
-        <p>Resumen ejecutivo de {companyName}. Ventas, pipeline, conversaciones y actividad operativa en una sola vista.</p>
+        <p>Vista ejecutiva de {companyName}: ventas, pipeline, conversaciones y actividad operativa.</p>
+        <div className="dashboard-header-insights" aria-label="Resumen del dashboard">
+          <span>Comercial</span>
+          <span>Pipeline</span>
+          <span>Atencion</span>
+        </div>
       </div>
+    </section>
+  );
+}
+
+function DashboardStatusCard({ aiUsage, isWhatsAppConnected, whatsapp }) {
+  const aiHasActivity = Number(aiUsage.total_requests ?? 0) > 0 || Number(aiUsage.total_tokens ?? 0) > 0;
+
+  return (
+    <section className="dashboard-card dashboard-status-card" aria-label="Estado de canales e IA">
+      <header className="dashboard-card-header">
+        <div>
+          <h2>Canales e IA</h2>
+          <p>Monitoreo operativo en tiempo real.</p>
+        </div>
+        <span>
+          <Bot size={20} aria-hidden="true" />
+        </span>
+      </header>
 
       <div className="dashboard-status-panel">
         <span className={isWhatsAppConnected ? 'status-chip connected' : 'status-chip disconnected'}>
@@ -143,7 +214,22 @@ function ExecutiveHeader({ aiUsage, companyName, filters, isWhatsAppConnected, o
         </span>
         <small>{whatsapp.conectadas ?? 0}/{whatsapp.total ?? 0} sesiones conectadas</small>
       </div>
+    </section>
+  );
+}
 
+function DashboardFilterCard({ filters, isLoading, onFilterChange, onFilterSubmit }) {
+  return (
+    <section className="dashboard-filter-card" aria-label="Filtro de busqueda">
+      <header className="dashboard-filter-card-header">
+        <div>
+          <h2>Periodo de analisis</h2>
+          <p>Actualiza el rango de datos.</p>
+        </div>
+        <span>
+          <CalendarDays size={20} aria-hidden="true" />
+        </span>
+      </header>
       <form className="dashboard-date-filter" onSubmit={onFilterSubmit}>
         <label htmlFor="dashboard-start-date">
           <span>Inicio</span>
@@ -180,7 +266,7 @@ function KpiCard({ detail, icon: Icon, label, tone = 'green', trend = [], value 
       </div>
       <div className="dashboard-kpi-trend">
         {trend.length ? (
-          <SparkLineChart colors={['#16a34a']} data={trend} height={42} showHighlight={false} showTooltip={false} />
+          <SparkLineChart colors={['#00abe4']} data={trend} height={42} showHighlight={false} showTooltip={false} />
         ) : (
           <span />
         )}
@@ -224,10 +310,10 @@ function SalesTrendChart({ dailyActivity, salesByDay }) {
   return (
     <div className="dashboard-chart-shell">
       <LineChart
-        colors={['#16a34a']}
+        colors={['#00abe4']}
         dataset={dataset}
         height={300}
-        margin={{ bottom: 38, left: 54, right: 18, top: 22 }}
+        margin={{ bottom: 42, left: 52, right: 18, top: 24 }}
         series={[{ curve: 'monotoneX', dataKey: 'ventas', label: salesByDay.length ? 'Ventas' : 'Leads', valueFormatter: (value) => salesByDay.length ? formatCurrency(value) : value }]}
         xAxis={[{ dataKey: 'fecha', scaleType: 'point' }]}
         yAxis={[{ min: 0 }]}
@@ -245,14 +331,14 @@ function DailyActivityChart({ items }) {
     <div className="dashboard-chart-shell">
       <BarChart
         borderRadius={8}
-        colors={['#25d366', '#15803d']}
+        colors={['#00abe4', '#64748b']}
         dataset={items.map((item) => ({
           conversaciones: Number(item.conversaciones ?? 0),
           fecha: item.fecha?.slice?.(5) ?? '-',
           leads: Number(item.leads ?? 0)
         }))}
         height={300}
-        margin={{ bottom: 40, left: 42, right: 14, top: 22 }}
+        margin={{ bottom: 42, left: 42, right: 18, top: 24 }}
         series={[
           { dataKey: 'leads', label: 'Leads' },
           { dataKey: 'conversaciones', label: 'Conversaciones' }
@@ -274,8 +360,8 @@ function LeadStateChart({ states }) {
   return (
     <div className="dashboard-chart-shell compact">
       <PieChart
-        colors={['#25d366', '#16a34a', '#15803d', '#84cc16', '#f59e0b', '#ef4444']}
-        height={280}
+        colors={['#00abe4', '#64748b', '#94a3b8', '#f59e0b', '#ef4444', '#8b5cf6']}
+        height={292}
         margin={{ bottom: 18, left: 18, right: 18, top: 18 }}
         series={[{
           data: states.map((item) => ({
@@ -306,11 +392,11 @@ function ConsultationOriginChart({ products, services }) {
     <div className="dashboard-chart-shell compact">
       <BarChart
         borderRadius={8}
-        colors={['#16a34a']}
+        colors={['#00abe4']}
         dataset={items}
-        height={280}
+        height={300}
         layout="horizontal"
-        margin={{ bottom: 26, left: 120, right: 18, top: 20 }}
+        margin={{ bottom: 34, left: 122, right: 18, top: 22 }}
         series={[{ dataKey: 'consultas', label: 'Consultas' }]}
         xAxis={[{ min: 0 }]}
         yAxis={[{ dataKey: 'label', scaleType: 'band' }]}
@@ -320,6 +406,8 @@ function ConsultationOriginChart({ products, services }) {
 }
 
 function RecentList({ emptyDescription, emptyTitle, icon: Icon, items, renderItem, title }) {
+  const visibleItems = items.slice(0, 3);
+
   return (
     <article className="dashboard-card dashboard-list-card">
       <header className="dashboard-card-header">
@@ -331,7 +419,7 @@ function RecentList({ emptyDescription, emptyTitle, icon: Icon, items, renderIte
           <Icon size={20} aria-hidden="true" />
         </span>
       </header>
-      {items.length ? <div className="dashboard-modern-list">{items.slice(0, 5).map(renderItem)}</div> : <EmptyState description={emptyDescription} title={emptyTitle} />}
+      {visibleItems.length ? <div className="dashboard-modern-list">{visibleItems.map(renderItem)}</div> : <EmptyState description={emptyDescription} title={emptyTitle} />}
     </article>
   );
 }
@@ -353,8 +441,8 @@ function QuickActions({ canViewConversations, canViewCustomers, canViewOrders, c
     <section className="dashboard-card dashboard-actions-card">
       <header className="dashboard-card-header">
         <div>
-          <h2>Centro de operaciones</h2>
-          <p>Accesos rapidos para operar ventas, catalogo y atencion.</p>
+          <h2>Accesos operativos</h2>
+          <p>Acciones frecuentes para ventas, catalogo y atencion.</p>
         </div>
         <span>
           <Sparkles size={20} aria-hidden="true" />
@@ -468,100 +556,149 @@ export function CommercialDashboard() {
       value: compactNumber(dashboard.totals.leads_ganados ?? 0)
     } : null
   ].filter(Boolean);
+  const dashboardCards = [
+    permissions.reports ? {
+      content: (
+        <ChartCard description="Tendencia del periodo seleccionado." icon={TrendingUp} title="Rendimiento comercial">
+          <SalesTrendChart dailyActivity={dailyActivity} salesByDay={salesByDay} />
+        </ChartCard>
+      ),
+      h: 5,
+      id: 'sales-trend',
+      w: 4,
+      x: 0,
+      y: 0
+    } : null,
+    permissions.reports ? {
+      content: (
+        <ChartCard description="Leads y conversaciones por dia." icon={MessageSquareText} title="Actividad diaria">
+          <DailyActivityChart items={dailyActivity} />
+        </ChartCard>
+      ),
+      h: 5,
+      id: 'daily-activity',
+      w: 4,
+      x: 4,
+      y: 0
+    } : null,
+    permissions.customers ? {
+      content: (
+        <ChartCard description="Distribucion por etapa comercial." icon={Users} title="Pipeline de leads">
+          <LeadStateChart states={dashboard.lead_states ?? []} />
+        </ChartCard>
+      ),
+      h: 5,
+      id: 'lead-state',
+      w: 4,
+      x: 8,
+      y: 0
+    } : null,
+    permissions.products ? {
+      content: (
+        <ChartCard description="Productos y servicios con mas consultas." icon={Package} title="Demanda del catalogo">
+          <ConsultationOriginChart products={dashboard.productos_mas_consultados ?? []} services={dashboard.servicios_mas_consultados ?? []} />
+        </ChartCard>
+      ),
+      h: 5,
+      id: 'catalog-interest',
+      w: 6,
+      x: 0,
+      y: 5
+    } : null,
+    permissions.customers ? {
+      content: (
+        <RecentList
+          emptyDescription="Los nuevos leads apareceran aqui automaticamente."
+          emptyTitle="Sin leads recientes"
+          icon={UserPlus}
+          items={dashboard.leads_recientes ?? []}
+          title="Leads recientes"
+          renderItem={(lead) => (
+            <article className="dashboard-modern-list-item" key={lead.id}>
+              <span>{lead.nombre_cliente?.charAt(0) ?? 'L'}</span>
+              <div>
+                <strong>{lead.nombre_cliente ?? 'Lead sin nombre'}</strong>
+                <p>{lead.interes ?? lead.telefono ?? 'Sin interes registrado'}</p>
+              </div>
+              <em>{lead.estado ?? 'Nuevo'}</em>
+            </article>
+          )}
+        />
+      ),
+      h: 4,
+      id: 'recent-leads',
+      w: 6,
+      x: 6,
+      y: 10
+    } : null,
+    permissions.reports ? {
+      content: (
+        <RecentList
+          emptyDescription="Los eventos importantes del panel apareceran aqui."
+          emptyTitle="Sin actividad reciente"
+          icon={Sparkles}
+          items={dashboard.actividad_reciente ?? []}
+          title="Bitacora reciente"
+          renderItem={(item) => (
+            <article className="dashboard-modern-list-item" key={item.id}>
+              <span><Sparkles size={16} aria-hidden="true" /></span>
+              <div>
+                <strong>{item.descripcion ?? `${item.accion ?? 'Actividad'} en ${item.modulo ?? 'panel'}`}</strong>
+                <p>{item.empresa_nombre ?? companyName} - {formatDateTime(item.fecha)}</p>
+              </div>
+            </article>
+          )}
+        />
+      ),
+      h: 4,
+      id: 'recent-activity',
+      w: 6,
+      x: 0,
+      y: 10
+    } : null,
+    (permissions.conversations || permissions.customers || permissions.orders || permissions.products) ? {
+      content: (
+        <QuickActions
+          canViewConversations={permissions.conversations}
+          canViewCustomers={permissions.customers}
+          canViewOrders={permissions.orders}
+          canViewProducts={permissions.products}
+        />
+      ),
+      h: 5,
+      id: 'quick-actions',
+      w: 6,
+      x: 6,
+      y: 5
+    } : null
+  ].filter(Boolean);
 
   return (
     <section className="commercial-dashboard premium-dashboard" aria-label="Dashboard ejecutivo">
-      <ExecutiveHeader
-        aiUsage={aiUsage}
-        companyName={companyName}
-        filters={filters}
-        isLoading={isLoading}
-        isWhatsAppConnected={whatsappConnected}
-        onFilterChange={handleFilterChange}
-        onFilterSubmit={handleFilterSubmit}
-        user={user}
-        whatsapp={whatsapp}
-      />
+      <section className="dashboard-control-strip" aria-label="Controles del dashboard">
+        <ExecutiveHeader companyName={companyName} user={user} />
+        <DashboardStatusCard aiUsage={aiUsage} isWhatsAppConnected={whatsappConnected} whatsapp={whatsapp} />
+        <DashboardFilterCard
+          filters={filters}
+          isLoading={isLoading}
+          onFilterChange={handleFilterChange}
+          onFilterSubmit={handleFilterSubmit}
+        />
+      </section>
 
       {error ? <ErrorState message={error} onRetry={() => loadDashboard(filters)} /> : null}
       {isLoading ? <LoadingState message="Cargando indicadores del negocio..." /> : null}
 
-      <section className="dashboard-kpi-grid" aria-label="KPIs principales">
+      <section className="dashboard-kpi-grid dashboard-kpi-strip" aria-label="KPIs principales">
         {kpis.map((kpi) => <KpiCard key={kpi.label} {...kpi} />)}
       </section>
 
-      <section className="dashboard-main-grid" aria-label="Actividad comercial">
-        {permissions.reports ? (
-          <ChartCard description="Evolucion del periodo seleccionado." icon={TrendingUp} title="Evolucion comercial" wide>
-            <SalesTrendChart dailyActivity={dailyActivity} salesByDay={salesByDay} />
-          </ChartCard>
-        ) : null}
-
-        {permissions.reports ? (
-          <ChartCard description="Leads y conversaciones por dia." icon={MessageSquareText} title="Actividad diaria">
-            <DailyActivityChart items={dailyActivity} />
-          </ChartCard>
-        ) : null}
-
-        {permissions.customers ? (
-          <ChartCard description="Distribucion por etapa comercial." icon={Users} title="Estado de leads">
-            <LeadStateChart states={dashboard.lead_states ?? []} />
-          </ChartCard>
-        ) : null}
-
-        {permissions.products ? (
-          <ChartCard description="Productos y servicios con mas consultas." icon={Package} title="Interes del catalogo">
-            <ConsultationOriginChart products={dashboard.productos_mas_consultados ?? []} services={dashboard.servicios_mas_consultados ?? []} />
-          </ChartCard>
-        ) : null}
-      </section>
-
-      <section className="dashboard-activity-grid" aria-label="Actividad reciente">
-        {permissions.customers ? (
-          <RecentList
-            emptyDescription="Los nuevos leads apareceran aqui automaticamente."
-            emptyTitle="Sin leads recientes"
-            icon={UserPlus}
-            items={dashboard.leads_recientes ?? []}
-            title="Ultimos leads"
-            renderItem={(lead) => (
-              <article className="dashboard-modern-list-item" key={lead.id}>
-                <span>{lead.nombre_cliente?.charAt(0) ?? 'L'}</span>
-                <div>
-                  <strong>{lead.nombre_cliente ?? 'Lead sin nombre'}</strong>
-                  <p>{lead.interes ?? lead.telefono ?? 'Sin interes registrado'}</p>
-                </div>
-                <em>{lead.estado ?? 'Nuevo'}</em>
-              </article>
-            )}
-          />
-        ) : null}
-
-        {permissions.reports ? (
-          <RecentList
-            emptyDescription="Los eventos importantes del panel apareceran aqui."
-            emptyTitle="Sin actividad reciente"
-            icon={Sparkles}
-            items={dashboard.actividad_reciente ?? []}
-            title="Actividad reciente"
-            renderItem={(item) => (
-              <article className="dashboard-modern-list-item" key={item.id}>
-                <span><Sparkles size={16} aria-hidden="true" /></span>
-                <div>
-                  <strong>{item.descripcion ?? `${item.accion ?? 'Actividad'} en ${item.modulo ?? 'panel'}`}</strong>
-                  <p>{item.empresa_nombre ?? companyName} - {formatDateTime(item.fecha)}</p>
-                </div>
-              </article>
-            )}
-          />
-        ) : null}
-      </section>
-
-      <QuickActions
-        canViewConversations={permissions.conversations}
-        canViewCustomers={permissions.customers}
-        canViewOrders={permissions.orders}
-        canViewProducts={permissions.products}
+      <DashboardGridStack
+        ariaLabel="Cards del dashboard"
+        cellHeight={88}
+        className="dashboard-card-gridstack"
+        column={12}
+        items={dashboardCards}
       />
     </section>
   );

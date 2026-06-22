@@ -1,7 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bot, CheckCircle2, CreditCard, Crown, MessageCircle, Package, Sparkles, Users, Zap } from 'lucide-react';
-import { EmptyState, ErrorState, LoadingState } from '../../components/ui/index.js';
+import {
+  AlertTriangle,
+  Bot,
+  CheckCircle2,
+  CreditCard,
+  Crown,
+  FileText,
+  MessageCircle,
+  Package,
+  RefreshCcw,
+  Sparkles,
+  Users,
+  Zap
+} from 'lucide-react';
 import { isSuperAdminRole } from '../../config/permissions.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { fetchCompanies } from '../companies/companiesApi.js';
@@ -23,16 +35,17 @@ const featureLabels = {
 };
 
 const limitLabels = {
-  aiMessagesMonthly: 'Mensajes IA / mes',
+  aiMessagesMonthly: 'Conversaciones IA',
   products: 'Productos',
   users: 'Usuarios',
   whatsapp: 'WhatsApp conectados'
 };
 
-const planTone = {
-  business: 'recommended',
-  enterprise: 'enterprise',
-  starter: 'starter'
+const usageIcons = {
+  aiMessagesMonthly: Bot,
+  products: Package,
+  users: Users,
+  whatsapp: MessageCircle
 };
 
 function formatCurrency(value) {
@@ -51,111 +64,288 @@ function normalizeStatus(status) {
   return String(status ?? '').toLowerCase();
 }
 
-function getStatusBadges(plan, usage) {
-  const badges = [];
-  const isCurrent = usage?.plan === plan.key;
-  const status = normalizeStatus(usage?.subscription_status ?? usage?.status);
-
-  if (isCurrent) {
-    badges.push({ label: 'Actual', tone: 'actual' });
-  }
-
-  if (plan.key === 'business') {
-    badges.push({ label: 'Recomendado', tone: 'recommended' });
-  }
-
-  if (status === 'trial') {
-    badges.push({ label: 'Trial', tone: 'trial' });
-  }
-
-  if (status === 'expired' || status === 'vencido') {
-    badges.push({ label: 'Vencido', tone: 'expired' });
-  }
-
-  if (status === 'suspended' || status === 'suspendido') {
-    badges.push({ label: 'Suspendido', tone: 'suspended' });
-  }
-
-  return badges;
+function getStatusLabel(status) {
+  const normalized = normalizeStatus(status);
+  if (normalized === 'trial') return 'Trial';
+  if (normalized === 'expired' || normalized === 'vencido') return 'Vencida';
+  if (normalized === 'suspended' || normalized === 'suspendido') return 'Suspendida';
+  if (normalized === 'cancelled' || normalized === 'cancelada') return 'Cancelada';
+  return 'Activa';
 }
 
-function PlanUsageMeter({ limit, usage }) {
-  if (limit === null || limit === undefined) {
-    return (
-      <div className="plan-usage-meter unlimited">
-        <span>Ilimitado</span>
-        <div><i /></div>
-      </div>
-    );
-  }
+function getStatusTone(status) {
+  const normalized = normalizeStatus(status);
+  if (normalized === 'trial') return 'trial';
+  if (['expired', 'vencido', 'suspended', 'suspendido', 'cancelled', 'cancelada'].includes(normalized)) return 'danger';
+  return 'active';
+}
 
-  const current = Number(usage ?? 0);
-  const max = Number(limit || 1);
-  const percent = Math.min((current / max) * 100, 100);
+function getPlanIcon(planKey) {
+  if (planKey === 'enterprise') return Crown;
+  if (planKey === 'business') return Zap;
+  return Sparkles;
+}
 
+function SubscriptionStatusBadge({ status }) {
+  return <span className={`subscription-status-badge ${getStatusTone(status)}`}>{getStatusLabel(status)}</span>;
+}
+
+function SubscriptionSkeleton() {
   return (
-    <div className="plan-usage-meter">
-      <span>{current.toLocaleString('es-MX')} / {max.toLocaleString('es-MX')}</span>
-      <div><i style={{ width: `${percent}%` }} /></div>
-    </div>
+    <section className="resource-page plans-page subscription-page">
+      <div className="subscription-skeleton" aria-label="Cargando informacion de suscripcion">
+        <span />
+        <span />
+        <span />
+      </div>
+    </section>
   );
 }
 
-function PlanCard({ isBusy, onChangePlan, plan, usage }) {
-  const isCurrent = usage?.plan === plan.key;
-  const badges = getStatusBadges(plan, usage);
-  const limits = plan.limits ?? {};
-  const features = plan.features ?? [];
-  const Icon = plan.key === 'enterprise' ? Crown : plan.key === 'business' ? Zap : Sparkles;
+function SubscriptionErrorState({ message, onRetry }) {
+  return (
+    <section className="subscription-state-card error" role="alert">
+      <AlertTriangle size={24} aria-hidden="true" />
+      <div>
+        <h2>No pudimos cargar tu suscripcion.</h2>
+        <p>{message || 'Revisa tu conexion o intenta actualizar la informacion.'}</p>
+      </div>
+      <button className="secondary-button" onClick={onRetry} type="button">Reintentar</button>
+    </section>
+  );
+}
+
+function SubscriptionEmptyState({ canViewPlans }) {
+  return (
+    <section className="subscription-state-card">
+      <CreditCard size={26} aria-hidden="true" />
+      <div>
+        <h2>No tienes una suscripcion activa.</h2>
+        <p>Selecciona un plan para comenzar a utilizar todas las funciones de la plataforma.</p>
+      </div>
+      {canViewPlans ? <a className="primary-button" href="#planes-disponibles">Ver planes</a> : null}
+    </section>
+  );
+}
+
+function SubscriptionHero({ currentPlan, isSuperAdmin, onRefresh, selectedCompanyName, status, usage }) {
+  const amount = currentPlan?.estimatedMonthlyPrice ?? usage?.estimatedMonthlyPrice ?? 0;
 
   return (
-    <article className={`plan-card ${planTone[plan.key] ?? 'starter'} ${isCurrent ? 'current' : ''}`}>
+    <header className="subscription-hero">
+      <div>
+        <span className="subscription-hero-icon"><CreditCard size={23} aria-hidden="true" /></span>
+        <p className="eyebrow">Facturacion SaaS</p>
+        <h1>Suscripciones</h1>
+        <p>Administra el plan, pagos y limites de tu empresa desde un solo lugar.</p>
+      </div>
+      <div className="subscription-hero-facts">
+        <article>
+          <span>Plan actual</span>
+          <strong>{currentPlan?.label ?? usage?.plan_label ?? 'Sin seleccionar'}</strong>
+        </article>
+        <article>
+          <span>Estado</span>
+          <strong><SubscriptionStatusBadge status={status} /></strong>
+        </article>
+        <article>
+          <span>Monto mensual</span>
+          <strong>{formatCurrency(amount)}</strong>
+        </article>
+        <article>
+          <span>Empresa</span>
+          <strong>{selectedCompanyName || usage?.empresa_nombre || (isSuperAdmin ? 'Selecciona empresa' : 'Empresa actual')}</strong>
+        </article>
+      </div>
+      <div className="subscription-hero-actions">
+        <button className="secondary-button" onClick={onRefresh} type="button">
+          <RefreshCcw size={17} aria-hidden="true" />
+          Actualizar
+        </button>
+        <a className="secondary-button" href="#facturacion">
+          <FileText size={17} aria-hidden="true" />
+          Ver facturacion
+        </a>
+      </div>
+    </header>
+  );
+}
+
+function CurrentPlanCard({ currentPlan, selectedCompanyName, status, usage }) {
+  const amount = currentPlan?.estimatedMonthlyPrice ?? 0;
+
+  return (
+    <section className="current-plan-card">
+      <div>
+        <p className="eyebrow">Plan actual</p>
+        <h2>{currentPlan?.label ?? usage?.plan_label ?? 'Sin seleccionar'}</h2>
+        <p>Tu suscripcion esta {getStatusLabel(status).toLowerCase()} y define los limites disponibles para la empresa.</p>
+      </div>
+      <div className="current-plan-price">
+        <strong>{formatCurrency(amount)}</strong>
+        <span>/ mes estimado</span>
+        <SubscriptionStatusBadge status={status} />
+      </div>
+      <dl>
+        <div><dt>Empresa asociada</dt><dd>{selectedCompanyName || usage?.empresa_nombre || '-'}</dd></div>
+        <div><dt>Periodo</dt><dd>Mensual</dd></div>
+        <div><dt>Renovacion</dt><dd>{usage?.next_renewal_date || usage?.renovacion || 'Sin fecha disponible'}</dd></div>
+        <div><dt>Metodo de pago</dt><dd>{usage?.payment_method || 'No disponible'}</dd></div>
+        <div><dt>Estado de pago</dt><dd>{usage?.payment_status || 'Sin pagos registrados'}</dd></div>
+        <div><dt>Fecha de inicio</dt><dd>{usage?.started_at || usage?.created_at || 'Sin fecha disponible'}</dd></div>
+      </dl>
+    </section>
+  );
+}
+
+function UsageLimitBar({ label, limit, usage }) {
+  const Icon = usageIcons[label] ?? CheckCircle2;
+  const current = Number(usage ?? 0);
+  const hasLimit = limit !== null && limit !== undefined;
+  const max = Number(limit || 1);
+  const percent = hasLimit ? Math.min((current / max) * 100, 100) : 100;
+
+  return (
+    <article className="usage-limit-card">
       <header>
+        <span><Icon size={18} aria-hidden="true" /></span>
         <div>
-          <span className="plan-card-icon"><Icon size={22} aria-hidden="true" /></span>
-          <div>
-            <h2>{plan.label}</h2>
-            <p>{plan.key === 'starter' ? 'Para comenzar con control.' : plan.key === 'business' ? 'Para equipos comerciales en crecimiento.' : 'Para operacion avanzada.'}</p>
-          </div>
-        </div>
-        <div className="plan-badge-row">
-          {badges.map((badge) => (
-            <span className={`plan-status-badge ${badge.tone}`} key={`${plan.key}-${badge.label}`}>{badge.label}</span>
-          ))}
+          <strong>{limitLabels[label] ?? label}</strong>
+          <p>{hasLimit ? `${current.toLocaleString('es-MX')} de ${max.toLocaleString('es-MX')} utilizados` : `${current.toLocaleString('es-MX')} usados - limite ilimitado`}</p>
         </div>
       </header>
+      <div className="usage-limit-track" role="progressbar" aria-label={limitLabels[label] ?? label} aria-valuemin="0" aria-valuemax={hasLimit ? max : current || 1} aria-valuenow={current}>
+        <i style={{ width: `${percent}%` }} />
+      </div>
+      <small>{hasLimit ? 'Si alcanzas el limite, necesitaras cambiar de plan.' : 'Este limite no restringe tu operacion actual.'}</small>
+    </article>
+  );
+}
 
-      <div className="plan-price">
+function UsageLimitsSection({ currentPlan, usage }) {
+  const limits = currentPlan?.limits ?? {};
+  const usageValues = usage?.usage ?? {};
+
+  return (
+    <section className="subscription-section">
+      <header className="subscription-section-header">
+        <div>
+          <p className="eyebrow">Uso y limites</p>
+          <h2>Consumo del plan</h2>
+          <p>Estos limites indican cuanto puedes usar antes de necesitar un cambio de plan.</p>
+        </div>
+      </header>
+      <div className="usage-limits-grid">
+        {Object.keys(limits).length ? Object.entries(limits).map(([key, limit]) => (
+          <UsageLimitBar key={key} label={key} limit={limit} usage={usageValues[key]} />
+        )) : (
+          <p className="subscription-muted">No hay limites configurados para este plan.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function PlanCard({ currentPlanKey, isBusy, onChangePlan, plan }) {
+  const isCurrent = currentPlanKey === plan.key;
+  const Icon = getPlanIcon(plan.key);
+  const limits = plan.limits ?? {};
+  const features = plan.features ?? [];
+
+  return (
+    <article className={`subscription-plan-card ${plan.key} ${isCurrent ? 'current' : ''}`}>
+      <header>
+        <span><Icon size={22} aria-hidden="true" /></span>
+        <div>
+          <h3>{plan.label}</h3>
+          <p>{plan.key === 'starter' ? 'Para comenzar con control.' : plan.key === 'business' ? 'Para equipos comerciales en crecimiento.' : 'Para operacion avanzada.'}</p>
+        </div>
+        {plan.key === 'business' ? <em>Recomendado</em> : null}
+      </header>
+      <div className="subscription-plan-price">
         <strong>{formatCurrency(plan.estimatedMonthlyPrice)}</strong>
-        <span>/ mes estimado</span>
+        <span>/ mes</span>
       </div>
-
-      <div className="plan-limits">
-        {Object.entries(limits).map(([key, limit]) => (
-          <div className="plan-limit-row" key={key}>
-            <span>{limitLabels[key] ?? key}</span>
-            <strong>{formatLimit(limit)}</strong>
-            {isCurrent ? <PlanUsageMeter limit={limit} usage={usage?.usage?.[key]} /> : null}
-          </div>
+      <dl>
+        {Object.entries(limits).slice(0, 4).map(([key, limit]) => (
+          <div key={key}><dt>{limitLabels[key] ?? key}</dt><dd>{formatLimit(limit)}</dd></div>
         ))}
-      </div>
-
-      <div className="plan-benefits">
-        <span>Beneficios</span>
-        <ul>
-          {features.map((feature) => (
-            <li key={feature}>
-              <CheckCircle2 size={16} aria-hidden="true" />
-              {featureLabels[feature] ?? feature}
-            </li>
-          ))}
-        </ul>
-      </div>
-
+      </dl>
+      <ul>
+        {features.slice(0, 5).map((feature) => (
+          <li key={feature}><CheckCircle2 size={15} aria-hidden="true" />{featureLabels[feature] ?? feature}</li>
+        ))}
+      </ul>
       <button className={isCurrent ? 'secondary-button' : 'primary-button'} disabled={isBusy} onClick={() => onChangePlan(plan)} type="button">
-        {isCurrent ? 'Plan actual' : 'Cambiar plan'}
+        {isCurrent ? 'Actual' : 'Cambiar'}
       </button>
     </article>
+  );
+}
+
+function PlansComparison({ currentPlanKey, isBusy, onChangePlan, plans }) {
+  return (
+    <section className="subscription-section" id="planes-disponibles">
+      <header className="subscription-section-header">
+        <div>
+          <p className="eyebrow">Planes disponibles</p>
+          <h2>Compara opciones</h2>
+          <p>Elige el plan que mejor se ajuste al uso de tu empresa.</p>
+        </div>
+      </header>
+      <div className="subscription-plans-grid">
+        {plans.map((plan) => (
+          <PlanCard currentPlanKey={currentPlanKey} isBusy={isBusy} key={plan.key} onChangePlan={onChangePlan} plan={plan} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function BillingHistory() {
+  return (
+    <section className="subscription-section" id="facturacion">
+      <header className="subscription-section-header">
+        <div>
+          <p className="eyebrow">Facturacion</p>
+          <h2>Historial de pagos</h2>
+          <p>No hay pagos registrados todavia.</p>
+        </div>
+      </header>
+      <div className="billing-empty-state">
+        <FileText size={24} aria-hidden="true" />
+        <span>Cuando existan pagos o facturas, apareceran aqui.</span>
+      </div>
+    </section>
+  );
+}
+
+function SubscriptionAlerts({ currentPlan, usage }) {
+  const alerts = [];
+  const status = normalizeStatus(usage?.subscription_status ?? usage?.status);
+  if (['expired', 'vencido', 'suspended', 'suspendido'].includes(status)) {
+    alerts.push('Tu suscripcion requiere atencion antes de continuar operando.');
+  }
+
+  Object.entries(currentPlan?.limits ?? {}).forEach(([key, limit]) => {
+    if (limit === null || limit === undefined) return;
+    const current = Number(usage?.usage?.[key] ?? 0);
+    if (current / Number(limit || 1) >= 0.85) {
+      alerts.push(`${limitLabels[key] ?? key} esta cerca de su limite.`);
+    }
+  });
+
+  if (!alerts.length) return null;
+
+  return (
+    <section className="subscription-alerts">
+      {alerts.map((alert) => (
+        <article key={alert}>
+          <AlertTriangle size={18} aria-hidden="true" />
+          <span>{alert}</span>
+        </article>
+      ))}
+    </section>
   );
 }
 
@@ -170,8 +360,9 @@ export function PlansManager() {
   const [plans, setPlans] = useState([]);
   const [usage, setUsage] = useState(null);
 
-  const selectedCompanyId = isSuperAdmin ? empresaId : undefined;
   const currentPlan = useMemo(() => plans.find((plan) => plan.key === usage?.plan), [plans, usage]);
+  const selectedCompany = useMemo(() => companies.find((company) => String(company.id) === String(empresaId)), [companies, empresaId]);
+  const status = usage?.subscription_status ?? usage?.status;
 
   async function loadData() {
     try {
@@ -204,10 +395,7 @@ export function PlansManager() {
   }, [isSuperAdmin]);
 
   useEffect(() => {
-    if (!isSuperAdmin || !empresaId) {
-      return;
-    }
-
+    if (!isSuperAdmin || !empresaId) return;
     fetchPlanUsage(empresaId)
       .then(setUsage)
       .catch((requestError) => setError(requestError?.response?.data?.message ?? 'No se pudo cargar el uso del plan.'));
@@ -217,28 +405,26 @@ export function PlansManager() {
     navigate('/empresas');
   }
 
+  if (isLoading) {
+    return <SubscriptionSkeleton />;
+  }
+
   return (
-    <section className="resource-page plans-page" aria-label="Planes y suscripcion">
-      <div className="plans-hero">
-        <div>
-          <span className="plans-hero-icon"><CreditCard size={22} aria-hidden="true" /></span>
-          <div>
-            <p className="eyebrow">Suscripcion</p>
-            <h1>Planes</h1>
-            <p>Compara limites, beneficios y uso actual antes de cambiar el plan de una empresa.</p>
-          </div>
-        </div>
-        <div className="plans-current-pill">
-          <span>Plan actual</span>
-          <strong>{currentPlan?.label ?? usage?.plan_label ?? 'Sin seleccionar'}</strong>
-        </div>
-      </div>
+    <section className="resource-page plans-page subscription-page" aria-label="Suscripciones">
+      <SubscriptionHero
+        currentPlan={currentPlan}
+        isSuperAdmin={isSuperAdmin}
+        onRefresh={loadData}
+        selectedCompanyName={selectedCompany?.nombre}
+        status={status}
+        usage={usage}
+      />
 
-      {error ? <ErrorState message={error} onRetry={loadData} /> : null}
+      {error ? <SubscriptionErrorState message={error} onRetry={loadData} /> : null}
 
-      <div className="plans-toolbar">
-        {isSuperAdmin ? (
-          <label className="field-group" htmlFor="plans-company">
+      {isSuperAdmin ? (
+        <section className="subscription-company-picker">
+          <label htmlFor="plans-company">
             <span>Empresa</span>
             <select id="plans-company" onChange={(event) => setEmpresaId(event.target.value)} value={empresaId}>
               {companies.map((company) => (
@@ -246,48 +432,25 @@ export function PlansManager() {
               ))}
             </select>
           </label>
-        ) : null}
-        <div className="plans-trust-note">
-          <CheckCircle2 size={18} aria-hidden="true" />
-          <span>Cambiar de plan usa el flujo administrativo existente. No se ejecutan cobros desde esta pantalla.</span>
-        </div>
-      </div>
-
-      {isLoading ? <LoadingState message="Cargando planes..." /> : null}
-
-      {!isLoading && !plans.length ? (
-        <EmptyState title="Sin planes disponibles" description="Cuando existan planes configurados, apareceran aqui." />
-      ) : null}
-
-      <div className="plans-grid">
-        {plans.map((plan) => (
-          <PlanCard
-            isBusy={isLoading}
-            key={plan.key}
-            onChangePlan={handlePlanChange}
-            plan={plan}
-            usage={usage}
-          />
-        ))}
-      </div>
-
-      {usage ? (
-        <section className="plans-usage-panel">
-          <header>
-            <span><Bot size={20} aria-hidden="true" /></span>
-            <div>
-              <h2>Uso incluido</h2>
-              <p>{usage.empresa_nombre} usa el plan {usage.plan_label}.</p>
-            </div>
-          </header>
-          <div className="plans-usage-grid">
-            <article><Users size={18} aria-hidden="true" /><span>Usuarios</span><strong>{usage.usage?.users ?? 0}</strong></article>
-            <article><Package size={18} aria-hidden="true" /><span>Productos</span><strong>{usage.usage?.products ?? 0}</strong></article>
-            <article><MessageCircle size={18} aria-hidden="true" /><span>WhatsApp</span><strong>{usage.usage?.whatsapp ?? 0}</strong></article>
-            <article><Bot size={18} aria-hidden="true" /><span>Mensajes IA</span><strong>{Number(usage.usage?.aiMessagesMonthly ?? 0).toLocaleString('es-MX')}</strong></article>
-          </div>
+          <p>Cambia de empresa para revisar su plan y consumo actual.</p>
         </section>
       ) : null}
+
+      {!usage ? <SubscriptionEmptyState canViewPlans={plans.length > 0} /> : null}
+
+      {usage ? (
+        <>
+          <SubscriptionAlerts currentPlan={currentPlan} usage={usage} />
+          <CurrentPlanCard currentPlan={currentPlan} selectedCompanyName={selectedCompany?.nombre} status={status} usage={usage} />
+          <UsageLimitsSection currentPlan={currentPlan} usage={usage} />
+        </>
+      ) : null}
+
+      {plans.length ? (
+        <PlansComparison currentPlanKey={usage?.plan} isBusy={isLoading} onChangePlan={handlePlanChange} plans={plans} />
+      ) : null}
+
+      <BillingHistory />
     </section>
   );
 }

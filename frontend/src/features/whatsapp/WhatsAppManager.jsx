@@ -1,22 +1,25 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   AlertTriangle,
+  Bot,
   CheckCircle2,
   CircleOff,
   Clock3,
   MessageCircle,
+  MessageSquareText,
   Phone,
   Power,
   QrCode,
   RefreshCcw,
   RotateCcw,
-  ShieldCheck
+  ShieldCheck,
+  Smartphone,
+  Sparkles
 } from 'lucide-react';
 import { ErrorState, StatusBadge } from '../../components/ui/index.js';
 import { Can } from '../../components/Can.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { isSuperAdminRole } from '../../config/permissions.js';
-import { AIStatusCard } from '../ai/AIStatusCard.jsx';
 import { fetchCompanies } from '../companies/companiesApi.js';
 import {
   disconnectWhatsappSession,
@@ -30,13 +33,13 @@ const statusCopy = {
     label: 'Conectado',
     tone: 'connected',
     icon: CheckCircle2,
-    description: 'WhatsApp esta listo para responder mensajes de clientes.'
+    description: 'WhatsApp esta listo para recibir y responder mensajes de clientes.'
   },
   QR_READY: {
-    label: 'Esperando QR',
+    label: 'QR listo',
     tone: 'scanning',
     icon: QrCode,
-    description: 'Escanea el codigo con WhatsApp para completar la vinculacion.'
+    description: 'Escanea el codigo con el telefono del negocio para completar la vinculacion.'
   },
   INITIALIZING: {
     label: 'Preparando sesion',
@@ -54,16 +57,16 @@ const statusCopy = {
     label: 'Reconectando',
     tone: 'scanning',
     icon: RefreshCcw,
-    description: 'Estamos intentando recuperar la sesion. Si tarda demasiado, genera un QR nuevo.'
+    description: 'Estamos intentando recuperar la sesion.'
   },
   LOADING_SCREEN: {
-    label: 'Reconectando',
+    label: 'Cargando sesion',
     tone: 'scanning',
     icon: RefreshCcw,
     description: 'WhatsApp esta cargando la sesion del navegador.'
   },
   AUTH_FAILED: {
-    label: 'Error',
+    label: 'Error de autenticacion',
     tone: 'error',
     icon: AlertTriangle,
     description: 'No se pudo autenticar la sesion. Reinicia y escanea un QR nuevo.'
@@ -72,25 +75,20 @@ const statusCopy = {
     label: 'Desconectado',
     tone: 'disconnected',
     icon: CircleOff,
-    description: 'WhatsApp no esta conectado. Inicia sesion para activar la atencion automatica.'
+    description: 'Conecta WhatsApp para activar la atencion desde este canal.'
   }
 };
-
-const connectionSteps = [
-  'Haz clic en Conectar o Reconectar.',
-  'Espera a que aparezca el codigo QR en pantalla.',
-  'Abre WhatsApp en el telefono del negocio.',
-  'Entra a Dispositivos vinculados y escanea el codigo.',
-  'Manten el telefono con internet para conservar la sesion.'
-];
 
 function getApiError(error) {
   return error?.response?.data?.message ?? 'No se pudo completar la operacion.';
 }
 
+function getStatusValue(status) {
+  return String(status?.status ?? 'DISCONNECTED').toUpperCase();
+}
+
 function getStatusInfo(status) {
-  const value = String(status?.status ?? 'DISCONNECTED').toUpperCase();
-  return statusCopy[value] ?? statusCopy.DISCONNECTED;
+  return statusCopy[getStatusValue(status)] ?? statusCopy.DISCONNECTED;
 }
 
 function formatDateTime(value) {
@@ -106,105 +104,213 @@ function formatPhone(value) {
   return clean.startsWith('+') ? clean : `+${clean}`;
 }
 
-function buildTimeline(status) {
-  const events = Array.isArray(status?.events) ? status.events : [];
+function getFirstValue(source, keys, fallback = '-') {
+  for (const key of keys) {
+    const value = source?.[key];
 
-  if (events.length > 0) {
-    return events;
+    if (value !== undefined && value !== null && value !== '') {
+      return value;
+    }
   }
 
-  return [
-    status?.last_error
-      ? { type: 'ERROR', message: status.last_error, at: status.updated_at }
-      : null,
-    status?.connected_at
-      ? { type: 'CONNECTED', message: 'WhatsApp conectado correctamente', at: status.connected_at }
-      : null,
-    status?.updated_at
-      ? { type: status.status ?? 'DISCONNECTED', message: `Estado actualizado: ${status.status ?? 'DISCONNECTED'}`, at: status.updated_at }
-      : null
-  ].filter(Boolean);
+  return fallback;
 }
 
-function StatusHero({ status }) {
+function WhatsAppHeader({ canAct, canSelectCompany, companies, empresaId, isBusy, onCompanyChange, onDisconnect, onRefresh, onRestart, onStart, user }) {
+  return (
+    <header className="whatsapp-hero">
+      <div className="whatsapp-hero-copy">
+        <span className="whatsapp-hero-icon">
+          <MessageCircle size={26} aria-hidden="true" />
+        </span>
+        <div>
+          <p className="eyebrow">Central WhatsApp Business</p>
+          <h1>WhatsApp</h1>
+          <p>Administra la conexion, el QR, la sesion y el canal automatizado desde una vista clara.</p>
+        </div>
+      </div>
+
+      <div className="whatsapp-command-panel">
+        {canSelectCompany ? (
+          <label className="whatsapp-company-select" htmlFor="whatsapp-company">
+            <span>Empresa</span>
+            <select id="whatsapp-company" onChange={(event) => onCompanyChange(event.target.value)} value={empresaId}>
+              <option value="">Selecciona una empresa</option>
+              {companies.map((company) => (
+                <option key={company.id} value={company.id}>
+                  {company.nombre}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <div className="whatsapp-owner-context">
+            <Phone size={18} aria-hidden="true" />
+            <span>{user?.empresa?.nombre ?? 'Empresa actual'}</span>
+          </div>
+        )}
+
+        <div className="whatsapp-actions">
+          <Can permission="whatsapp.manage">
+            <button className="primary-button" disabled={!canAct} onClick={onStart} type="button">
+              <MessageCircle size={18} aria-hidden="true" />
+              Conectar
+            </button>
+          </Can>
+          <Can permission="whatsapp.manage">
+            <button className="secondary-button" disabled={!canAct} onClick={onRestart} type="button">
+              <RotateCcw size={18} aria-hidden="true" />
+              Reconectar
+            </button>
+          </Can>
+          <Can permission="whatsapp.manage">
+            <button className="secondary-button" disabled={!canAct} onClick={onDisconnect} type="button">
+              <Power size={18} aria-hidden="true" />
+              Desconectar
+            </button>
+          </Can>
+          <button className="icon-button bordered" disabled={!canAct || isBusy} onClick={onRefresh} type="button" aria-label="Actualizar estado">
+            <RefreshCcw size={18} aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+function StatusOverview({ hasQr, status }) {
   const info = getStatusInfo(status);
   const Icon = info.icon;
 
   return (
-    <article className={`whatsapp-main-card ${info.tone}`}>
-      <div className="whatsapp-main-status">
-        <span className="whatsapp-main-icon">
+    <section className={`whatsapp-status-overview ${info.tone}`}>
+      <div className="whatsapp-status-copy">
+        <span className="whatsapp-status-icon">
           <Icon size={28} aria-hidden="true" />
         </span>
         <div>
+          <p className="eyebrow">Estado de conexion</p>
           <h2>{info.label}</h2>
           <p>{status?.last_error && info.tone === 'error' ? status.last_error : info.description}</p>
         </div>
       </div>
 
-      <div className="whatsapp-main-meta">
+      <dl className="whatsapp-status-facts">
         <div>
-          <span>Ultima conexion</span>
-          <strong>{formatDateTime(status?.connected_at)}</strong>
+          <dt>Numero conectado</dt>
+          <dd>{formatPhone(status?.phone ?? status?.number ?? status?.telefono)}</dd>
         </div>
         <div>
-          <span>Numero conectado</span>
-          <strong>{formatPhone(status?.phone ?? status?.number ?? status?.telefono)}</strong>
+          <dt>QR</dt>
+          <dd>{hasQr ? 'Disponible para escanear' : 'Sin QR activo'}</dd>
         </div>
         <div>
-          <span>Ultima actualizacion</span>
-          <strong>{formatDateTime(status?.updated_at)}</strong>
+          <dt>Sesion</dt>
+          <dd>{status?.status ?? 'DISCONNECTED'}</dd>
         </div>
-      </div>
-    </article>
+      </dl>
+    </section>
   );
 }
 
-function ConnectionSteps() {
+function WhatsAppMetrics({ hasQr, status }) {
+  const statusValue = getStatusValue(status);
+  const metrics = [
+    {
+      key: 'chats',
+      icon: MessageSquareText,
+      label: 'Chats',
+      value: getFirstValue(status, ['chats_count', 'total_chats', 'conversations_count', 'chats']),
+      detail: 'Conversaciones registradas'
+    },
+    {
+      key: 'messages',
+      icon: MessageCircle,
+      label: 'Mensajes hoy',
+      value: getFirstValue(status, ['messages_today', 'mensajes_hoy', 'today_messages', 'sent_today']),
+      detail: 'Actividad del dia'
+    },
+    {
+      key: 'bot',
+      icon: Bot,
+      label: 'Bot',
+      value: getFirstValue(status, ['bot_status', 'bot_estado'], statusValue === 'CONNECTED' ? 'Activo' : 'En espera'),
+      detail: 'Atencion automatizada'
+    },
+    {
+      key: 'ai',
+      icon: Sparkles,
+      label: 'IA',
+      value: getFirstValue(status, ['ai_status', 'ia_estado'], '-'),
+      detail: 'Estado comercial'
+    },
+    {
+      key: 'qr',
+      icon: QrCode,
+      label: 'QR',
+      value: hasQr ? 'Listo' : 'No activo',
+      detail: 'Vinculacion del telefono'
+    }
+  ];
+
   return (
-    <article className="whatsapp-steps-card">
-      <div>
-        <h3>Como conectar el canal</h3>
-        <p>Sigue estos pasos con el telefono que atendera las conversaciones del negocio.</p>
-      </div>
-      <ol>
-        {connectionSteps.map((step) => (
-          <li key={step}>{step}</li>
-        ))}
-      </ol>
-      <div className="whatsapp-user-warning">
-        <AlertTriangle size={18} aria-hidden="true" />
-        <span>No cierres esta pantalla mientras escaneas. Si el QR vence, usa Reconectar para generar uno nuevo.</span>
-      </div>
-    </article>
+    <section className="whatsapp-metric-grid" aria-label="Resumen de WhatsApp">
+      {metrics.map((metric) => {
+        const Icon = metric.icon;
+        return (
+          <article className="whatsapp-metric-card" key={metric.key}>
+            <span>
+              <Icon size={19} aria-hidden="true" />
+            </span>
+            <div>
+              <strong>{metric.value}</strong>
+              <small>{metric.label}</small>
+              <p>{metric.detail}</p>
+            </div>
+          </article>
+        );
+      })}
+    </section>
   );
 }
 
-function Timeline({ events }) {
-  if (events.length === 0) {
-    return (
-      <div className="whatsapp-empty-note">
-        <Clock3 size={18} aria-hidden="true" />
-        <span>Los eventos de conexion apareceran aqui cuando inicies una sesion.</span>
-      </div>
-    );
-  }
-
+function QRPanel({ hasQr, isQrFlow, status, statusInfo }) {
   return (
-    <div className="whatsapp-timeline">
-      {events.map((event, index) => (
-        <article className="whatsapp-timeline-item" key={`${event.type}-${event.at}-${index}`}>
-          <span />
+    <article className="whatsapp-qr-console">
+      <div className="whatsapp-web-login-copy">
+        <div className="whatsapp-web-heading">
           <div>
-            <strong>{event.message}</strong>
-            <small>
-              <StatusBadge status={event.type}>{event.type}</StatusBadge>
-              {formatDateTime(event.at)}
-            </small>
+            <p className="eyebrow">Vinculacion</p>
+            <h3>Inicia sesion en WhatsApp Web</h3>
+            <p>Envia mensajes privados a tus clientes a traves de WhatsApp en tu negocio.</p>
           </div>
-        </article>
-      ))}
-    </div>
+          <StatusBadge status={status?.status ?? 'DISCONNECTED'}>{statusInfo.label}</StatusBadge>
+        </div>
+
+        <ol className="whatsapp-web-steps">
+          <li>Abre WhatsApp en tu telefono.</li>
+          <li>Toca Menu en Android o Ajustes en iPhone.</li>
+          <li>Toca Dispositivos vinculados y luego Vincular un dispositivo.</li>
+          <li>Apunta tu telefono hacia esta pantalla para escanear el codigo QR.</li>
+        </ol>
+
+        <div className="whatsapp-web-note">
+          <Smartphone size={18} aria-hidden="true" />
+          <span>Usa el telefono que quedara conectado al negocio.</span>
+        </div>
+      </div>
+
+      <div className="whatsapp-qr-stage">
+        {hasQr ? (
+          <img alt="QR de WhatsApp" src={status.qr_image} />
+        ) : (
+          <div className={isQrFlow ? 'qr-placeholder large waiting' : 'qr-placeholder large'}>
+            <QrCode size={42} aria-hidden="true" />
+            <span>{isQrFlow ? 'Generando QR...' : 'Sin QR activo'}</span>
+          </div>
+        )}
+      </div>
+    </article>
   );
 }
 
@@ -219,18 +325,13 @@ export function WhatsAppManager() {
 
   const selectedCompanyId = canSelectCompany ? empresaId : undefined;
   const statusInfo = getStatusInfo(status);
-  const statusValue = String(status?.status ?? 'DISCONNECTED').toUpperCase();
-  const timeline = useMemo(() => buildTimeline(status), [status]);
+  const statusValue = getStatusValue(status);
   const hasQr = Boolean(status?.qr_image);
   const isQrFlow = ['INITIALIZING', 'QR_READY', 'AUTHENTICATED'].includes(statusValue);
   const canAct = Boolean(user) && !isBusy && (!canSelectCompany || empresaId);
 
   async function loadCompanies() {
-    if (!user) {
-      return;
-    }
-
-    if (!canSelectCompany) {
+    if (!user || !canSelectCompany) {
       return;
     }
 
@@ -317,117 +418,28 @@ export function WhatsAppManager() {
       {error ? <ErrorState message={error} onRetry={handleRefresh} /> : null}
 
       <div className="whatsapp-manager">
-        <div className="whatsapp-toolbar">
-          {canSelectCompany ? (
-            <label className="field-group" htmlFor="whatsapp-company">
-              <span>Empresa</span>
-              <select
-                id="whatsapp-company"
-                onChange={(event) => setEmpresaId(event.target.value)}
-                value={empresaId}
-              >
-                <option value="">Selecciona una empresa</option>
-                {companies.map((company) => (
-                  <option key={company.id} value={company.id}>
-                    {company.nombre}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : (
-            <div className="whatsapp-owner-context">
-              <Phone size={18} aria-hidden="true" />
-              <span>{user?.empresa?.nombre ?? 'Empresa actual'}</span>
-            </div>
-          )}
+        <WhatsAppHeader
+          canAct={canAct}
+          canSelectCompany={canSelectCompany}
+          companies={companies}
+          empresaId={empresaId}
+          isBusy={isBusy}
+          onCompanyChange={setEmpresaId}
+          onDisconnect={handleDisconnect}
+          onRefresh={handleRefresh}
+          onRestart={handleRestart}
+          onStart={handleStart}
+          user={user}
+        />
 
-          <div className="whatsapp-actions">
-            <Can permission="whatsapp.manage">
-              <button className="primary-button" disabled={!canAct} onClick={handleStart} type="button">
-                <MessageCircle size={18} aria-hidden="true" />
-                Conectar
-              </button>
-            </Can>
-            <Can permission="whatsapp.manage">
-              <button className="secondary-button" disabled={!canAct} onClick={handleRestart} type="button">
-                <RotateCcw size={18} aria-hidden="true" />
-                Reconectar
-              </button>
-            </Can>
-            <Can permission="whatsapp.manage">
-              <button className="secondary-button" disabled={!canAct} onClick={handleDisconnect} type="button">
-                <Power size={18} aria-hidden="true" />
-                Desconectar
-              </button>
-            </Can>
-            <button className="icon-button bordered" disabled={!canAct} onClick={handleRefresh} type="button" aria-label="Actualizar estado">
-              <RefreshCcw size={18} aria-hidden="true" />
-            </button>
+        <WhatsAppMetrics hasQr={hasQr} status={status} />
+
+        <section className="whatsapp-console-grid">
+          <QRPanel hasQr={hasQr} isQrFlow={isQrFlow} status={status} statusInfo={statusInfo} />
+          <div className="whatsapp-console-side">
+            <StatusOverview hasQr={hasQr} status={status} />
           </div>
-        </div>
-
-        <StatusHero status={status} />
-
-        <div className="whatsapp-operational-grid">
-          <article className="whatsapp-qr-card large">
-            <div className="whatsapp-qr-header">
-              <div>
-                <h3>{hasQr ? 'Escanea este QR' : 'QR de conexion'}</h3>
-                <p>
-                  {hasQr
-                    ? 'Abre WhatsApp en tu telefono y escanea el codigo.'
-                    : 'Presiona iniciar sesion para generar un codigo QR nuevo.'}
-                </p>
-              </div>
-              <StatusBadge status={status?.status ?? 'DISCONNECTED'}>{statusInfo.label}</StatusBadge>
-            </div>
-
-            {hasQr ? (
-              <img alt="QR de WhatsApp" src={status.qr_image} />
-            ) : (
-              <div className={isQrFlow ? 'qr-placeholder large waiting' : 'qr-placeholder large'}>
-                <QrCode size={42} aria-hidden="true" />
-                <span>{isQrFlow ? 'Generando QR...' : 'Sin QR activo'}</span>
-              </div>
-            )}
-
-            {hasQr ? (
-              <div className="whatsapp-warning">
-                <AlertTriangle size={18} aria-hidden="true" />
-                <span>Escanea el QR desde el telefono que quedara conectado al negocio.</span>
-              </div>
-            ) : null}
-          </article>
-
-          <div className="whatsapp-side-stack">
-            <ConnectionSteps />
-
-            <article className="whatsapp-detail-card compact">
-              <h3>Informacion de sesion</h3>
-              <dl>
-                <div>
-                  <dt>Estado tecnico</dt>
-                  <dd>{status?.status ?? 'DISCONNECTED'}</dd>
-                </div>
-                <div>
-                  <dt>Numero conectado</dt>
-                  <dd>{formatPhone(status?.phone ?? status?.number ?? status?.telefono)}</dd>
-                </div>
-                <div>
-                  <dt>Ultimo error</dt>
-                  <dd>{status?.last_error ?? 'Sin errores recientes'}</dd>
-                </div>
-              </dl>
-            </article>
-
-            <AIStatusCard />
-          </div>
-        </div>
-
-        <article className="whatsapp-detail-card">
-          <h3>Eventos recientes</h3>
-          <Timeline events={timeline} />
-        </article>
+        </section>
       </div>
     </div>
   );

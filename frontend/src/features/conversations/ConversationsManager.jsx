@@ -1,14 +1,23 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
+  Building2,
+  CheckCheck,
+  CheckCircle2,
+  FileText,
+  Info,
   MessageCircle,
   MessageSquarePlus,
+  MoreVertical,
   PauseCircle,
   Phone,
   PlayCircle,
+  Plus,
   Search,
   Send,
-  SlidersHorizontal
+  Sparkles,
+  UserPlus,
+  X
 } from 'lucide-react';
 import { ConfirmModal, EmptyState, ErrorState, LoadingState, StatusBadge } from '../../components/ui/index.js';
 import { useAuth } from '../../context/AuthContext.jsx';
@@ -41,8 +50,62 @@ function formatTime(value) {
   return value ? new Date(value).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '-';
 }
 
-function formatDate(value) {
-  return value ? new Date(value).toLocaleDateString('es-MX', { dateStyle: 'medium' }) : '-';
+function formatThreadDate(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  const today = new Date();
+  const isToday = date.toDateString() === today.toDateString();
+
+  return isToday
+    ? date.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+    : date.toLocaleDateString('es-MX', { day: '2-digit', month: 'short' });
+}
+
+function getInitials(value = '') {
+  const cleaned = String(value).replace(/[^\dA-Za-z]/g, '');
+  return cleaned.slice(-2).toUpperCase() || 'CX';
+}
+
+function getThreadPreview(thread) {
+  return thread?.ultima_respuesta || thread?.ultimo_mensaje || 'Sin mensajes recientes';
+}
+
+function getThreadDisplayName(thread) {
+  return (
+    thread?.nombre_contacto ||
+    thread?.contacto_nombre ||
+    thread?.nombre_cliente ||
+    thread?.cliente_nombre ||
+    thread?.pushname ||
+    thread?.telefono_cliente ||
+    'Contacto'
+  );
+}
+
+function normalizeBubbleText(value, { preserveBreaks = false } = {}) {
+  const text = String(value ?? '').replace(/\r\n?/g, '\n').trim();
+
+  if (!preserveBreaks) {
+    return text.replace(/\s+/g, ' ');
+  }
+
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n');
+}
+
+function DefaultContactIcon() {
+  return (
+    <svg viewBox="0 0 48 48" height="34" width="34" preserveAspectRatio="xMidYMid meet" fill="none" aria-hidden="true">
+      <title>default-contact-refreshed</title>
+      <path
+        fill="currentColor"
+        d="M24 23q-1.86 0-3.18-1.32T19.5 18.5t1.32-3.18T24 14t3.18 1.32q1.32 1.32 1.32 3.18t-1.32 3.18T24 23m-6.75 10q-.93 0-1.59-.66T15 30.75v-.9q0-.96.5-1.76a3.3 3.3 0 0 1 1.3-1.22 16.7 16.7 0 0 1 3.54-1.3q1.8-.44 3.66-.44t3.66.43 3.54 1.31q.82.42 1.3 1.22t.5 1.76v.9q0 .93-.66 1.59t-1.59.66z"
+      />
+    </svg>
+  );
 }
 
 const conversationStateLabels = {
@@ -51,13 +114,6 @@ const conversationStateLabels = {
   requires_human: 'Requiere humano',
   human_active: 'Atencion humana',
   closed: 'Cerrada'
-};
-
-const conversationRoleLabels = {
-  customer: 'Cliente',
-  human: 'Usuario',
-  bot: 'IA',
-  system: 'Sistema'
 };
 
 function getThreadKey(thread) {
@@ -78,17 +134,21 @@ function ThreadList({ selectedThread, threads, onSelect }) {
           onClick={() => onSelect(thread)}
           type="button"
         >
-          <span className="inbox-avatar">
-            <Phone size={17} aria-hidden="true" />
+          <span className="inbox-avatar" data-icon="default-contact-refreshed" aria-hidden="true">
+            <DefaultContactIcon />
           </span>
-          <div>
-            <strong>{thread.telefono_cliente}</strong>
-            <p>{thread.ultimo_mensaje ?? 'Sin mensaje'}</p>
-            <small>{thread.empresa_nombre ?? 'Empresa'} - {formatDate(thread.ultima_fecha)}</small>
+          <div className="inbox-thread-main">
+            <div className="inbox-thread-title-row">
+              <strong>{thread.telefono_cliente}</strong>
+              <time>{formatThreadDate(thread.ultima_fecha)}</time>
+            </div>
+            <p>{getThreadPreview(thread)}</p>
+            <small>{thread.empresa_nombre ?? `Empresa #${thread.empresa_id}`}</small>
           </div>
           <div className="inbox-thread-badges">
-            <span className="channel-badge whatsapp">WHATSAPP</span>
-            <StatusBadge status={thread.estado_inbox}>{conversationStateLabels[thread.estado_inbox] ?? thread.estado_inbox}</StatusBadge>
+            {Number(thread.mensajes_sin_respuesta) > 0 ? (
+              <span className="unread-dot">{thread.mensajes_sin_respuesta}</span>
+            ) : null}
           </div>
         </button>
       ))}
@@ -96,34 +156,114 @@ function ThreadList({ selectedThread, threads, onSelect }) {
   );
 }
 
-function ChatMessage({ message, onDelete, onEdit }) {
+function ChatMessage({ message }) {
   const isHuman = message.tipo_mensaje === 'human';
-  const isBot = message.tipo_mensaje === 'bot';
   const isSystem = message.tipo_mensaje === 'system';
   const responseClass = isHuman ? 'chat-bubble human' : isSystem ? 'chat-bubble system' : 'chat-bubble bot';
-  const responseLabel = isHuman ? 'Usuario' : isBot ? 'IA' : isSystem ? 'Sistema' : 'IA / usuario';
+  const customerMessage = normalizeBubbleText(message.mensaje);
+  const responseMessage = normalizeBubbleText(message.respuesta, { preserveBreaks: true });
 
   return (
-    <article className="inbox-message-group">
+    <>
       <div className="chat-bubble customer">
-        <span>Cliente - {formatTime(message.fecha)}</span>
-        <p>{message.mensaje}</p>
+        <p>{customerMessage}</p>
+        <span className="chat-bubble-meta">{formatTime(message.fecha)}</span>
       </div>
-      {message.respuesta ? (
+      {responseMessage ? (
         <div className={responseClass}>
-          <span>{responseLabel} - {formatTime(message.fecha)}</span>
-          <p>{message.respuesta}</p>
+          <p>{responseMessage}</p>
+          <span className="chat-bubble-meta">
+            {formatTime(message.fecha)}
+            <CheckCheck size={14} strokeWidth={2.2} aria-hidden="true" />
+          </span>
         </div>
       ) : null}
-      <div className="inbox-message-actions">
-        <button className="secondary-button" onClick={() => onEdit(message)} type="button">
-          Editar
-        </button>
-        <button className="secondary-button" onClick={() => onDelete(message)} type="button">
-          Eliminar
-        </button>
+    </>
+  );
+}
+
+function ContactPanel({ isOpen, onClose, onDismiss, onPause, onResume, thread }) {
+  if (!isOpen) {
+    return null;
+  }
+
+  if (!thread) {
+    return (
+      <div className="inbox-contact-popover" role="dialog" aria-label="Informacion del contacto">
+        <aside className="inbox-contact-panel empty">
+          <button className="contact-panel-close" onClick={onDismiss} type="button" aria-label="Cerrar informacion del contacto">
+            <X size={16} aria-hidden="true" />
+          </button>
+          <Sparkles size={24} aria-hidden="true" />
+          <strong>Perfil del contacto</strong>
+          <p>Selecciona una conversacion para ver datos del cliente, canal y acciones.</p>
+        </aside>
       </div>
-    </article>
+    );
+  }
+
+  const stateLabel = conversationStateLabels[thread.estado_inbox] ?? thread.estado_inbox;
+
+  return (
+    <div className="inbox-contact-popover" role="dialog" aria-label="Informacion del contacto">
+      <aside className="inbox-contact-panel">
+        <button className="contact-panel-close" onClick={onDismiss} type="button" aria-label="Cerrar informacion del contacto">
+          <X size={16} aria-hidden="true" />
+        </button>
+        <section className="contact-card hero">
+          <span className="contact-avatar">{getInitials(thread.telefono_cliente)}</span>
+          <div>
+            <p className="eyebrow">Contacto</p>
+            <h2>{thread.telefono_cliente}</h2>
+            <span>{thread.empresa_nombre ?? `Empresa #${thread.empresa_id}`}</span>
+          </div>
+        </section>
+
+        <section className="contact-card">
+          <h3>Detalles</h3>
+          <dl className="contact-detail-list">
+            <div>
+              <dt><Phone size={15} aria-hidden="true" /> Telefono</dt>
+              <dd>{thread.telefono_cliente}</dd>
+            </div>
+            <div>
+              <dt><Building2 size={15} aria-hidden="true" /> Empresa</dt>
+              <dd>{thread.empresa_nombre ?? `#${thread.empresa_id}`}</dd>
+            </div>
+            <div>
+              <dt><MessageCircle size={15} aria-hidden="true" /> Canal</dt>
+              <dd>WhatsApp</dd>
+            </div>
+            <div>
+              <dt><CheckCircle2 size={15} aria-hidden="true" /> Estado</dt>
+              <dd>{stateLabel}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="contact-card">
+          <h3>Acciones rapidas</h3>
+          <div className="contact-actions">
+            {thread.bot_pausado ? (
+              <button className="secondary-button" onClick={onResume} type="button">
+                <PlayCircle size={16} aria-hidden="true" />
+                Reanudar bot
+              </button>
+            ) : (
+              <button className="secondary-button" onClick={onPause} type="button">
+                <PauseCircle size={16} aria-hidden="true" />
+                Pausar bot
+              </button>
+            )}
+            {thread.estado_inbox !== 'closed' ? (
+              <button className="secondary-button" onClick={onClose} type="button">
+                Cerrar conversacion
+              </button>
+            ) : null}
+          </div>
+        </section>
+      </aside>
+    </div>
   );
 }
 
@@ -132,6 +272,7 @@ function ChatPanel({
   onDelete,
   onEdit,
   onPause,
+  onOpenContact,
   onReply,
   onResume,
   onClose,
@@ -143,9 +284,17 @@ function ChatPanel({
   if (!thread) {
     return (
       <div className="inbox-empty-panel">
-        <MessageCircle size={42} aria-hidden="true" />
-        <strong>Selecciona una conversacion</strong>
-        <p>El historial, estado del bot y controles de atencion apareceran aqui.</p>
+        <div className="inbox-empty-card">
+          <span className="inbox-empty-illustration">
+            <MessageCircle size={46} aria-hidden="true" />
+          </span>
+          <strong>WhatsApp conectado al negocio</strong>
+          <p>Selecciona una conversacion para revisar el historial, pausar el bot o responder manualmente.</p>
+        </div>
+        <div className="inbox-empty-shortcuts">
+          <span><FileText size={20} aria-hidden="true" /> Enviar documento</span>
+          <span><UserPlus size={20} aria-hidden="true" /> Añadir contacto</span>
+        </div>
       </div>
     );
   }
@@ -157,36 +306,25 @@ function ChatPanel({
           <button className="icon-button inbox-back-button" onClick={onBack} type="button" aria-label="Volver a conversaciones">
             <ArrowLeft size={17} aria-hidden="true" />
           </button>
-          <span className="inbox-avatar">
-            <Phone size={17} aria-hidden="true" />
+          <span
+            className="inbox-chat-avatar"
+            data-testid="default-contact-refreshed"
+            data-icon="default-contact-refreshed"
+            aria-hidden="true"
+          >
+            <DefaultContactIcon />
           </span>
           <div>
-            <strong>{thread.telefono_cliente}</strong>
+            <strong>{getThreadDisplayName(thread)}</strong>
             <span>
-              Empresa #{thread.empresa_id} - {conversationStateLabels[thread.estado_inbox] ?? thread.estado_inbox}
+              WhatsApp - {conversationStateLabels[thread.estado_inbox] ?? thread.estado_inbox}
             </span>
           </div>
         </div>
-        <div>
-          <StatusBadge status={thread.estado_inbox}>
-            {conversationStateLabels[thread.estado_inbox] ?? thread.estado_inbox}
-          </StatusBadge>
-          {thread.bot_pausado ? (
-            <button className="secondary-button" onClick={onResume} type="button">
-              <PlayCircle size={17} aria-hidden="true" />
-              Reanudar bot
-            </button>
-          ) : (
-            <button className="secondary-button" onClick={onPause} type="button">
-              <PauseCircle size={17} aria-hidden="true" />
-              Pausar bot
-            </button>
-          )}
-          {thread.estado_inbox !== 'closed' ? (
-            <button className="secondary-button" onClick={onClose} type="button">
-              Cerrar
-            </button>
-          ) : null}
+        <div className="inbox-chat-actions">
+          <button className="inbox-info-button" onClick={onOpenContact} type="button" aria-label="Ver informacion del contacto">
+            <MoreVertical size={19} aria-hidden="true" />
+          </button>
         </div>
       </header>
 
@@ -196,8 +334,6 @@ function ChatPanel({
             <ChatMessage
               key={message.id}
               message={message}
-              onDelete={onDelete}
-              onEdit={onEdit}
             />
           ))
         ) : (
@@ -206,19 +342,23 @@ function ChatPanel({
       </div>
 
       <form className="inbox-reply-box" onSubmit={onReply}>
-        <label htmlFor="inbox-reply">
-          <Send size={18} aria-hidden="true" />
+        <label className="inbox-reply-field" htmlFor="inbox-reply">
           <textarea
             id="inbox-reply"
+            aria-label="Responder conversacion"
             onChange={(event) => setReply(event.target.value)}
-            placeholder="Responder manualmente por WhatsApp..."
-            rows={2}
+            placeholder="Escribe un mensaje"
+            rows={1}
             value={reply}
           />
         </label>
-        <button className="primary-button" disabled={isSending || !reply.trim()} type="submit">
+        <button
+          className="primary-button inbox-send-button"
+          disabled={isSending || !reply.trim()}
+          type="submit"
+          aria-label="Enviar mensaje"
+        >
           <Send size={18} aria-hidden="true" />
-          Enviar
         </button>
       </form>
     </section>
@@ -237,6 +377,7 @@ export function ConversationsManager() {
   const [isSaving, setIsSaving] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isContactOpen, setIsContactOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [reply, setReply] = useState('');
   const [selectedThreadKey, setSelectedThreadKey] = useState('');
@@ -247,6 +388,14 @@ export function ConversationsManager() {
     () => threads.find((thread) => getThreadKey(thread) === selectedThreadKey) ?? null,
     [selectedThreadKey, threads]
   );
+
+  const inboxCounts = useMemo(() => ({
+    all: threads.length,
+    requires_human: threads.filter((thread) => thread.estado_inbox === 'requires_human').length,
+    bot_active: threads.filter((thread) => thread.estado_inbox === 'bot_active').length,
+    human_active: threads.filter((thread) => thread.estado_inbox === 'human_active').length,
+    closed: threads.filter((thread) => thread.estado_inbox === 'closed').length
+  }), [threads]);
 
   async function loadThreads(nextFilters = filters) {
     try {
@@ -266,6 +415,7 @@ export function ConversationsManager() {
         setSelectedThreadKey('');
         setThreadDetail(null);
         setIsChatOpen(false);
+        setIsContactOpen(false);
       }
     } catch (requestError) {
       setError(getApiError(requestError));
@@ -383,82 +533,75 @@ export function ConversationsManager() {
 
   return (
     <div className="resource-page inbox-page">
-      <div className="inbox-unified-header">
-        <div>
-          <span className="inbox-header-icon">
-            <MessageCircle size={22} aria-hidden="true" />
-          </span>
-          <div>
-            <p className="eyebrow">Atencion al cliente</p>
-            <h1>Inbox</h1>
-            <p>Bandeja profesional para revisar conversaciones, pausar el bot y responder manualmente.</p>
-          </div>
-        </div>
-        <div>
-          <button
-            className="primary-button"
-            onClick={() => {
-              setEditingConversation(null);
-              setIsFormOpen(true);
-            }}
-            type="button"
-          >
-            <MessageSquarePlus size={18} aria-hidden="true" />
-            Nueva nota
-          </button>
-        </div>
-      </div>
-
       {error ? <ErrorState message={error} onRetry={() => loadThreads(filters)} /> : null}
 
       <section className="panel-section inbox-panel">
-        <div className="inbox-toolbar">
-          <label className="product-search" htmlFor="conversation-search">
-            <Search size={18} aria-hidden="true" />
-            <input
-              id="conversation-search"
-              onChange={(event) => updateFilters({ query: event.target.value })}
-              placeholder="Buscar telefono o mensaje"
-              type="search"
-              value={filters.query}
-            />
-          </label>
-
-          <div className="crm-filter-group">
-            <SlidersHorizontal size={18} aria-hidden="true" />
-            <select
-              aria-label="Estado"
-              onChange={(event) => updateFilters({ estado: event.target.value })}
-              value={filters.estado}
-            >
-              <option value="">Todos</option>
-              <option value="open">Abiertas</option>
-              <option value="bot_active">Bot activo</option>
-              <option value="requires_human">Requiere humano</option>
-              <option value="human_active">Atencion humana</option>
-              <option value="closed">Cerradas</option>
-            </select>
-          </div>
-
-          {canSelectCompany ? (
-            <select
-              className="inbox-company-filter"
-              aria-label="Empresa"
-              onChange={(event) => updateFilters({ empresa_id: event.target.value })}
-              value={filters.empresa_id}
-            >
-              <option value="">Todas las empresas</option>
-              {companies.map((company) => (
-                <option key={company.id} value={company.id}>
-                  {company.nombre}
-                </option>
-              ))}
-            </select>
-          ) : null}
-        </div>
-
         <div className="inbox-layout professional">
           <aside className="inbox-sidebar">
+            <div className="inbox-sidebar-top">
+              <div className="inbox-sidebar-title">
+                <h1>WhatsApp</h1>
+                <div className="inbox-sidebar-actions">
+                  <button
+                    className="inbox-top-icon"
+                    onClick={() => {
+                      setEditingConversation(null);
+                      setIsFormOpen(true);
+                    }}
+                    type="button"
+                    aria-label="Nueva nota"
+                  >
+                    <MessageSquarePlus size={18} aria-hidden="true" />
+                  </button>
+                  <button className="inbox-top-icon" onClick={() => setIsContactOpen(true)} type="button" aria-label="Opciones">
+                    <MoreVertical size={18} aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+
+              <label className="inbox-search" htmlFor="conversation-search">
+                <Search size={17} aria-hidden="true" />
+                <input
+                  id="conversation-search"
+                  onChange={(event) => updateFilters({ query: event.target.value })}
+                  placeholder="Buscar un chat o iniciar uno nuevo"
+                  type="search"
+                  value={filters.query}
+                />
+              </label>
+
+              <div className="inbox-filter-chips" aria-label="Filtros de conversaciones">
+                {[
+                  ['Todos', '', inboxCounts.all],
+                  ['No leidos', 'requires_human', inboxCounts.requires_human],
+                  ['Bot', 'bot_active', inboxCounts.bot_active],
+                  ['Humano', 'human_active', inboxCounts.human_active],
+                  ['Cerradas', 'closed', inboxCounts.closed]
+                ].map(([label, value, count]) => (
+                  <button
+                    className={filters.estado === value ? 'active' : ''}
+                    key={value || 'all'}
+                    onClick={() => updateFilters({ estado: value })}
+                    type="button"
+                  >
+                    {label}{count ? ` ${count}` : ''}
+                  </button>
+                ))}
+                <button
+                  className="inbox-add-filter"
+                  onClick={() => {
+                    setEditingConversation(null);
+                    setIsFormOpen(true);
+                  }}
+                  type="button"
+                  aria-label="Nueva nota"
+                >
+                  <Plus size={17} aria-hidden="true" />
+                </button>
+              </div>
+
+            </div>
+
             {isLoading ? (
               <LoadingState message="Cargando conversaciones..." />
             ) : (
@@ -468,27 +611,57 @@ export function ConversationsManager() {
                 onSelect={(thread) => {
                   setSelectedThreadKey(getThreadKey(thread));
                   setIsChatOpen(true);
+                  setIsContactOpen(false);
                 }}
               />
             )}
+            {canSelectCompany ? (
+              <div className="inbox-sidebar-bottom">
+                <select
+                  className="inbox-company-filter"
+                  aria-label="Empresa"
+                  onChange={(event) => updateFilters({ empresa_id: event.target.value })}
+                  value={filters.empresa_id}
+                >
+                  <option value="">Todas las empresas</option>
+                  {companies.map((company) => (
+                    <option key={company.id} value={company.id}>
+                      {company.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
           </aside>
 
           <div className={isChatOpen ? 'inbox-chat-shell open' : 'inbox-chat-shell'}>
             <ChatPanel
               isSending={isSending}
-              onBack={() => setIsChatOpen(false)}
+              onBack={() => {
+                setIsChatOpen(false);
+                setIsContactOpen(false);
+              }}
               onDelete={setPendingDelete}
               onEdit={(conversation) => {
                 setEditingConversation(conversation);
                 setIsFormOpen(true);
               }}
               onPause={handlePause}
+              onOpenContact={() => setIsContactOpen(true)}
               onReply={handleReply}
               onResume={handleResume}
               onClose={handleClose}
               reply={reply}
               setReply={setReply}
               thread={threadDetail}
+            />
+            <ContactPanel
+              isOpen={isContactOpen}
+              onDismiss={() => setIsContactOpen(false)}
+              onPause={handlePause}
+              onResume={handleResume}
+              onClose={handleClose}
+              thread={threadDetail ?? selectedThread}
             />
           </div>
         </div>
@@ -506,7 +679,7 @@ export function ConversationsManager() {
               type="button"
               aria-label="Cerrar formulario"
             >
-              x
+              <X size={16} aria-hidden="true" />
             </button>
             <div className="catalog-modal-header">
               <span>

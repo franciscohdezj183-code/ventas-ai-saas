@@ -1,0 +1,429 @@
+/* AI Usage analytics center. */
+
+.ai-usage-page {
+  --ai-usage-bg: #e9f1fa;
+  --ai-usage-card: #ffffff;
+  --ai-usage-muted-card: #f8fbfd;
+  --ai-usage-text: #1d1d1d;
+  --ai-usage-muted: #64748b;
+  --ai-usage-border: color-mix(in srgb, #e9f1fa 78%, #cbd5e1);
+  --ai-usage-accent: #00abe4;
+  --ai-usage-accent-strong: #008ec2;
+  --ai-usage-accent-soft: color-mix(in srgb, #00abe4 10%, #ffffff);
+  --ai-usage-shadow: 0 10px 22px rgba(15, 23, 42, 0.055);
+  --ai-usage-hero-shadow: 0 14px 32px rgba(15, 23, 42, 0.075);
+  background: var(--ai-usage-bg);
+  color: var(--ai-usage-text);
+  gap: 20px;
+  padding: 8px;
+}
+
+:root[data-theme="dark"] .ai-usage-page,
+.dark .ai-usage-page {
+  --ai-usage-bg: transparent;
+  --ai-usage-card: #24272c;
+  --ai-usage-muted-card: #1c222a;
+  --ai-usage-text: #ffffff;
+  --ai-usage-muted: rgba(255, 255, 255, 0.76);
+  --ai-usage-border: rgba(34, 114, 255, 0.3);
+  --ai-usage-accent: #2272ff;
+  --ai-usage-accent-strong: #5a96ff;
+  --ai-usage-accent-soft: rgba(34, 114, 255, 0.16);
+  --ai-usage-shadow: 0 10px 22px rgba(0, 0, 0, 0.2);
+  --ai-usage-hero-shadow: 0 12px 28px rgba(0, 0, 0, 0.24);
+}
+
+.ai-usage-page .eyebrow {
+  color: var(--ai-usage-muted);
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  margin: 0 0 8px;
+  text-transform: uppercase;
+}
+
+.ai-usage-page .primary-button,
+.ai-usage-page .secondary-button {
+  align-items: center;
+  border-radius: 8px;
+  display: inline-flex;
+  font-weight: 850;
+  gap: 8px;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 14px;
+}
+
+.ai-usage-page .primary-button {
+  background: linear-gradient(135deg, var(--ai-usage-accent), var(--ai-usage-accent-strong));
+  border: 1px solid var(--ai-usage-accent);
+  color: #ffffff;
+}
+
+.ai-usage-page .secondary-button {
+  background: var(--ai-usage-muted-card);
+  border: 1px solid color-mix(in srgb, var(--ai-usage-border) 82%, transparent);
+  color: var(--ai-usage-text);
+}
+
+.ai-usage-hero,
+.ai-usage-toolbar,
+.ai-usage-summary-card,
+.ai-usage-limit-panel,
+.ai-usage-section,
+.ai-usage-actions-panel,
+.ai-usage-state,
+.ai-usage-alerts article {
+  background: var(--ai-usage-card);
+  border: 1px solid var(--ai-usage-border);
+  border-radius: 12px;
+  box-shadow: var(--ai-usage-shadow);
+}
+
+.ai-usage-hero {
+  background:
+    linear-gradient(135deg, rgba(0, 171, 228, 0.09), rgba(0, 142, 194, 0.055) 52%, rgba(255, 255, 255, 0) 74%),
+    var(--ai-usage-card);
+  border-color: color-mix(in srgb, var(--ai-usage-accent) 22%, var(--ai-usage-border));
+  border-radius: 14px;
+  box-shadow: var(--ai-usage-hero-shadow);
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(0, 1fr) minmax(430px, 0.9fr) auto;
+  min-height: 190px;
+  padding: 24px;
+}
+
+:root[data-theme="dark"] .ai-usage-hero,
+.dark .ai-usage-hero {
+  background:
+    linear-gradient(135deg, rgba(34, 114, 255, 0.15), rgba(90, 150, 255, 0.08) 52%, rgba(29, 29, 29, 0) 74%),
+    var(--ai-usage-card);
+}
+
+.ai-usage-hero-icon {
+  align-items: center;
+  background: var(--ai-usage-accent-soft);
+  border-radius: 10px;
+  color: var(--ai-usage-accent-strong);
+  display: inline-flex;
+  height: 42px;
+  justify-content: center;
+  width: 42px;
+}
+
+.ai-usage-hero h1 {
+  color: var(--ai-usage-text);
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  line-height: 1.02;
+  margin: 10px 0 8px;
+}
+
+.ai-usage-hero p,
+.ai-usage-summary-card p,
+.ai-usage-limit-panel p,
+.ai-usage-section p,
+.ai-usage-muted,
+.ai-usage-state p,
+.ai-usage-limit-panel dt {
+  color: var(--ai-usage-muted);
+}
+
+.ai-usage-hero-facts,
+.ai-usage-summary-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.ai-usage-hero-facts {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ai-usage-hero-facts article,
+.ai-usage-breakdown-list article,
+.ai-usage-limit-panel dl div {
+  background: var(--ai-usage-muted-card);
+  border: 1px solid color-mix(in srgb, var(--ai-usage-border) 82%, transparent);
+  border-radius: 8px;
+}
+
+.ai-usage-hero-facts article,
+.ai-usage-summary-card,
+.ai-usage-limit-panel dl div {
+  padding: 14px;
+}
+
+.ai-usage-hero-facts span,
+.ai-usage-summary-card span,
+.ai-usage-limit-panel dt {
+  color: var(--ai-usage-muted);
+  display: block;
+  font-size: 0.74rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.ai-usage-hero-facts strong,
+.ai-usage-summary-card strong,
+.ai-usage-limit-panel dd,
+.ai-usage-section h2 {
+  color: var(--ai-usage-text);
+}
+
+.ai-usage-actions {
+  align-content: start;
+  display: grid;
+  gap: 10px;
+}
+
+.ai-usage-toolbar {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(180px, 1fr)) auto;
+  padding: 16px;
+}
+
+.ai-usage-toolbar label {
+  display: grid;
+  gap: 7px;
+}
+
+.ai-usage-toolbar label > span {
+  color: var(--ai-usage-muted);
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.ai-usage-toolbar label > div,
+.ai-usage-toolbar select {
+  align-items: center;
+  background: var(--ai-usage-muted-card);
+  border: 1px solid color-mix(in srgb, var(--ai-usage-border) 82%, transparent);
+  border-radius: 8px;
+  color: var(--ai-usage-muted);
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 20px minmax(0, 1fr);
+  min-height: 42px;
+  padding: 0 10px;
+}
+
+.ai-usage-toolbar input,
+.ai-usage-toolbar select {
+  background: transparent;
+  border: 0;
+  color: var(--ai-usage-text);
+  font: inherit;
+  font-weight: 800;
+  outline: 0;
+}
+
+.ai-usage-toolbar select {
+  display: block;
+  padding: 0 12px;
+}
+
+.ai-usage-summary-card {
+  min-height: 138px;
+}
+
+.ai-usage-summary-card strong {
+  display: block;
+  font-size: clamp(1.7rem, 3vw, 2.4rem);
+  margin: 10px 0 6px;
+}
+
+.ai-usage-limit-panel,
+.ai-usage-section {
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+}
+
+.ai-usage-limit-panel h2,
+.ai-usage-section h2 {
+  margin: 0 0 8px;
+}
+
+.ai-usage-big-progress,
+.ai-usage-mini-track {
+  background: color-mix(in srgb, var(--ai-usage-muted) 20%, transparent);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.ai-usage-big-progress {
+  height: 18px;
+}
+
+.ai-usage-big-progress i,
+.ai-usage-mini-track i {
+  background: linear-gradient(90deg, var(--ai-usage-accent), var(--ai-usage-accent-strong));
+  display: block;
+  height: 100%;
+}
+
+.ai-usage-limit-panel dl {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+}
+
+.ai-usage-limit-panel dd {
+  font-weight: 900;
+  margin: 5px 0 0;
+}
+
+.ai-usage-analytics-grid {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.8fr);
+}
+
+.ai-usage-chart-shell {
+  min-height: 330px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--ai-usage-border) 82%, transparent);
+  border-radius: 12px;
+  background: var(--ai-usage-muted-card);
+  padding: 8px;
+}
+
+.ai-usage-chart-shell .MuiChartsAxis-tickLabel,
+.ai-usage-chart-shell .MuiChartsLegend-label,
+.ai-usage-chart-shell .MuiChartsAxis-label,
+.ai-usage-chart-shell svg text {
+  fill: var(--ai-usage-muted) !important;
+  color: var(--ai-usage-muted) !important;
+  font-weight: 750 !important;
+}
+
+.ai-usage-chart-shell .MuiChartsAxis-line,
+.ai-usage-chart-shell .MuiChartsAxis-tick {
+  stroke: color-mix(in srgb, var(--ai-usage-border) 82%, transparent) !important;
+}
+
+.ai-usage-chart-shell .MuiChartsGrid-line {
+  stroke: color-mix(in srgb, var(--ai-usage-border) 60%, transparent) !important;
+}
+
+.ai-usage-breakdown-list {
+  display: grid;
+  gap: 10px;
+}
+
+.ai-usage-breakdown-list article {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.ai-usage-breakdown-list article > div:first-child {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.ai-usage-breakdown-list strong {
+  color: var(--ai-usage-text);
+}
+
+.ai-usage-breakdown-list span {
+  color: var(--ai-usage-muted);
+  font-weight: 850;
+}
+
+.ai-usage-mini-track {
+  height: 9px;
+}
+
+.ai-usage-alerts,
+.ai-usage-actions-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.ai-usage-alerts article,
+.ai-usage-state {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  padding: 18px;
+}
+
+.ai-usage-alerts article {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.24);
+}
+
+.ai-usage-alerts svg,
+.ai-usage-state svg {
+  color: var(--ai-usage-accent);
+}
+
+.ai-usage-actions-panel {
+  grid-template-columns: repeat(3, max-content);
+  justify-content: end;
+  padding: 16px;
+}
+
+.ai-usage-skeleton {
+  display: grid;
+  gap: 18px;
+}
+
+.ai-usage-skeleton span {
+  animation: aiUsagePulse 1.3s ease-in-out infinite;
+  background: var(--ai-usage-card);
+  border: 1px solid var(--ai-usage-border);
+  border-radius: 14px;
+  min-height: 160px;
+}
+
+.ai-usage-skeleton span:first-child {
+  min-height: 210px;
+}
+
+@keyframes aiUsagePulse {
+  0%, 100% { opacity: 0.58; }
+  50% { opacity: 1; }
+}
+
+@media (max-width: 1180px) {
+  .ai-usage-hero,
+  .ai-usage-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-usage-summary-grid,
+  .ai-usage-analytics-grid,
+  .ai-usage-limit-panel dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ai-usage-analytics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .ai-usage-page {
+    padding: 4px;
+  }
+
+  .ai-usage-hero-facts,
+  .ai-usage-summary-grid,
+  .ai-usage-limit-panel dl,
+  .ai-usage-actions-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-usage-actions,
+  .ai-usage-page .primary-button,
+  .ai-usage-page .secondary-button {
+    width: 100%;
+  }
+}

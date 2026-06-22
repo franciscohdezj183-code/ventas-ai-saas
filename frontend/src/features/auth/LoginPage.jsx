@@ -132,7 +132,7 @@ export function LoginPage() {
               <img alt="Nexus IA" src={logo} />
             </span>
             <div>
-              <strong>Nexus IA</strong>
+              <strong>Panel Nexus IA</strong>
               <small>DDS Media</small>
             </div>
           </div>
@@ -150,65 +150,69 @@ export function LoginPage() {
             </div>
           ) : null}
 
-          <label className="field-group" htmlFor="email">
-            <span>Correo electronico</span>
-            <div className={errors.email ? 'input-shell invalid' : 'input-shell'}>
-              <Mail size={18} aria-hidden="true" />
-              <input
-                autoComplete="email"
-                id="email"
-                name="email"
-                onChange={handleChange}
-                placeholder="admin@empresa.com"
-                type="email"
-                value={form.email}
-              />
+          <div className="login-fields">
+            <label className="field-group" htmlFor="email">
+              <span>Correo electronico</span>
+              <div className={errors.email ? 'input-shell invalid' : 'input-shell'}>
+                <Mail size={18} aria-hidden="true" />
+                <input
+                  autoComplete="email"
+                  id="email"
+                  name="email"
+                  onChange={handleChange}
+                  placeholder="admin@empresa.com"
+                  type="email"
+                  value={form.email}
+                />
+              </div>
+              {errors.email ? <small>{errors.email}</small> : null}
+            </label>
+
+            <label className="field-group" htmlFor="password">
+              <span>Contrasena</span>
+              <div className={errors.password ? 'input-shell invalid' : 'input-shell'}>
+                <LockKeyhole size={18} aria-hidden="true" />
+                <input
+                  autoComplete="current-password"
+                  id="password"
+                  name="password"
+                  onChange={handleChange}
+                  placeholder="Minimo 6 caracteres"
+                  type={showPassword ? 'text' : 'password'}
+                  value={form.password}
+                />
+                <button
+                  aria-label={showPassword ? 'Ocultar contrasena' : 'Mostrar contrasena'}
+                  className="icon-button"
+                  onClick={() => setShowPassword((currentValue) => !currentValue)}
+                  type="button"
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+              {errors.password ? <small>{errors.password}</small> : null}
+            </label>
+          </div>
+
+          <div className="login-actions">
+            <button className="login-button" disabled={isSubmitting} type="submit">
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="spin-icon" size={18} aria-hidden="true" />
+                  <span>Validando acceso...</span>
+                </>
+              ) : (
+                <>
+                  <span>Entrar al panel</span>
+                  <ArrowRight size={18} aria-hidden="true" />
+                </>
+              )}
+            </button>
+
+            <div className="login-security-note">
+              <ShieldCheck size={17} aria-hidden="true" />
+              <span>Acceso protegido para usuarios autorizados.</span>
             </div>
-            {errors.email ? <small>{errors.email}</small> : null}
-          </label>
-
-          <label className="field-group" htmlFor="password">
-            <span>Contrasena</span>
-            <div className={errors.password ? 'input-shell invalid' : 'input-shell'}>
-              <LockKeyhole size={18} aria-hidden="true" />
-              <input
-                autoComplete="current-password"
-                id="password"
-                name="password"
-                onChange={handleChange}
-                placeholder="Minimo 6 caracteres"
-                type={showPassword ? 'text' : 'password'}
-                value={form.password}
-              />
-              <button
-                aria-label={showPassword ? 'Ocultar contrasena' : 'Mostrar contrasena'}
-                className="icon-button"
-                onClick={() => setShowPassword((currentValue) => !currentValue)}
-                type="button"
-              >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
-            </div>
-            {errors.password ? <small>{errors.password}</small> : null}
-          </label>
-
-          <button className="login-button" disabled={isSubmitting} type="submit">
-            {isSubmitting ? (
-              <>
-                <Loader2 className="spin-icon" size={18} aria-hidden="true" />
-                <span>Validando acceso...</span>
-              </>
-            ) : (
-              <>
-                <span>Entrar al panel</span>
-                <ArrowRight size={18} aria-hidden="true" />
-              </>
-            )}
-          </button>
-
-          <div className="login-security-note">
-            <ShieldCheck size={17} aria-hidden="true" />
-            <span>Acceso protegido para usuarios autorizados.</span>
           </div>
         </form>
       </section>

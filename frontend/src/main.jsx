@@ -21,6 +21,7 @@ import './styles/modules/ServiciosPage.css';
 import './styles/modules/PedidosPage.css';
 import './styles/modules/WhatsAppPage.css';
 import './styles/modules/AISettingsPage.css';
+import './styles/modules/AIUsagePage.css';
 import './styles/modules/settings.css';
 import './styles/modules/OnboardingPage.css';
 import './styles/modules/admin.css';

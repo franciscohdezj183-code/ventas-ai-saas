@@ -158,7 +158,7 @@ export function Sidebar({
   }
 
   return (
-    <aside className="sidebar" aria-label="Menu principal">
+    <aside className={`sidebar ${isCollapsed ? 'is-collapsed' : ''}`} aria-label="Menu principal">
       <NexusBrand companyName={companyName} />
 
       <nav className="nav-list" aria-label="Navegacion principal">

@@ -9,6 +9,7 @@ import {
   Package,
   Rocket,
   Settings,
+  ShieldCheck,
   Sparkles,
   ClipboardList,
   Tags,
@@ -33,14 +34,14 @@ const navigationByRole = {
     { label: 'Categorias', section: 'Catalogo', icon: Tags, to: '/categorias', permission: 'products.view' },
     { label: 'Servicios', section: 'Catalogo', icon: Wrench, to: '/servicios', permission: 'products.view' },
     { label: 'WhatsApp', section: 'Canales e IA', icon: MessageCircle, to: '/whatsapp', permission: 'whatsapp.view' },
-    { label: 'Configuracion IA', section: 'Canales e IA', icon: Bot, to: '/configuracion', permission: 'ai_config.view' },
-    { label: 'Centro super admin', section: 'Administracion', icon: Building2, to: '/super-admin', permission: 'tenants.view' },
+    { label: 'Configuracion IA', section: 'Canales e IA', icon: Bot, to: '/prompts-bot', roles: ['super_admin'], permission: 'ai_config.view' },
+    { label: 'Centro super admin', section: 'Administracion', icon: ShieldCheck, to: '/super-admin', permission: 'tenants.view' },
     { label: 'Directorio empresas', section: 'Administracion', icon: Building2, to: '/empresas', permission: 'tenants.view' },
     { label: 'Inicio guiado', section: 'Administracion', icon: Rocket, to: '/inicio-guiado', permission: 'tenants.view' },
     { label: 'Suscripciones', section: 'Administracion', icon: CreditCard, to: '/suscripciones', permission: 'subscriptions.view' },
     { label: 'Consumo IA', section: 'Administracion', icon: Sparkles, to: '/consumo-ia', permission: 'reports.view' },
     { label: 'Usuarios globales', section: 'Administracion', icon: Users, to: '/usuarios', permission: 'users.view' },
-    { label: 'Configuracion', section: 'Sistema', icon: Settings, to: '/prompts-bot', roles: ['super_admin'] }
+    { label: 'Configuracion', section: 'Sistema', icon: Settings, to: '/configuracion', permission: 'ai_config.view' }
   ],
   owner: [
     { label: 'Dashboard', section: 'Inicio', icon: Home, to: '/', end: true, permission: 'reports.view' },
@@ -51,7 +52,7 @@ const navigationByRole = {
     { label: 'Categorias', section: 'Catalogo', icon: Tags, to: '/categorias', permission: 'products.view' },
     { label: 'Servicios', section: 'Catalogo', icon: Wrench, to: '/servicios', permission: 'products.view' },
     { label: 'WhatsApp', section: 'Canales e IA', icon: MessageCircle, to: '/whatsapp', permission: 'whatsapp.view' },
-    { label: 'Configuracion IA', section: 'Canales e IA', icon: Bot, to: '/configuracion', permission: 'ai_config.view' },
+    { label: 'Configuracion', section: 'Sistema', icon: Settings, to: '/configuracion', permission: 'ai_config.view' },
     { label: 'Reportes', section: 'Administracion', icon: BarChart3, to: '/reportes', permission: 'reports.view' },
     { label: 'Usuarios', section: 'Administracion', icon: UserCog, to: '/usuarios', permission: 'users.view' },
     { label: 'Plan', section: 'Administracion', icon: CreditCard, to: '/mi-empresa', roles: ['owner'], permission: 'subscriptions.view' }

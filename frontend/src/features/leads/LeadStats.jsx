@@ -1,23 +1,46 @@
-import { CheckCircle2, CircleDollarSign, PhoneCall, Target, Trophy } from 'lucide-react';
+import { CalendarPlus, CheckCircle2, PauseCircle, UsersRound } from 'lucide-react';
 
-const cards = [
-  { key: 'nuevo', label: 'Nuevos', icon: Target, hint: 'Por atender' },
-  { key: 'contactado', label: 'Contactados', icon: PhoneCall, hint: 'Primer contacto' },
-  { key: 'cotizado', label: 'Cotizados', icon: CircleDollarSign, hint: 'Propuesta enviada' },
-  { key: 'ganado', label: 'Ganados', icon: Trophy, hint: 'Venta cerrada' },
-  { key: 'perdido', label: 'Perdidos', icon: CheckCircle2, hint: 'Cierre sin venta' }
+const metricCards = [
+  {
+    key: 'total',
+    label: 'Total de clientes',
+    hint: 'Registros disponibles',
+    icon: UsersRound,
+    tone: 'blue'
+  },
+  {
+    key: 'active',
+    label: 'Clientes activos',
+    hint: 'En seguimiento',
+    icon: CheckCircle2,
+    tone: 'green'
+  },
+  {
+    key: 'inactive',
+    label: 'Clientes inactivos',
+    hint: 'Cerrados o perdidos',
+    icon: PauseCircle,
+    tone: 'amber'
+  },
+  {
+    key: 'newThisMonth',
+    label: 'Nuevos este mes',
+    hint: 'Altas recientes',
+    icon: CalendarPlus,
+    tone: 'cyan'
+  }
 ];
 
 export function LeadStats({ stats }) {
   return (
-    <section className="crm-summary-grid" aria-label="Resumen de leads">
-      {cards.map((card) => {
+    <section className="customer-stats-grid" aria-label="Indicadores de clientes">
+      {metricCards.map((card) => {
         const Icon = card.icon;
 
         return (
-          <article className="crm-summary-card" key={card.key}>
-            <span>
-              <Icon size={18} aria-hidden="true" />
+          <article className={`customer-stat-card ${card.tone}`} key={card.key}>
+            <span className="customer-stat-icon">
+              <Icon size={19} aria-hidden="true" />
             </span>
             <div>
               <strong>{stats[card.key] ?? 0}</strong>

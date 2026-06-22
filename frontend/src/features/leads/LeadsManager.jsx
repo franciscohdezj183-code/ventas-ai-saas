@@ -1,26 +1,23 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BarChart } from '@mui/x-charts/BarChart';
-import { PieChart } from '@mui/x-charts/PieChart';
 import {
-  Activity,
+  Building2,
   CalendarDays,
-  Flame,
-  Grid2X2,
-  List,
+  FilterX,
+  Mail,
+  Phone,
   Plus,
   Search,
-  SlidersHorizontal,
-  TrendingUp,
+  UserRound,
   UsersRound
 } from 'lucide-react';
-import { ConfirmModal, EmptyState, ErrorState } from '../../components/ui/index.js';
+import { ConfirmModal, ErrorState } from '../../components/ui/index.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { isSuperAdminRole } from '../../config/permissions.js';
 import { fetchCompanies } from '../companies/companiesApi.js';
 import { createLead, deleteLead, fetchLeads, fetchLeadStats, updateLead } from './leadsApi.js';
 import { LeadForm } from './LeadForm.jsx';
 import { LeadStats } from './LeadStats.jsx';
-import { CRM_STATES, getLeadPriority, LeadStageBadge, normalizeLeadState, stateLabels, LeadTable } from './LeadTable.jsx';
+import { CRM_STATES, LeadStageBadge, LeadTable, normalizeLeadState, stateLabels } from './LeadTable.jsx';
 
 const emptyStats = {
   total: 0,
@@ -31,13 +28,16 @@ const emptyStats = {
   perdido: 0
 };
 
+const initialFilters = {
+  dateFrom: '',
+  dateTo: '',
+  empresa: '',
+  estado: '',
+  query: ''
+};
+
 function getApiError(error) {
   return error?.response?.data?.message ?? 'No se pudo completar la operacion.';
-}
-
-function formatDateTime(value) {
-  const date = parseLeadDate(value);
-  return date ? date.toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }) : '-';
 }
 
 function parseLeadDate(value) {
@@ -49,32 +49,42 @@ function parseLeadDate(value) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function leadOrigin(lead) {
-  return lead.origen ?? 'Panel';
+function formatDateTime(value) {
+  const date = parseLeadDate(value);
+  return date ? date.toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }) : '-';
+}
+
+function customerEmail(lead) {
+  return lead.correo ?? lead.email ?? lead.email_cliente ?? '';
 }
 
 function leadResponsible(lead) {
   return lead.responsable_nombre ?? lead.responsable ?? lead.usuario_nombre ?? lead.assigned_to_name ?? '';
 }
 
-function formatPercent(value) {
-  return `${Number(value || 0).toFixed(0)}%`;
-}
+function buildCustomerStats(leads) {
+  const now = new Date();
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
 
-function buildCommercialSnapshot(leads) {
-  const activeLeads = leads.filter((lead) => !['GANADO', 'PERDIDO'].includes(normalizeLeadState(lead.estado)));
-  const wonLeads = leads.filter((lead) => normalizeLeadState(lead.estado) === 'GANADO').length;
-  const quotedLeads = leads.filter((lead) => normalizeLeadState(lead.estado) === 'COTIZADO').length;
-  const hotLeads = leads.filter((lead) => ['CRITICA', 'ALTA'].includes(lead.prioridad) || Number(lead.score ?? 0) >= 65);
-  const totalScore = leads.reduce((total, lead) => total + Number(lead.score ?? 0), 0);
+  return leads.reduce((totals, lead) => {
+    const state = normalizeLeadState(lead.estado);
+    const createdAt = parseLeadDate(lead.fecha_creacion);
 
-  return {
-    activeLeads: activeLeads.length,
-    averageScore: leads.length ? Math.round(totalScore / leads.length) : 0,
-    conversionRate: leads.length ? (wonLeads / leads.length) * 100 : 0,
-    hotLeads: hotLeads.length,
-    quotedLeads
-  };
+    totals.total += 1;
+
+    if (state === 'PERDIDO') {
+      totals.inactive += 1;
+    } else {
+      totals.active += 1;
+    }
+
+    if (createdAt && createdAt.getMonth() === currentMonth && createdAt.getFullYear() === currentYear) {
+      totals.newThisMonth += 1;
+    }
+
+    return totals;
+  }, { active: 0, inactive: 0, newThisMonth: 0, total: 0 });
 }
 
 function buildTimeline(lead) {
@@ -83,9 +93,9 @@ function buildTimeline(lead) {
   }
 
   return [
-    { label: 'Lead creado', at: lead.fecha_creacion, detail: lead.interes },
+    { label: 'Cliente registrado', at: lead.fecha_creacion, detail: lead.interes },
     lead.fecha_actualizacion && lead.fecha_actualizacion !== lead.fecha_creacion
-      ? { label: 'Ultima actualizacion', at: lead.fecha_actualizacion, detail: stateLabels[normalizeLeadState(lead.estado)] }
+      ? { label: 'Ultima actividad', at: lead.fecha_actualizacion, detail: stateLabels[normalizeLeadState(lead.estado)] }
       : null
   ].filter(Boolean);
 }
@@ -96,7 +106,7 @@ export function LeadsManager() {
   const [companies, setCompanies] = useState([]);
   const [editingLead, setEditingLead] = useState(null);
   const [error, setError] = useState('');
-  const [filters, setFilters] = useState({ dateFrom: '', dateTo: '', estado: '', origen: '', query: '' });
+  const [filters, setFilters] = useState(initialFilters);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -104,7 +114,14 @@ export function LeadsManager() {
   const [pendingDelete, setPendingDelete] = useState(null);
   const [selectedLead, setSelectedLead] = useState(null);
   const [stats, setStats] = useState(emptyStats);
-  const [viewMode, setViewMode] = useState('kanban');
+
+  const companyOptions = useMemo(() => {
+    const fromLeads = leads
+      .map((lead) => lead.empresa_nombre)
+      .filter(Boolean);
+
+    return Array.from(new Set([...companies.map((company) => company.nombre), ...fromLeads]));
+  }, [companies, leads]);
 
   const filteredLeads = useMemo(() => {
     const query = filters.query.trim().toLowerCase();
@@ -112,53 +129,27 @@ export function LeadsManager() {
     return leads.filter((lead) => {
       const createdAt = parseLeadDate(lead.fecha_creacion);
       const createdDate = createdAt ? createdAt.toISOString().slice(0, 10) : '';
+      const companyName = lead.empresa_nombre ?? '';
+      const email = customerEmail(lead);
       const matchesQuery =
         !query ||
         lead.nombre_cliente?.toLowerCase().includes(query) ||
         lead.telefono?.toLowerCase().includes(query) ||
         lead.interes?.toLowerCase().includes(query) ||
-        leadOrigin(lead).toLowerCase().includes(query) ||
+        email.toLowerCase().includes(query) ||
+        companyName.toLowerCase().includes(query) ||
         leadResponsible(lead).toLowerCase().includes(query);
       const matchesState = !filters.estado || normalizeLeadState(lead.estado) === filters.estado;
-      const matchesOrigin = !filters.origen || leadOrigin(lead) === filters.origen;
+      const matchesCompany = !filters.empresa || companyName === filters.empresa;
       const matchesFrom = !filters.dateFrom || createdDate >= filters.dateFrom;
       const matchesTo = !filters.dateTo || createdDate <= filters.dateTo;
 
-      return matchesQuery && matchesState && matchesOrigin && matchesFrom && matchesTo;
+      return matchesQuery && matchesState && matchesCompany && matchesFrom && matchesTo;
     });
   }, [filters, leads]);
 
-  const origins = useMemo(() => Array.from(new Set(leads.map(leadOrigin))), [leads]);
-  const commercialSnapshot = useMemo(() => buildCommercialSnapshot(filteredLeads), [filteredLeads]);
-  const leadsByState = useMemo(() => {
-    const totals = new Map(CRM_STATES.map((state) => [stateLabels[state], 0]));
-
-    filteredLeads.forEach((lead) => {
-      const state = normalizeLeadState(lead.estado);
-      const label = stateLabels[state] ?? state;
-      totals.set(label, (totals.get(label) ?? 0) + 1);
-    });
-
-    return [...totals.entries()]
-      .filter(([, value]) => value > 0)
-      .map(([label, value], id) => ({ id, label, value }));
-  }, [filteredLeads]);
-  const leadsByOrigin = useMemo(() => {
-    const totals = new Map();
-
-    filteredLeads.forEach((lead) => {
-      const origin = leadOrigin(lead);
-      totals.set(origin, (totals.get(origin) ?? 0) + 1);
-    });
-
-    return [...totals.entries()].map(([origin, total]) => ({ origin, total }));
-  }, [filteredLeads]);
-  const priorityLeads = useMemo(
-    () => [...filteredLeads]
-      .sort((first, second) => Number(second.score ?? 0) - Number(first.score ?? 0))
-      .slice(0, 4),
-    [filteredLeads]
-  );
+  const customerStats = useMemo(() => buildCustomerStats(filteredLeads), [filteredLeads]);
+  const hasFilters = Object.values(filters).some(Boolean);
 
   async function loadData() {
     try {
@@ -183,6 +174,16 @@ export function LeadsManager() {
     loadData();
   }, [canSelectCompany]);
 
+  function openCreateModal() {
+    setEditingLead(null);
+    setIsFormOpen(true);
+  }
+
+  function closeFormModal() {
+    setEditingLead(null);
+    setIsFormOpen(false);
+  }
+
   async function handleSubmit(payload) {
     try {
       setIsSaving(true);
@@ -194,8 +195,7 @@ export function LeadsManager() {
         await createLead(payload);
       }
 
-      setEditingLead(null);
-      setIsFormOpen(false);
+      closeFormModal();
       await loadData();
     } catch (requestError) {
       setError(getApiError(requestError));
@@ -237,156 +237,75 @@ export function LeadsManager() {
   }
 
   return (
-    <div className="resource-page crm-page">
-      <div className="crm-unified-header">
+    <div className="resource-page crm-page customer-page">
+      <header className="customer-page-header">
         <div>
-          <span className="crm-header-icon">
+          <span className="customer-header-icon">
             <UsersRound size={22} aria-hidden="true" />
           </span>
           <div>
-            <p className="eyebrow">Mini CRM</p>
-            <h1>Leads</h1>
-            <p>Gestiona prospectos, seguimiento comercial y oportunidades generadas por el bot.</p>
+            <h1>Clientes</h1>
+            <p>Administra todos los clientes registrados de forma sencilla.</p>
           </div>
         </div>
-        <div>
-          <button
-            className="primary-button"
-            onClick={() => {
-              setEditingLead(null);
-              setIsFormOpen(true);
-            }}
-            type="button"
-          >
-            <Plus size={18} aria-hidden="true" />
-            Nuevo lead
-          </button>
+        <button className="primary-button customer-new-button" onClick={openCreateModal} type="button">
+          <Plus size={18} aria-hidden="true" />
+          Nuevo Cliente
+        </button>
+      </header>
+
+      {error ? (
+        <div className="customer-error-shell">
+          <ErrorState message={error} onRetry={loadData} />
         </div>
-      </div>
+      ) : null}
 
-      {error ? <ErrorState message={error} onRetry={loadData} /> : null}
+      <LeadStats stats={{ ...stats, ...customerStats }} />
 
-      <LeadStats stats={stats} />
-
-      <section className="crm-command-center" aria-label="Resumen comercial visual">
-        <article>
-          <span><Flame size={18} aria-hidden="true" /></span>
-          <div>
-            <strong>{commercialSnapshot.hotLeads}</strong>
-            <small>oportunidades calientes</small>
-          </div>
-        </article>
-        <article>
-          <span><Activity size={18} aria-hidden="true" /></span>
-          <div>
-            <strong>{commercialSnapshot.activeLeads}</strong>
-            <small>leads activos</small>
-          </div>
-        </article>
-        <article>
-          <span><TrendingUp size={18} aria-hidden="true" /></span>
-          <div>
-            <strong>{formatPercent(commercialSnapshot.conversionRate)}</strong>
-            <small>conversion visible</small>
-          </div>
-        </article>
-        <article>
-          <span><UsersRound size={18} aria-hidden="true" /></span>
-          <div>
-            <strong>{commercialSnapshot.averageScore}</strong>
-            <small>score promedio</small>
-          </div>
-        </article>
-      </section>
-
-      <section className="crm-priority-strip" aria-label="Leads prioritarios">
-        <div>
-          <p className="eyebrow">Seguimiento prioritario</p>
-          <h2>Atiende primero los leads con mayor probabilidad</h2>
-        </div>
-        <div>
-          {priorityLeads.length ? priorityLeads.map((lead) => (
-            <button className="crm-priority-chip" key={lead.id} onClick={() => setSelectedLead(lead)} type="button">
-              <span>{lead.score ?? 0}</span>
-              <strong>{lead.nombre_cliente}</strong>
-              <small>{stateLabels[normalizeLeadState(lead.estado)]}</small>
-            </button>
-          )) : (
-            <span className="crm-priority-empty">Sin leads para priorizar</span>
-          )}
-        </div>
-      </section>
-
-      <section className="crm-insights-grid" aria-label="Graficas de leads">
-        <article className="crm-chart-card">
-          <div>
-            <h2>Leads por etapa</h2>
-            <p>Distribucion del pipeline filtrado.</p>
-          </div>
-          {leadsByState.length ? (
-            <PieChart
-              height={220}
-              series={[{ data: leadsByState, innerRadius: 58, outerRadius: 92, paddingAngle: 3 }]}
-              slotProps={{ legend: { direction: 'row', position: { horizontal: 'middle', vertical: 'bottom' } } }}
-            />
-          ) : (
-            <EmptyState description="Un lead es un posible cliente que dejo datos de contacto o mostro interes comercial." title="Sin leads por etapa" />
-          )}
-        </article>
-        <article className="crm-chart-card">
-          <div>
-            <h2>Leads por origen</h2>
-            <p>Canales que generan oportunidades.</p>
-          </div>
-          {leadsByOrigin.length ? (
-            <BarChart
-              height={220}
-              series={[{ data: leadsByOrigin.map((item) => item.total), label: 'Leads' }]}
-              xAxis={[{ data: leadsByOrigin.map((item) => item.origin), scaleType: 'band' }]}
-            />
-          ) : (
-            <EmptyState description="Cuando entren leads desde conversaciones, WhatsApp o el panel, veras su origen aqui." title="Sin origenes todavia" />
-          )}
-        </article>
-      </section>
-
-      <section className="panel-section crm-panel">
-        <div className="crm-toolbar">
-          <label className="product-search" htmlFor="lead-search">
+      <section className="customer-workspace" aria-label="Clientes registrados">
+        <div className="customer-toolbar">
+          <label className="customer-search" htmlFor="customer-search">
             <Search size={18} aria-hidden="true" />
             <input
-              id="lead-search"
+              id="customer-search"
               onChange={(event) => setFilters((current) => ({ ...current, query: event.target.value }))}
-              placeholder="Buscar cliente, telefono o interes"
+              placeholder="Buscar por nombre, telefono, empresa o interes"
               type="search"
               value={filters.query}
             />
           </label>
 
-          <div className="crm-filter-group">
-            <SlidersHorizontal size={18} aria-hidden="true" />
+          <div className="customer-filter-field">
+            <label htmlFor="customer-status">Estado</label>
             <select
-              aria-label="Filtrar por estado"
+              id="customer-status"
               onChange={(event) => setFilters((current) => ({ ...current, estado: event.target.value }))}
               value={filters.estado}
             >
-              <option value="">Todos los estados</option>
+              <option value="">Todos</option>
               {CRM_STATES.map((state) => (
                 <option key={state} value={state}>{stateLabels[state]}</option>
               ))}
             </select>
+          </div>
+
+          <div className="customer-filter-field">
+            <label htmlFor="customer-company">Empresa</label>
             <select
-              aria-label="Filtrar por origen"
-              onChange={(event) => setFilters((current) => ({ ...current, origen: event.target.value }))}
-              value={filters.origen}
+              id="customer-company"
+              onChange={(event) => setFilters((current) => ({ ...current, empresa: event.target.value }))}
+              value={filters.empresa}
             >
-              <option value="">Todos los origenes</option>
-              {origins.map((origin) => <option key={origin} value={origin}>{origin}</option>)}
+              <option value="">Todas</option>
+              {companyOptions.map((company) => <option key={company} value={company}>{company}</option>)}
             </select>
           </div>
 
-          <div className="crm-date-filters">
-            <CalendarDays size={18} aria-hidden="true" />
+          <div className="customer-date-range">
+            <span>
+              <CalendarDays size={16} aria-hidden="true" />
+              Fecha
+            </span>
             <input
               aria-label="Fecha desde"
               onChange={(event) => setFilters((current) => ({ ...current, dateFrom: event.target.value }))}
@@ -401,21 +320,21 @@ export function LeadsManager() {
             />
           </div>
 
-          <div className="view-toggle">
-            <button className={viewMode === 'kanban' ? 'active' : ''} onClick={() => setViewMode('kanban')} type="button">
-              <Grid2X2 size={17} aria-hidden="true" />
-              Kanban
-            </button>
-            <button className={viewMode === 'table' ? 'active' : ''} onClick={() => setViewMode('table')} type="button">
-              <List size={17} aria-hidden="true" />
-              Tabla
-            </button>
-          </div>
+          <button
+            className="secondary-button customer-clear-button"
+            disabled={!hasFilters}
+            onClick={() => setFilters(initialFilters)}
+            type="button"
+          >
+            <FilterX size={17} aria-hidden="true" />
+            Limpiar
+          </button>
         </div>
 
         <LeadTable
           isLoading={isLoading}
           leads={filteredLeads}
+          onCreate={openCreateModal}
           onDelete={setPendingDelete}
           onEdit={(lead) => {
             setEditingLead(lead);
@@ -423,19 +342,15 @@ export function LeadsManager() {
           }}
           onStageChange={handleStageChange}
           onView={setSelectedLead}
-          viewMode={viewMode}
         />
       </section>
 
       {isFormOpen ? (
         <div className="modal-backdrop" role="presentation">
-          <article className="catalog-modal wide" role="dialog" aria-modal="true" aria-labelledby="lead-form-title">
+          <article className="catalog-modal wide customer-form-modal" role="dialog" aria-modal="true" aria-labelledby="lead-form-title">
             <button
               className="modal-close icon-button"
-              onClick={() => {
-                setEditingLead(null);
-                setIsFormOpen(false);
-              }}
+              onClick={closeFormModal}
               type="button"
               aria-label="Cerrar formulario"
             >
@@ -443,12 +358,12 @@ export function LeadsManager() {
             </button>
             <div className="catalog-modal-header">
               <span>
-                <Plus size={22} aria-hidden="true" />
+                <UserRound size={22} aria-hidden="true" />
               </span>
               <div>
-                <p className="eyebrow">Lead</p>
-                <h2 id="lead-form-title">{editingLead ? 'Editar lead' : 'Nuevo lead'}</h2>
-                <p>Registra datos de contacto, estado y notas internas.</p>
+                <p className="eyebrow">Cliente</p>
+                <h2 id="lead-form-title">{editingLead ? 'Editar cliente' : 'Nuevo cliente'}</h2>
+                <p>Registra datos de contacto, empresa, estado y notas internas.</p>
               </div>
             </div>
             <LeadForm
@@ -456,10 +371,7 @@ export function LeadsManager() {
               companies={companies}
               isSaving={isSaving}
               lead={editingLead}
-              onCancel={() => {
-                setEditingLead(null);
-                setIsFormOpen(false);
-              }}
+              onCancel={closeFormModal}
               onSubmit={handleSubmit}
             />
           </article>
@@ -468,69 +380,87 @@ export function LeadsManager() {
 
       {selectedLead ? (
         <div className="modal-backdrop" role="presentation">
-          <article className="lead-detail-modal" role="dialog" aria-modal="true" aria-labelledby="lead-detail-title">
+          <article className="catalog-modal wide customer-detail-modal" role="dialog" aria-modal="true" aria-labelledby="lead-detail-title">
             <button className="modal-close icon-button" onClick={() => setSelectedLead(null)} type="button" aria-label="Cerrar detalle">
               x
             </button>
-            <div className="lead-detail-header">
+            <div className="catalog-modal-header">
+              <span>
+                <UserRound size={22} aria-hidden="true" />
+              </span>
               <div>
-                <LeadStageBadge state={normalizeLeadState(selectedLead.estado)} />
+                <p className="eyebrow">Cliente</p>
                 <h2 id="lead-detail-title">{selectedLead.nombre_cliente}</h2>
-                <a href={`tel:${selectedLead.telefono}`}>{selectedLead.telefono}</a>
+                <p>{selectedLead.interes || 'Sin interes registrado'}</p>
               </div>
-              <span className={`priority-badge ${getLeadPriority(selectedLead).tone}`}>{getLeadPriority(selectedLead).label}</span>
             </div>
-            <dl className="lead-detail-grid">
-              <div>
-                <dt>Score</dt>
-                <dd>{selectedLead.score ?? 0}</dd>
+
+            <div className="customer-detail-content">
+              <div className="customer-detail-meta-row">
+                <LeadStageBadge state={normalizeLeadState(selectedLead.estado)} />
+                <span>Ultima actividad: {formatDateTime(selectedLead.fecha_actualizacion ?? selectedLead.fecha_creacion)}</span>
               </div>
-              <div>
-                <dt>Interes</dt>
-                <dd>{selectedLead.interes}</dd>
-              </div>
-              <div>
-                <dt>Origen</dt>
-                <dd>{leadOrigin(selectedLead)}</dd>
-              </div>
-              <div>
-                <dt>Responsable</dt>
-                <dd>{leadResponsible(selectedLead) || '-'}</dd>
-              </div>
-              <div>
-                <dt>Empresa</dt>
-                <dd>{selectedLead.empresa_nombre ?? '-'}</dd>
-              </div>
-            </dl>
-            {selectedLead.score_detalle_json?.length ? (
-              <section className="lead-score-panel">
-                <h3>Factores del score</h3>
-                <div>
-                  {selectedLead.score_detalle_json.map((factor, index) => (
-                    <span key={`${factor.factor}-${index}`}>
-                      {factor.factor} {Number(factor.puntos) > 0 ? '+' : ''}{factor.puntos}
-                    </span>
+
+              <div className="customer-detail-columns">
+                <section className="customer-detail-section" aria-label="Informacion del cliente">
+                  <h3>Informacion</h3>
+                  <dl className="customer-detail-grid">
+                    <div>
+                      <dt><Phone size={15} aria-hidden="true" /> Telefono</dt>
+                      <dd>{selectedLead.telefono ?? '-'}</dd>
+                    </div>
+                    <div>
+                      <dt><Mail size={15} aria-hidden="true" /> Correo</dt>
+                      <dd>{customerEmail(selectedLead) || '-'}</dd>
+                    </div>
+                    <div>
+                      <dt><Building2 size={15} aria-hidden="true" /> Empresa</dt>
+                      <dd>{selectedLead.empresa_nombre ?? '-'}</dd>
+                    </div>
+                    <div>
+                      <dt>Responsable</dt>
+                      <dd>{leadResponsible(selectedLead) || '-'}</dd>
+                    </div>
+                  </dl>
+
+                  <section className="customer-notes-panel">
+                    <h3>Notas</h3>
+                    <p>{selectedLead.notas || 'Sin notas internas.'}</p>
+                  </section>
+                </section>
+
+                <section className="customer-timeline-panel" aria-label="Actividad del cliente">
+                  <h3>Actividad</h3>
+                  {buildTimeline(selectedLead).map((event, index) => (
+                    <article className="customer-timeline-item" key={`${event.label}-${index}`}>
+                      <span />
+                      <div>
+                        <strong>{event.label}</strong>
+                        <small>{formatDateTime(event.at)}</small>
+                        {event.detail ? <p>{event.detail}</p> : null}
+                      </div>
+                    </article>
                   ))}
-                </div>
-              </section>
-            ) : null}
-            <section className="lead-notes-panel">
-              <h3>Notas internas</h3>
-              <p>{selectedLead.notas || 'Sin notas internas.'}</p>
-            </section>
-            <section className="lead-timeline-panel">
-              <h3>Timeline</h3>
-              {buildTimeline(selectedLead).map((event, index) => (
-                <article className="lead-timeline-item" key={`${event.label}-${index}`}>
-                  <span />
-                  <div>
-                    <strong>{event.label}</strong>
-                    <small>{formatDateTime(event.at)}</small>
-                    {event.detail ? <p>{event.detail}</p> : null}
-                  </div>
-                </article>
-              ))}
-            </section>
+                </section>
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button className="secondary-button" onClick={() => setSelectedLead(null)} type="button">
+                Cerrar
+              </button>
+              <button
+                className="primary-button"
+                onClick={() => {
+                  setEditingLead(selectedLead);
+                  setIsFormOpen(true);
+                  setSelectedLead(null);
+                }}
+                type="button"
+              >
+                Editar cliente
+              </button>
+            </div>
           </article>
         </div>
       ) : null}
@@ -538,11 +468,11 @@ export function LeadsManager() {
       <ConfirmModal
         destructive
         confirmLabel="Eliminar"
-        description={`Se eliminara el lead de ${pendingDelete?.nombre_cliente ?? 'este cliente'}.`}
+        description={`Se eliminara el cliente ${pendingDelete?.nombre_cliente ?? 'seleccionado'}.`}
         onCancel={() => setPendingDelete(null)}
         onConfirm={() => handleDelete(pendingDelete)}
         open={Boolean(pendingDelete)}
-        title="Eliminar lead"
+        title="Eliminar cliente"
       />
     </div>
   );

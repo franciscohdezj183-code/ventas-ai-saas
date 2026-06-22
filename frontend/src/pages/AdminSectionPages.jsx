@@ -1,4 +1,5 @@
 import { CategoriesManager } from '../features/categories/CategoriesManager.jsx';
+import { AIUsageManager } from '../features/aiUsage/AIUsageManager.jsx';
 import { BotPromptsManager } from '../features/botPrompts/BotPromptsManager.jsx';
 import { CompaniesManager } from '../features/companies/CompaniesManager.jsx';
 import { CompanySettingsManager } from '../features/companySettings/CompanySettingsManager.jsx';
@@ -88,6 +89,10 @@ export function OrdersPage() {
 
 export function ReportsPage() {
   return <ReportsManager />;
+}
+
+export function AIUsagePage() {
+  return <AIUsageManager />;
 }
 
 export function PlansPage() {

@@ -357,7 +357,7 @@ h1 {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: 1000;
   display: grid;
   place-items: center;
   padding: 20px;
@@ -1118,7 +1118,6 @@ h1 {
 .eyebrow {
   color: var(--color-muted);
 }
-.topbar-title,
 h1,
 h2,
 h3,
@@ -1126,6 +1125,10 @@ h3,
 .stat-card strong,
 .metric-card strong {
   color: var(--color-heading);
+}
+
+.topbar-title {
+  color: #2272ff;
 }
 .topbar-menu,
 .topbar-icon-button,
@@ -1315,9 +1318,7 @@ h1 {
   background: rgba(17, 26, 36, 0.94);
 }
 :root[data-theme="dark"] .whatsapp-main-meta div,
-:root[data-theme="dark"] .whatsapp-empty-note,
-:root[data-theme="dark"] .inbox-thread.active,
-:root[data-theme="dark"] .inbox-thread:hover {
+:root[data-theme="dark"] .whatsapp-empty-note {
   background: var(--color-surface-soft);
 }
 /* Width correction: content should expand with the workspace and sidebar state. */

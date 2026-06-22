@@ -12,6 +12,8 @@ function validateCategory(form, canSelectCompany) {
 
   if (!form.nombre.trim()) {
     errors.nombre = 'El nombre es requerido.';
+  } else if (form.nombre.trim().length < 3) {
+    errors.nombre = 'Usa al menos 3 caracteres.';
   }
 
   if (canSelectCompany && !form.empresa_id) {
@@ -22,11 +24,13 @@ function validateCategory(form, canSelectCompany) {
 }
 
 export function CategoryForm({ canSelectCompany, category, companies, isSaving, onCancel, onSubmit }) {
+  const isEditing = Boolean(category);
   const [form, setForm] = useState(initialForm);
   const [errors, setErrors] = useState({});
-  const isEditing = Boolean(category);
 
   useEffect(() => {
+    setErrors({});
+
     if (category) {
       setForm({
         nombre: category.nombre ?? '',
@@ -73,64 +77,76 @@ export function CategoryForm({ canSelectCompany, category, companies, isSaving, 
   }
 
   return (
-    <form className="company-form compact-form" onSubmit={handleSubmit} noValidate>
-      <div className="form-grid">
-        <label className="field-group" htmlFor="category-name">
-          <span>Nombre</span>
-          <input
-            id="category-name"
-            name="nombre"
-            onChange={handleChange}
-            placeholder="Ej. Bebidas, consultas, accesorios"
-            type="text"
-            value={form.nombre}
-          />
-          {errors.nombre ? <small>{errors.nombre}</small> : null}
-        </label>
-
-        <label className="field-group" htmlFor="category-type">
-          <span>Tipo</span>
-          <select id="category-type" name="tipo" onChange={handleChange} value={form.tipo}>
-            <option value="PRODUCTO">PRODUCTO</option>
-            <option value="SERVICIO">SERVICIO</option>
-          </select>
-        </label>
-
-        <label className="field-group" htmlFor="category-status">
-          <span>Estado</span>
-          <select id="category-status" name="estado" onChange={handleChange} value={form.estado}>
-            <option value="ACTIVA">ACTIVA</option>
-            <option value="INACTIVA">INACTIVA</option>
-          </select>
-        </label>
-
-        {canSelectCompany ? (
-          <label className="field-group" htmlFor="category-company">
-            <span>Empresa</span>
-            <select
-              id="category-company"
-              name="empresa_id"
+    <form className="company-form category-form" onSubmit={handleSubmit} noValidate>
+      <div className="category-form-sections">
+        <section className="category-form-section">
+          <div>
+            <h3>Informacion principal</h3>
+            <p>Define un nombre corto y claro para encontrar productos mas rapido.</p>
+          </div>
+          <label className="field-group" htmlFor="category-name">
+            <span>Nombre de categoria</span>
+            <input
+              id="category-name"
+              name="nombre"
               onChange={handleChange}
-              value={form.empresa_id}
-            >
-              <option value="">Selecciona una empresa</option>
-              {companies.map((company) => (
-                <option key={company.id} value={company.id}>
-                  {company.nombre}
-                </option>
-              ))}
-            </select>
-            {errors.empresa_id ? <small>{errors.empresa_id}</small> : null}
+              placeholder="Ej. Bebidas, accesorios, consultas"
+              type="text"
+              value={form.nombre}
+            />
+            {errors.nombre ? <small>{errors.nombre}</small> : null}
           </label>
-        ) : null}
+        </section>
+
+        <section className="category-form-section">
+          <div>
+            <h3>Configuracion</h3>
+            <p>Selecciona donde se usara y si estara disponible en el catalogo.</p>
+          </div>
+          <div className="form-grid category-form-grid">
+            <label className="field-group" htmlFor="category-type">
+              <span>Tipo</span>
+              <select id="category-type" name="tipo" onChange={handleChange} value={form.tipo}>
+                <option value="PRODUCTO">Producto</option>
+                <option value="SERVICIO">Servicio</option>
+              </select>
+            </label>
+
+            <label className="field-group" htmlFor="category-status">
+              <span>Estado</span>
+              <select id="category-status" name="estado" onChange={handleChange} value={form.estado}>
+                <option value="ACTIVA">Activa</option>
+                <option value="INACTIVA">Inactiva</option>
+              </select>
+            </label>
+
+            {canSelectCompany ? (
+              <label className="field-group full-field" htmlFor="category-company">
+                <span>Empresa</span>
+                <select
+                  id="category-company"
+                  name="empresa_id"
+                  onChange={handleChange}
+                  value={form.empresa_id}
+                >
+                  <option value="">Selecciona una empresa</option>
+                  {companies.map((company) => (
+                    <option key={company.id} value={company.id}>
+                      {company.nombre}
+                    </option>
+                  ))}
+                </select>
+                {errors.empresa_id ? <small>{errors.empresa_id}</small> : null}
+              </label>
+            ) : null}
+          </div>
+        </section>
       </div>
 
       <div className="form-actions">
-        {isEditing ? (
-          <button className="secondary-button" onClick={onCancel} type="button">
-            Cancelar
-          </button>
-        ) : null}
+        <button className="secondary-button" onClick={onCancel} type="button">
+          Cancelar
+        </button>
         <button className="primary-button" disabled={isSaving} type="submit">
           {isSaving ? 'Guardando...' : isEditing ? 'Actualizar categoria' : 'Crear categoria'}
         </button>

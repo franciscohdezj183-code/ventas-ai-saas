@@ -1,214 +1,455 @@
-/* Settings module styles.
-   Owns company settings and shared settings form UI. */
+/* Settings module styles. Full reconstruction for the platform settings center. */
 
-.settings-page {
-  gap: 20px;
-  padding-bottom: 96px;
+.settings-center-page,
+.platform-settings-shell {
+  --ps-accent: #00abe4;
+  --ps-accent-strong: #008fc0;
+  --ps-accent-soft: rgba(0, 171, 228, 0.12);
+  --ps-page: #e9f1fa;
+  --ps-card: #ffffff;
+  --ps-muted-card: #f7fbff;
+  --ps-border: rgba(148, 163, 184, 0.24);
+  --ps-text: #1d1d1d;
+  --ps-muted: #64748b;
+  --ps-danger: #dc2626;
+  --ps-success: #16a34a;
 }
 
-.settings-unified-header {
+.settings-center-page {
+  gap: 18px;
+  padding-bottom: 104px;
+}
+
+.platform-settings-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 20px;
-  align-items: center;
-  padding: 22px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  background:
-    linear-gradient(135deg, rgba(24, 119, 242, 0.08), rgba(47, 191, 113, 0.07)),
-    #ffffff;
-  box-shadow: var(--shadow-sm);
+  gap: 18px;
 }
 
-.settings-unified-header > div:first-child,
-.settings-header-summary {
+.platform-settings-shell button,
+.platform-settings-shell input,
+.platform-settings-shell select,
+.platform-settings-shell textarea,
+.settings-center-page button {
+  font: inherit;
+}
+
+.platform-settings-hero,
+.platform-settings-search,
+.platform-settings-sidebar,
+.platform-settings-content,
+.platform-settings-insights section,
+.platform-settings-group,
+.settings-center-error-state {
+  overflow: hidden;
+  border: 1px solid var(--ps-border);
+  border-radius: 14px;
+  background: var(--ps-card);
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.06);
+}
+
+.platform-settings-hero {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 14px;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 150px;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 86% 16%, rgba(0, 171, 228, 0.18), transparent 22%),
+    linear-gradient(135deg, rgba(0, 171, 228, 0.13), rgba(255, 255, 255, 0) 64%),
+    var(--ps-card);
+}
+
+.platform-settings-hero-copy {
+  display: flex;
+  align-items: center;
+  gap: 16px;
   min-width: 0;
 }
 
-.settings-header-icon {
+.platform-settings-hero-copy > span,
+.platform-settings-content-header > span,
+.platform-settings-group header > span,
+.platform-settings-insights header > span,
+.platform-settings-empty > span {
   display: inline-grid;
-  width: 50px;
-  height: 50px;
   flex: 0 0 auto;
   place-items: center;
-  border-radius: var(--radius);
-  background: var(--color-blue-soft);
-  color: var(--color-blue);
+  border-radius: 12px;
+  background: var(--ps-accent-soft);
+  color: var(--ps-accent);
 }
 
-.settings-unified-header h1 {
-  margin: 2px 0 6px;
-  font-size: 2rem;
-  letter-spacing: 0;
-  line-height: 1.05;
+.platform-settings-hero-copy > span {
+  width: 56px;
+  height: 56px;
 }
 
-.settings-header-summary {
+.platform-settings-hero h1 {
+  margin: 2px 0 7px;
+  color: var(--ps-text);
+  font-size: clamp(1.9rem, 2.5vw, 2.55rem);
+  line-height: 1;
+}
+
+.platform-settings-hero p:not(.eyebrow),
+.platform-settings-content-header p,
+.platform-settings-group p,
+.platform-settings-insights p,
+.platform-settings-empty p,
+.settings-center-error-state p {
+  margin: 0;
+  color: var(--ps-muted);
+  line-height: 1.45;
+}
+
+.platform-settings-hero-actions {
+  display: flex;
+  align-items: center;
   justify-content: flex-end;
   flex-wrap: wrap;
+  gap: 9px;
 }
 
-.settings-header-summary div {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 38px;
-  padding: 0 12px;
-  border: 1px solid var(--color-border);
+.platform-settings-hero-actions em {
+  padding: 8px 10px;
   border-radius: 999px;
-  background: #ffffff;
-  color: var(--color-muted);
-  font-weight: 900;
+  background: var(--ps-accent-soft);
+  color: var(--ps-accent-strong);
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 850;
   white-space: nowrap;
 }
 
-.settings-header-summary div.active {
-  border-color: #bfe8d2;
-  background: var(--color-green-soft);
-  color: var(--color-green-dark);
+.platform-settings-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  font-weight: 850;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
 }
 
-.settings-form {
-  display: grid;
-  gap: 18px;
+.platform-settings-button.primary {
+  background: linear-gradient(135deg, var(--ps-accent), #4cc9f0);
+  color: #ffffff;
+  box-shadow: 0 14px 24px rgba(0, 171, 228, 0.2);
 }
 
-.settings-form-grid {
+.platform-settings-button.ghost {
+  border-color: var(--ps-border);
+  background: var(--ps-muted-card);
+  color: var(--ps-text);
+}
+
+.platform-settings-button:hover:not(:disabled),
+.platform-settings-sidebar button:hover {
+  transform: translateY(-1px);
+}
+
+.platform-settings-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.platform-settings-search {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
-  gap: 18px;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  min-height: 58px;
+  padding: 0 16px;
+}
+
+.platform-settings-search svg {
+  color: var(--ps-accent);
+}
+
+.platform-settings-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ps-text);
+  font-weight: 760;
+  outline: 0;
+}
+
+.platform-settings-search input::placeholder {
+  color: var(--ps-muted);
+}
+
+.platform-settings-search strong {
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: var(--ps-accent-soft);
+  color: var(--ps-accent-strong);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.platform-settings-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  gap: 16px;
   align-items: start;
+  min-width: 0;
 }
 
-.settings-form-main,
-.settings-aside {
-  display: grid;
-  gap: 18px;
-}
-
-.settings-aside {
+.platform-settings-insights {
   position: sticky;
-  top: 96px;
+  top: 88px;
 }
 
-.settings-section,
-.settings-preview-card {
+.platform-settings-sidebar {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(9, minmax(150px, 1fr));
+  gap: 8px;
+  padding: 9px;
+}
+
+.platform-settings-sidebar button {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+  min-height: 76px;
+  padding: 10px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ps-text);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+
+.platform-settings-sidebar button.active {
+  border-color: color-mix(in srgb, var(--ps-accent) 36%, var(--ps-border));
+  background: var(--ps-accent-soft);
+}
+
+.platform-settings-sidebar-icon {
+  display: inline-grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 11px;
+  background: var(--ps-muted-card);
+  color: var(--ps-accent);
+}
+
+.platform-settings-sidebar button.active .platform-settings-sidebar-icon {
+  background: linear-gradient(135deg, var(--ps-accent), #4cc9f0);
+  color: #ffffff;
+}
+
+.platform-settings-sidebar-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.platform-settings-sidebar-copy strong,
+.platform-settings-sidebar-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.platform-settings-sidebar-copy strong {
+  color: var(--ps-text);
+  font-size: 0.92rem;
+}
+
+.platform-settings-sidebar-copy small {
+  color: var(--ps-muted);
+  font-size: 0.76rem;
+  font-weight: 650;
+}
+
+.platform-settings-sidebar i {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  justify-self: end;
+  border-radius: 999px;
+  background: var(--ps-success);
+  box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.12);
+}
+
+.platform-settings-sidebar button > svg {
+  display: none;
+}
+
+.platform-settings-sidebar svg {
+  color: var(--ps-muted);
+}
+
+.platform-settings-content {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 18px;
+}
+
+.platform-settings-content-header {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding-bottom: 4px;
+}
+
+.platform-settings-content-header > span {
+  width: 48px;
+  height: 48px;
+}
+
+.platform-settings-content-header h2 {
+  margin: 2px 0 4px;
+  color: var(--ps-text);
+  font-size: clamp(1.3rem, 1.8vw, 1.7rem);
+  line-height: 1.1;
+}
+
+.platform-settings-group {
   display: grid;
   gap: 16px;
   padding: 18px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  background: #ffffff;
-  box-shadow: var(--shadow-sm);
+  box-shadow: none;
+  animation: platformSettingsIn 0.22s ease both;
 }
 
-.settings-section header,
-.settings-preview-header {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
+@keyframes platformSettingsIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.settings-section header > span,
-.settings-preview-header > span {
-  display: inline-grid;
+.platform-settings-group header,
+.platform-settings-insights header {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 11px;
+  align-items: start;
+}
+
+.platform-settings-group header > span,
+.platform-settings-insights header > span {
   width: 40px;
   height: 40px;
-  flex: 0 0 auto;
-  place-items: center;
-  border-radius: var(--radius);
-  background: var(--color-surface-soft);
-  color: var(--color-blue);
 }
 
-.settings-section h2,
-.settings-preview-card h2 {
+.platform-settings-group h3,
+.platform-settings-insights h3,
+.platform-settings-empty h3 {
   margin: 0 0 4px;
-  font-size: 1.05rem;
-  letter-spacing: 0;
+  color: var(--ps-text);
+  font-size: 1.04rem;
 }
 
-.settings-section p,
-.settings-preview-card p {
-  margin: 0;
-  color: var(--color-muted);
-}
-
-.settings-section-body {
-  display: grid;
-  gap: 14px;
-}
-
-.settings-message-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.settings-form textarea {
-  min-height: 132px;
-  line-height: 1.5;
-}
-
-.settings-chat-preview {
-  display: grid;
-  gap: 8px;
-  padding: 16px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  background: linear-gradient(180deg, #f8fafc, #ffffff);
-}
-
-.settings-chat-preview small {
-  color: var(--color-blue);
-  font-weight: 900;
-}
-
-.settings-chat-preview p {
-  width: fit-content;
-  max-width: 100%;
-  padding: 12px 14px;
-  border-radius: 8px;
-  background: var(--color-blue);
-  color: #ffffff;
-  overflow-wrap: anywhere;
-}
-
-.settings-preview-meta {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  color: var(--color-muted);
-  font-weight: 800;
-}
-
-.settings-preview-meta svg {
-  flex: 0 0 auto;
-  margin-top: 2px;
-}
-
-.settings-switch-list {
+.platform-settings-group-body,
+.platform-settings-stack {
   display: grid;
   gap: 12px;
 }
 
-.settings-switch {
+.platform-settings-grid,
+.platform-settings-readonly-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.platform-settings-field.wide,
+.platform-settings-grid .wide {
+  grid-column: 1 / -1;
+}
+
+.platform-settings-field {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.platform-settings-field > span {
+  color: var(--ps-text);
+  font-size: 0.86rem;
+  font-weight: 850;
+}
+
+.platform-settings-field input,
+.platform-settings-field select,
+.platform-settings-field textarea {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid var(--ps-border);
+  border-radius: 10px;
+  background: var(--ps-muted-card);
+  color: var(--ps-text);
+  font-weight: 720;
+  outline: 0;
+  padding: 0 12px;
+}
+
+.platform-settings-field textarea {
+  min-height: 140px;
+  padding: 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.platform-settings-field input:focus,
+.platform-settings-field select:focus,
+.platform-settings-field textarea:focus,
+.platform-settings-sidebar button:focus-visible,
+.platform-settings-button:focus-visible {
+  border-color: var(--ps-accent);
+  box-shadow: 0 0 0 3px var(--ps-accent-soft);
+  outline: none;
+}
+
+.platform-settings-field small {
+  color: var(--ps-muted);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.platform-settings-field small.error {
+  color: var(--ps-danger);
+  font-weight: 850;
+}
+
+.platform-settings-switch {
   position: relative;
   display: grid;
   grid-template-columns: 54px minmax(0, 1fr);
   gap: 12px;
   align-items: center;
+  min-height: 82px;
   padding: 14px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  background: var(--color-surface-soft);
+  border: 1px solid var(--ps-border);
+  border-radius: 12px;
+  background: var(--ps-muted-card);
   cursor: pointer;
 }
 
-.settings-switch input {
+.platform-settings-switch input {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -216,137 +457,376 @@
   clip: rect(0 0 0 0);
 }
 
-.settings-switch-control {
+.platform-settings-switch > span {
   position: relative;
   width: 52px;
   height: 30px;
   border-radius: 999px;
   background: #d8e1ea;
-  transition: background 160ms ease;
+  transition: background 0.18s ease;
 }
 
-.settings-switch-control::after {
+.platform-settings-switch > span::after {
   position: absolute;
   top: 4px;
   left: 4px;
   width: 22px;
   height: 22px;
-  border-radius: 50%;
+  border-radius: 999px;
   background: #ffffff;
-  box-shadow: var(--shadow-sm);
-  transition: transform 160ms ease;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.16);
   content: "";
+  transition: transform 0.18s ease;
 }
 
-.settings-switch input:checked + .settings-switch-control {
-  background: var(--color-green);
+.platform-settings-switch input:checked + span {
+  background: var(--ps-accent);
 }
 
-.settings-switch input:checked + .settings-switch-control::after {
+.platform-settings-switch input:checked + span::after {
   transform: translateX(22px);
 }
 
-.settings-switch-copy {
+.platform-settings-switch div {
   display: grid;
-  gap: 4px;
+  gap: 5px;
+  min-width: 0;
 }
 
-.settings-switch-copy strong {
+.platform-settings-switch strong {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  color: var(--color-text);
+  color: var(--ps-text);
+  font-size: 0.92rem;
 }
 
-.settings-switch-copy small {
-  color: var(--color-muted);
-  line-height: 1.4;
+.platform-settings-switch small {
+  color: var(--ps-muted);
+  line-height: 1.35;
 }
 
-.settings-save-bar {
+.platform-settings-readonly-grid div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--ps-border);
+  border-radius: 12px;
+  background: var(--ps-muted-card);
+}
+
+.platform-settings-readonly-grid span,
+.platform-settings-readonly-grid small {
+  color: var(--ps-muted);
+  font-size: 0.78rem;
+  font-weight: 720;
+}
+
+.platform-settings-readonly-grid strong {
+  overflow: hidden;
+  color: var(--ps-text);
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.platform-settings-empty {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  min-height: 220px;
+  padding: 34px 16px;
+  border: 1px dashed var(--ps-border);
+  border-radius: 12px;
+  background: var(--ps-muted-card);
+  text-align: center;
+}
+
+.platform-settings-empty > span {
+  width: 54px;
+  height: 54px;
+}
+
+.platform-settings-insights {
+  display: grid;
+  gap: 14px;
+}
+
+.platform-settings-insights section {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.platform-settings-insights ul {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.platform-settings-insights li {
+  position: relative;
+  padding-left: 16px;
+  color: var(--ps-muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.platform-settings-insights li::before {
+  position: absolute;
+  top: 0.62em;
+  left: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--ps-accent);
+  content: "";
+}
+
+.platform-settings-unsaved {
   position: sticky;
   bottom: 16px;
-  z-index: 12;
+  z-index: 20;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
   padding: 14px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: var(--shadow-md);
-  backdrop-filter: blur(12px);
+  border: 1px solid color-mix(in srgb, var(--ps-accent) 36%, var(--ps-border));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--ps-card) 92%, transparent);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16);
+  backdrop-filter: blur(14px);
 }
 
-.settings-save-bar > div:first-child {
+.platform-settings-unsaved > div:first-child {
   display: grid;
   gap: 3px;
   min-width: 0;
 }
 
-.settings-save-bar strong,
-.settings-save-bar span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.platform-settings-unsaved strong {
+  color: var(--ps-text);
 }
 
-.settings-save-bar span {
-  color: var(--color-muted);
-  font-weight: 800;
+.platform-settings-unsaved span {
+  color: var(--ps-muted);
+  font-weight: 720;
 }
 
-.settings-save-bar > div:last-child {
+.platform-settings-unsaved > div:last-child {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
-@media (max-width: 1180px) {
+.settings-center-error-state {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  border-color: rgba(220, 38, 38, 0.3);
+  background: rgba(220, 38, 38, 0.07);
+}
 
-  .settings-aside {
-    position: static;
+.settings-center-error-state svg {
+  color: var(--ps-danger);
+}
+
+.settings-center-error-state strong {
+  color: var(--ps-text);
+}
+
+.settings-center-skeleton {
+  border: 1px solid var(--ps-border, rgba(148, 163, 184, 0.24));
+  border-radius: 14px;
+  background: linear-gradient(90deg, #ffffff, rgba(0, 171, 228, 0.12), #ffffff);
+  background-size: 180% 100%;
+  animation: platformSettingsSkeleton 1.2s ease-in-out infinite;
+}
+
+.settings-center-skeleton.hero {
+  min-height: 150px;
+}
+
+.settings-center-skeleton.search {
+  min-height: 58px;
+}
+
+.settings-center-skeleton-grid {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr) minmax(280px, 340px);
+  gap: 16px;
+}
+
+.settings-center-skeleton.sidebar,
+.settings-center-skeleton.panel,
+.settings-center-skeleton.preview {
+  min-height: 540px;
+}
+
+@keyframes platformSettingsSkeleton {
+  0% {
+    background-position: 100% 0;
   }
 
-  .settings-header-summary {
+  100% {
+    background-position: 0 0;
+  }
+}
+
+:root[data-theme='dark'] .settings-center-page,
+:root[data-theme='dark'] .platform-settings-shell {
+  --ps-accent: #2272ff;
+  --ps-accent-strong: #5a96ff;
+  --ps-accent-soft: rgba(34, 114, 255, 0.16);
+  --ps-page: #1d1d1d;
+  --ps-card: #262626;
+  --ps-muted-card: #20242b;
+  --ps-border: rgba(34, 114, 255, 0.28);
+  --ps-text: #ffffff;
+  --ps-muted: rgba(255, 255, 255, 0.76);
+  --ps-danger: #fca5a5;
+  --ps-success: #6ee7a8;
+}
+
+:root[data-theme='dark'] .platform-settings-hero {
+  background:
+    radial-gradient(circle at 86% 16%, rgba(34, 114, 255, 0.18), transparent 22%),
+    linear-gradient(135deg, rgba(34, 114, 255, 0.16), rgba(29, 29, 29, 0) 64%),
+    var(--ps-card);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.28);
+}
+
+:root[data-theme='dark'] .platform-settings-switch > span {
+  background: #4b5563;
+}
+
+:root[data-theme='dark'] .settings-center-skeleton {
+  background: linear-gradient(90deg, #262626, rgba(34, 114, 255, 0.14), #262626);
+  background-size: 180% 100%;
+}
+
+@media (max-width: 1320px) {
+  .platform-settings-layout,
+  .settings-center-skeleton-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .platform-settings-insights,
+  .settings-center-skeleton.preview {
+    position: static;
+    grid-column: auto;
+  }
+
+  .platform-settings-sidebar {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+  }
+
+  .platform-settings-sidebar button {
+    min-width: 230px;
+    scroll-snap-align: start;
+  }
+}
+
+@media (max-width: 980px) {
+  .platform-settings-layout,
+  .settings-center-skeleton-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .platform-settings-insights,
+  .settings-center-skeleton.preview {
+    position: static;
+    grid-column: auto;
+  }
+
+  .platform-settings-sidebar button {
+    min-width: 248px;
+  }
+
+  .platform-settings-hero,
+  .platform-settings-unsaved,
+  .settings-center-error-state {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .settings-center-error-state {
+    display: flex;
+  }
+
+  .platform-settings-hero-actions,
+  .platform-settings-unsaved > div:last-child {
     justify-content: flex-start;
   }
 }
 
-@media (max-width: 520px) {
+@media (max-width: 680px) {
+  .settings-center-page,
+  .platform-settings-shell {
+    gap: 12px;
+    padding-bottom: 124px;
+  }
 
-  .settings-unified-header {
+  .platform-settings-hero {
     padding: 18px;
   }
 
-  .settings-unified-header > div:first-child {
+  .platform-settings-hero-copy {
     align-items: flex-start;
+    flex-direction: column;
   }
 
-  .settings-unified-header h1 {
-    font-size: 1.65rem;
+  .platform-settings-search {
+    grid-template-columns: 24px minmax(0, 1fr);
+    min-height: auto;
+    padding: 12px;
   }
 
-  .settings-header-summary {
-    display: grid;
+  .platform-settings-search strong {
+    grid-column: 1 / -1;
+    width: max-content;
+  }
+
+  .platform-settings-content,
+  .platform-settings-group,
+  .platform-settings-insights section {
+    padding: 14px;
+  }
+
+  .platform-settings-content-header,
+  .platform-settings-group header,
+  .platform-settings-insights header {
     grid-template-columns: 1fr;
+  }
+
+  .platform-settings-grid,
+  .platform-settings-readonly-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .platform-settings-switch {
+    grid-template-columns: 1fr;
+  }
+
+  .platform-settings-hero-actions,
+  .platform-settings-hero-actions > *,
+  .platform-settings-unsaved > div:last-child,
+  .platform-settings-unsaved > div:last-child > *,
+  .settings-center-error-state button {
     width: 100%;
   }
 
-  .settings-header-summary div {
-    justify-content: center;
-  }
-
-  .settings-section,
-  .settings-preview-card {
-    padding: 16px;
-  }
-
-  .settings-save-bar {
-    align-items: stretch;
-    flex-direction: column;
+  .platform-settings-unsaved {
     bottom: 10px;
   }
 }
