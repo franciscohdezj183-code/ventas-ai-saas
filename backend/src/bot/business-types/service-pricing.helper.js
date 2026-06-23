@@ -139,8 +139,8 @@ export function buildCatalogServiceResponse({ service, message }) {
   if (type === 'POR_M2' || service.requiere_medidas) {
     if (!measurement) {
       return [
-        `Si, manejamos ${name} por m2.`,
-        service.precio !== null && service.precio !== undefined ? `El precio es ${formatMoney(service.precio)} por m2.` : '',
+        `Si, manejamos ${name} por m².`,
+        service.precio !== null && service.precio !== undefined ? `El precio es ${formatMoney(service.precio)} por m².` : '',
         details,
         'Para cotizarlo necesito ancho y alto.'
       ].filter(Boolean).join(' ');
@@ -150,7 +150,7 @@ export function buildCatalogServiceResponse({ service, message }) {
     const total = area * Number(service.precio ?? 0);
 
     return [
-      `Claro. La medida ${measurement.label} equivale a ${formatNumber(area)} m2.`,
+      `Claro. La medida ${measurement.label} equivale a ${formatNumber(area)} m².`,
       `El costo aproximado es ${formatMoney(total)}.`,
       details,
       'Quieres que te pase con un asesor para confirmar detalles?'

@@ -32,7 +32,7 @@ const initialFilters = {
 };
 
 function getApiError(error) {
-  return error?.response?.data?.message ?? 'No se pudo completar la operacion.';
+  return error?.response?.data?.message ?? 'No se pudo completar la operación.';
 }
 
 function normalizeText(value) {
@@ -66,7 +66,7 @@ function formatServicePrice(service) {
   const type = String(service?.tipo_precio ?? 'FIJO').toUpperCase();
 
   if (type === 'COTIZACION') {
-    return 'Cotizacion con asesor';
+    return 'Cotización con asesor';
   }
 
   if (type === 'DESDE') {
@@ -95,7 +95,7 @@ function getPriceTypeLabel(type) {
     POR_UNIDAD: 'Por unidad',
     POR_M2: 'Por m2',
     POR_HORA: 'Por hora',
-    COTIZACION: 'Cotizacion'
+    COTIZACION: 'Cotización'
   }[String(type ?? 'FIJO').toUpperCase()] ?? 'Precio fijo';
 }
 
@@ -146,7 +146,7 @@ function ServicesHeader({ onCreate }) {
           <Wrench size={24} aria-hidden="true" />
         </span>
         <div>
-          <p className="eyebrow">Catalogo de servicios</p>
+          <p className="eyebrow">Catálogo de servicios</p>
           <h1>Servicios</h1>
           <p>Administra los servicios que ofreces, sus precios, disponibilidad y detalles principales.</p>
         </div>
@@ -178,15 +178,15 @@ function ServicesStats({ categories, isLoading, services }) {
   }, [categories.length, services]);
 
   const cards = [
-    { key: 'total', icon: PackageCheck, label: 'Total de servicios', value: stats.total, detail: 'Catalogo disponible' },
+    { key: 'total', icon: PackageCheck, label: 'Total de servicios', value: stats.total, detail: 'Catálogo disponible' },
     { key: 'active', icon: Power, label: 'Servicios activos', value: stats.active, detail: 'Listos para ofrecer', tone: 'success' },
     { key: 'inactive', icon: PauseCircle, label: 'Servicios inactivos', value: stats.inactive, detail: 'Pausados temporalmente', tone: 'warning' },
     { key: 'price', icon: DollarSign, label: 'Precio promedio', value: stats.averagePrice === null ? '-' : formatCurrency(stats.averagePrice), detail: 'Servicios con precio' },
-    { key: 'categories', icon: Layers3, label: 'Categorias', value: stats.categories || '-', detail: stats.categories ? 'Organizacion disponible' : 'Dato no disponible' }
+    { key: 'categories', icon: Layers3, label: 'Categorías', value: stats.categories || '-', detail: stats.categories ? 'Organización disponible' : 'Dato no disponible' }
   ];
 
   return (
-    <section className="services-stats-grid" aria-label="Metricas de servicios">
+    <section className="services-stats-grid" aria-label="Métricas de servicios">
       {cards.map((card) => {
         const Icon = card.icon;
         return (
@@ -230,7 +230,7 @@ function ServicesToolbar({
   return (
     <div className="services-toolbar">
       <label className="services-page-size" htmlFor="services-page-size">
-        <span>Filas por pagina</span>
+        <span>Filas por página</span>
         <select id="services-page-size" onChange={(event) => onPageSizeChange(Number(event.target.value))} value={pageSize}>
           {pageSizeOptions.map((size) => (
             <option key={size} value={size}>{size}</option>
@@ -243,7 +243,7 @@ function ServicesToolbar({
         <input
           id="services-search"
           onChange={(event) => onFilterChange({ query: event.target.value })}
-          placeholder="Buscar por nombre, descripcion o categoria"
+          placeholder="Buscar por nombre, descripción o categoría"
           type="search"
           value={filters.query}
         />
@@ -251,8 +251,8 @@ function ServicesToolbar({
 
       <div className="service-filter-group">
         <SlidersHorizontal size={18} aria-hidden="true" />
-        <select aria-label="Categoria" onChange={(event) => onFilterChange({ categoria: event.target.value })} value={filters.categoria}>
-          <option value="">Todas las categorias</option>
+        <select aria-label="Categoría" onChange={(event) => onFilterChange({ categoria: event.target.value })} value={filters.categoria}>
+          <option value="">Todas las categorías</option>
           {categories.map((category) => (
             <option key={category.id} value={category.id}>
               {category.nombre}
@@ -266,7 +266,7 @@ function ServicesToolbar({
         </select>
         <select aria-label="Precio" onChange={(event) => onFilterChange({ price: event.target.value })} value={filters.price}>
           <option value="">Todos los precios</option>
-          <option value="quoted">Cotizacion</option>
+          <option value="quoted">Cotización</option>
           <option value="priced">Con precio</option>
         </select>
       </div>
@@ -341,7 +341,7 @@ function ServicesTable({ onDelete, onEdit, onToggle, onView, pageSize, pageSizeO
           </span>
           <span>
             <strong>{service.nombre}</strong>
-            <small>{service.descripcion || 'Sin descripcion'}</small>
+            <small>{service.descripcion || 'Sin descripción'}</small>
           </span>
         </button>
       ),
@@ -349,10 +349,10 @@ function ServicesTable({ onDelete, onEdit, onToggle, onView, pageSize, pageSizeO
     },
     {
       key: 'categoria',
-      label: 'Categoria',
+      label: 'Categoría',
       headerClassName: 'service-col-category',
       cellClassName: 'service-col-category',
-      render: (service) => service.categoria_nombre || 'Sin categoria',
+      render: (service) => service.categoria_nombre || 'Sin categoría',
       sortValue: (service) => service.categoria_nombre || ''
     },
     {
@@ -386,7 +386,7 @@ function ServicesTable({ onDelete, onEdit, onToggle, onView, pageSize, pageSizeO
     },
     {
       key: 'duracion',
-      label: 'Duracion',
+      label: 'Duración',
       headerClassName: 'service-col-duration',
       cellClassName: 'service-col-duration',
       render: (service) => formatDuration(service.duracion),
@@ -449,7 +449,7 @@ function ServicesEmptyState({ filters, onClear, onCreate }) {
       <EmptyState
         icon={filtered ? Search : Wrench}
         title={filtered ? 'No encontramos servicios.' : 'No hay servicios registrados.'}
-        description={filtered ? 'Intenta cambiar los filtros o limpiar la busqueda.' : 'Agrega tu primer servicio para mostrar claramente lo que ofrece tu negocio.'}
+        description={filtered ? 'Intenta cambiar los filtros o limpiar la búsqueda.' : 'Agrega tu primer servicio para mostrar claramente lo que ofrece tu negocio.'}
         action={filtered ? (
           <button className="secondary-button" onClick={onClear} type="button">
             Limpiar filtros
@@ -479,7 +479,7 @@ function ServiceDetailDrawer({ onClose, onEdit, service }) {
           <div>
             <p className="eyebrow">Detalle del servicio</p>
             <h2 id="service-detail-title">{service.nombre}</h2>
-            <p>{service.categoria_nombre || 'Sin categoria'}</p>
+            <p>{service.categoria_nombre || 'Sin categoría'}</p>
           </div>
         </div>
 
@@ -505,7 +505,7 @@ function ServiceDetailDrawer({ onClose, onEdit, service }) {
             <dd><RequiredDataBadges service={service} /></dd>
           </div>
           <div>
-            <dt>Duracion</dt>
+            <dt>Duración</dt>
             <dd>{formatDuration(service.duracion)}</dd>
           </div>
           <div>
@@ -513,18 +513,18 @@ function ServiceDetailDrawer({ onClose, onEdit, service }) {
             <dd>{service.empresa_nombre || '-'}</dd>
           </div>
           <div>
-            <dt>Creacion</dt>
+            <dt>Creación</dt>
             <dd>{formatDate(getServiceDate(service))}</dd>
           </div>
           <div>
-            <dt>Actualizacion</dt>
+            <dt>Actualización</dt>
             <dd>{formatDate(getUpdatedDate(service))}</dd>
           </div>
         </dl>
 
         <section className="service-detail-description">
-          <h3>Descripcion</h3>
-          <p>{service.descripcion || 'Este servicio aun no tiene descripcion.'}</p>
+          <h3>Descripción</h3>
+          <p>{service.descripcion || 'Este servicio aún no tiene descripción.'}</p>
         </section>
 
         <section className="service-detail-description">
@@ -538,7 +538,7 @@ function ServiceDetailDrawer({ onClose, onEdit, service }) {
         </section>
 
         <section className="service-detail-description">
-          <h3>Notas de cotizacion</h3>
+          <h3>Notas de cotización</h3>
           <p>{service.notas_cotizacion || 'No especificado.'}</p>
         </section>
 
@@ -784,7 +784,7 @@ export function ServicesManager() {
       <ConfirmModal
         destructive
         confirmLabel="Eliminar"
-        description={`Se eliminara ${pendingDelete?.nombre ?? 'este servicio'} del catalogo.`}
+        description={`Se eliminará ${pendingDelete?.nombre ?? 'este servicio'} del catálogo.`}
         onCancel={() => setPendingDelete(null)}
         onConfirm={() => handleDelete(pendingDelete)}
         open={Boolean(pendingDelete)}
@@ -795,8 +795,8 @@ export function ServicesManager() {
         confirmLabel={pendingToggle?.estado === 'ACTIVO' ? 'Desactivar' : 'Activar'}
         description={
           pendingToggle?.estado === 'ACTIVO'
-            ? `Se pausara ${pendingToggle?.nombre ?? 'este servicio'} sin eliminarlo.`
-            : `Se reactivara ${pendingToggle?.nombre ?? 'este servicio'} para el catalogo.`
+            ? `Se pausará ${pendingToggle?.nombre ?? 'este servicio'} sin eliminarlo.`
+            : `Se reactivará ${pendingToggle?.nombre ?? 'este servicio'} para el catálogo.`
         }
         onCancel={() => setPendingToggle(null)}
         onConfirm={() => handleToggle(pendingToggle)}

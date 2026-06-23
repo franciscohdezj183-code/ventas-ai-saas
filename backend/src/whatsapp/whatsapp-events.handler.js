@@ -156,7 +156,14 @@ export function registerWhatsappClientEvents({ companyId, client }) {
     }
 
     await handleIncomingWhatsappMessage({ companyId: empresaId, client, message });
-    upsertSession(empresaId, { lastProcessedAt: new Date().toISOString() });
+    const processedAt = new Date().toISOString();
+    upsertSession(empresaId, { lastProcessedAt: processedAt });
+    logger.info('whatsapp_message_event_processed', {
+      empresaId,
+      source,
+      messageKey,
+      lastProcessedAt: processedAt
+    });
   }
 
   client.on('qr', async (qr) => {

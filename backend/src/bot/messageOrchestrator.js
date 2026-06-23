@@ -103,13 +103,16 @@ const SERVICE_SEARCH_STOP_WORDS = new Set([
   'del',
   'el',
   'en',
+  'hacen',
   'hola',
   'la',
   'las',
   'los',
   'm',
+  'manejan',
   'metro',
   'metros',
+  'ofrecen',
   'por',
   'precio',
   'que',
@@ -122,6 +125,20 @@ const SERVICE_SEARCH_STOP_WORDS = new Set([
   'un',
   'x'
 ]);
+
+function serviceTokenVariants(token) {
+  const variants = new Set([token]);
+
+  if (token.length > 4 && token.endsWith('es')) {
+    variants.add(token.slice(0, -2));
+  }
+
+  if (token.length > 3 && token.endsWith('s')) {
+    variants.add(token.slice(0, -1));
+  }
+
+  return [...variants];
+}
 
 function serviceSearchTokens(value, synonyms = null) {
   return normalizarTextoBusqueda(value, synonyms)
@@ -165,15 +182,17 @@ function rankServicesForMessage(services, message, synonyms = null) {
             ? 6
             : 0;
       const score = phraseScore + tokens.reduce((total, token) => {
-        if (name.split(/\s+/).includes(token)) {
+        const variants = serviceTokenVariants(token);
+
+        if (variants.some((variant) => name.split(/\s+/).includes(variant))) {
           return total + 6;
         }
 
-        if (category.split(/\s+/).includes(token)) {
+        if (variants.some((variant) => category.split(/\s+/).includes(variant))) {
           return total + 3;
         }
 
-        if (haystack.includes(token)) {
+        if (variants.some((variant) => haystack.includes(variant))) {
           return total + 1;
         }
 
@@ -382,7 +401,7 @@ function buildServiceResponse(result, profile = {}) {
     }
 
     if (type === 'POR_M2') {
-      return `${price} por m2`;
+      return `${price} por m²`;
     }
 
     if (type === 'POR_UNIDAD') {

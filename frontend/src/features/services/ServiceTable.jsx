@@ -8,7 +8,7 @@ function formatCurrency(value) {
 function formatPrice(service) {
   const type = String(service.tipo_precio ?? 'FIJO').toUpperCase();
 
-  if (type === 'COTIZACION') return 'Cotizacion con asesor';
+  if (type === 'COTIZACION') return 'Cotización con asesor';
   if (type === 'DESDE') return `Desde ${formatCurrency(service.precio)}`;
   if (type === 'POR_M2') return `${formatCurrency(service.precio)} / m²`;
   if (type === 'POR_HORA') return `${formatCurrency(service.precio)} / hora`;
@@ -45,15 +45,15 @@ export function ServiceTable({ isLoading, onDelete, onEdit, services }) {
       render: (service) => (
         <>
           <strong>{service.nombre}</strong>
-          <span className="muted-cell">{service.descripcion || 'Sin descripcion'}</span>
+          <span className="muted-cell">{service.descripcion || 'Sin descripción'}</span>
         </>
       )
     },
-    { key: 'categoria', header: 'Categoria', render: (service) => service.categoria_nombre || 'Sin categoria' },
+    { key: 'categoria', header: 'Categoría', render: (service) => service.categoria_nombre || 'Sin categoría' },
     { key: 'precio', header: 'Precio/Modalidad', render: formatPrice },
     { key: 'unidad', header: 'Unidad', render: (service) => formatUnit(service.unidad_medida) },
     { key: 'requiere_datos', header: 'Requiere datos', render: formatRequiredData },
-    { key: 'duracion', header: 'Duracion', render: (service) => (Number(service.duracion) > 0 ? `${service.duracion} min` : 'No aplica') },
+    { key: 'duracion', header: 'Duración', render: (service) => (Number(service.duracion) > 0 ? `${service.duracion} min` : 'No aplica') },
     { key: 'estado', header: 'Estado', render: (service) => service.estado },
     { key: 'empresa', header: 'Empresa', render: (service) => service.empresa_nombre },
     {

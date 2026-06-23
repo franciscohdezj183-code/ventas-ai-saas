@@ -8,7 +8,45 @@ import {
 } from './utils.js';
 import { createHttpError } from '../../utils/http-error.js';
 
-const SEARCH_STOP_WORDS = new Set(['a', 'al', 'con', 'de', 'del', 'el', 'en', 'la', 'las', 'los', 'para', 'por', 'que']);
+const SEARCH_STOP_WORDS = new Set([
+  'a',
+  'al',
+  'con',
+  'cotizame',
+  'cuanto',
+  'cuesta',
+  'de',
+  'del',
+  'el',
+  'en',
+  'hacen',
+  'la',
+  'las',
+  'los',
+  'manejan',
+  'ofrecen',
+  'para',
+  'por',
+  'que',
+  'quiero',
+  'servicio',
+  'servicios',
+  'tienen'
+]);
+
+function tokenVariants(token) {
+  const variants = new Set([token]);
+
+  if (token.length > 4 && token.endsWith('es')) {
+    variants.add(token.slice(0, -2));
+  }
+
+  if (token.length > 3 && token.endsWith('s')) {
+    variants.add(token.slice(0, -1));
+  }
+
+  return [...variants];
+}
 
 function normalizeSearchTokens(value) {
   return String(value ?? '')
@@ -46,9 +84,15 @@ async function executeBuscarServicios(args, auth) {
     const tokenConditions = [];
 
     for (const token of input.textTokens) {
-      const term = likeTerm(token);
-      tokenConditions.push('(s.nombre LIKE ? OR s.descripcion LIKE ? OR c.nombre LIKE ?)');
-      params.push(term, term, term);
+      const variantConditions = [];
+
+      for (const variant of tokenVariants(token)) {
+        const term = likeTerm(variant);
+        variantConditions.push('(s.nombre LIKE ? OR s.descripcion LIKE ? OR c.nombre LIKE ?)');
+        params.push(term, term, term);
+      }
+
+      tokenConditions.push(`(${variantConditions.join(' OR ')})`);
     }
 
     conditions.push(`(MATCH(s.nombre, s.descripcion) AGAINST (? IN BOOLEAN MODE) OR ${tokenConditions.join(' OR ')})`);

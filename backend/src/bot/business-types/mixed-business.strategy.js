@@ -46,7 +46,12 @@ function isPriceQuestion(message) {
 }
 
 function isPurchaseQuestion(message) {
-  return /\b(me interesa|lo quiero|la quiero|quiero comprar|comprar|ap[aá]rtamelo|apartamelo|ap[aá]rtalo|apartalo|me lo llevo|quiero ese|quiero informacion|quiero informaci[oó]n)\b/i.test(message);
+  const normalized = String(message ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  return /\b(me interesa|lo quiero|la quiero|quiero comprar|comprar|apartamelo|apartalo|me lo llevo|quiero ese|quiero informacion|pasame con asesor|asesor)\b/i.test(normalized);
 }
 
 function isGreetingIntent(intent) {

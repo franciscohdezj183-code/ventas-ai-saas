@@ -210,6 +210,7 @@ export async function handleIncomingWhatsappMessage({ companyId, client, message
     });
 
     await chat.sendMessage(result.respuesta);
+    const sentAt = new Date().toISOString();
 
     logger.info('[WA][BOT_REPLY_SENT]', {
       empresaId,
@@ -221,7 +222,8 @@ export async function handleIncomingWhatsappMessage({ companyId, client, message
       empresaId,
       telefonoCliente: customerPhone,
       whatsappId,
-      conversacionId: result.conversacion_id ?? null
+      conversacionId: result.conversacion_id ?? null,
+      lastOutboundAt: sentAt
     });
   }
 

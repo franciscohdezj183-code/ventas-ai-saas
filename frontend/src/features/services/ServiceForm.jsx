@@ -6,7 +6,7 @@ const PRICE_TYPES = [
   { value: 'POR_UNIDAD', label: 'Por unidad' },
   { value: 'POR_M2', label: 'Por m2' },
   { value: 'POR_HORA', label: 'Por hora' },
-  { value: 'COTIZACION', label: 'Cotizacion con asesor' }
+  { value: 'COTIZACION', label: 'Cotización con asesor' }
 ];
 
 const UNIT_OPTIONS = [
@@ -73,11 +73,11 @@ function validateService(form, canSelectCompany) {
   }
 
   if (form.precio_minimo !== '' && Number(form.precio_minimo) < 0) {
-    errors.precio_minimo = 'El precio minimo debe ser mayor o igual a 0.';
+    errors.precio_minimo = 'El precio mínimo debe ser mayor o igual a 0.';
   }
 
   if (form.duracion_minutos !== '' && (!Number.isInteger(Number(form.duracion_minutos)) || Number(form.duracion_minutos) <= 0)) {
-    errors.duracion_minutos = 'La duracion debe ser mayor a 0 o dejarse vacia.';
+    errors.duracion_minutos = 'La duración debe ser mayor a 0 o dejarse vacía.';
   }
 
   if (canSelectCompany && !form.empresa_id) {
@@ -189,20 +189,20 @@ export function ServiceForm({ canSelectCompany, categories = [], companies = [],
       <div className="service-form-sections">
         <section className="service-form-section service-form-section-main">
           <div>
-            <h3>Informacion principal</h3>
-            <p>Datos generales para identificar el servicio y ubicarlo en el catalogo.</p>
+            <h3>Información principal</h3>
+            <p>Datos generales para identificar el servicio y ubicarlo en el catálogo.</p>
           </div>
           <div className="form-grid service-form-grid">
             <label className="field-group" htmlFor="service-name">
               <span>Nombre</span>
-              <input id="service-name" name="nombre" onChange={handleChange} placeholder="Ej. Instalacion, asesoria, impresion" type="text" value={form.nombre} />
+              <input id="service-name" name="nombre" onChange={handleChange} placeholder="Ej. Instalación, asesoría, impresión" type="text" value={form.nombre} />
               {errors.nombre ? <small>{errors.nombre}</small> : null}
             </label>
 
             <label className="field-group" htmlFor="service-category">
-              <span>Categoria</span>
+              <span>Categoría</span>
               <select id="service-category" name="categoria_id" onChange={handleChange} value={form.categoria_id}>
-                <option value="">Sin categoria</option>
+                <option value="">Sin categoría</option>
                 {categories.map((category) => (
                   <option key={category.id} value={category.id}>{category.nombre}</option>
                 ))}
@@ -210,7 +210,7 @@ export function ServiceForm({ canSelectCompany, categories = [], companies = [],
             </label>
 
             <label className="field-group full-field" htmlFor="service-description">
-              <span>Descripcion</span>
+              <span>Descripción</span>
               <textarea id="service-description" name="descripcion" onChange={handleChange} placeholder="Describe el alcance, condiciones o beneficios principales." value={form.descripcion} />
             </label>
           </div>
@@ -219,7 +219,7 @@ export function ServiceForm({ canSelectCompany, categories = [], companies = [],
         <section className="service-form-section">
           <div>
             <h3>Precio y modalidad</h3>
-            <p>Define como se cobra o si requiere cotizacion personalizada.</p>
+            <p>Define cómo se cobra o si requiere cotización personalizada.</p>
           </div>
           <div className="form-grid service-form-grid">
             <label className="field-group" htmlFor="service-price-type">
@@ -247,7 +247,7 @@ export function ServiceForm({ canSelectCompany, categories = [], companies = [],
             </label>
 
             <label className="field-group" htmlFor="service-min-price">
-              <span>Precio minimo</span>
+              <span>Precio mínimo</span>
               <input id="service-min-price" min="0" name="precio_minimo" onChange={handleChange} placeholder="Opcional" step="0.01" type="number" value={form.precio_minimo} />
               {errors.precio_minimo ? <small>{errors.precio_minimo}</small> : null}
             </label>
@@ -256,8 +256,8 @@ export function ServiceForm({ canSelectCompany, categories = [], companies = [],
 
         <section className="service-form-section">
           <div>
-            <h3>Datos para cotizacion</h3>
-            <p>Indica que informacion necesita el equipo o el bot para orientar al cliente.</p>
+            <h3>Datos para cotización</h3>
+            <p>Indica qué información necesita el equipo o el bot para orientar al cliente.</p>
           </div>
           <div className="form-grid service-form-grid">
             <label className="field-group service-checkbox-field">
@@ -271,14 +271,14 @@ export function ServiceForm({ canSelectCompany, categories = [], companies = [],
             </label>
 
             <label className="field-group" htmlFor="service-duration">
-              <span>Duracion en minutos</span>
+              <span>Duración en minutos</span>
               <input id="service-duration" min="1" name="duracion_minutos" onChange={handleChange} placeholder="No aplica" step="1" type="number" value={form.duracion_minutos} />
               {errors.duracion_minutos ? <small>{errors.duracion_minutos}</small> : null}
             </label>
 
             <label className="field-group full-field" htmlFor="service-quote-notes">
-              <span>{isQuote ? 'Notas de cotizacion' : 'Notas para cotizar'}</span>
-              <textarea id="service-quote-notes" name="notas_cotizacion" onChange={handleChange} placeholder="Ej. Pedir medidas, cantidad, material, ubicacion o fecha requerida." value={form.notas_cotizacion} />
+              <span>{isQuote ? 'Notas de cotización' : 'Notas para cotizar'}</span>
+              <textarea id="service-quote-notes" name="notas_cotizacion" onChange={handleChange} placeholder="Ej. Pedir medidas, cantidad, material, ubicación o fecha requerida." value={form.notas_cotizacion} />
             </label>
 
             <label className="field-group full-field" htmlFor="service-includes">

@@ -951,7 +951,7 @@ describe('messageOrchestrator', () => {
       }
     });
 
-    assert.match(result.respuesta, /2 m2/);
+    assert.match(result.respuesta, /2 m²/);
     assert.match(result.respuesta, /\$780/);
     assert.match(result.respuesta, /Incluye diseno/);
     assert.match(result.respuesta, /No incluye instalacion/);
@@ -1011,7 +1011,7 @@ describe('messageOrchestrator', () => {
     });
 
     assert.match(result.respuesta, /2 x 1 m/);
-    assert.match(result.respuesta, /2 m2/);
+    assert.match(result.respuesta, /2 m²/);
     assert.match(result.respuesta, /\$780/);
   });
 
@@ -1178,7 +1178,7 @@ describe('messageOrchestrator', () => {
     });
 
     assert.match(result.respuesta, /1\.5 x 2 m/);
-    assert.match(result.respuesta, /3 m2/);
+    assert.match(result.respuesta, /3 m²/);
     assert.match(result.respuesta, /\$1,260/);
     assert.equal(savedContexts[0].ultimoServicioId, 74);
     assert.equal(savedContexts[0].datos.servicio.nombre, 'Vinil impreso');
@@ -1556,6 +1556,331 @@ describe('messageOrchestrator', () => {
     assert.match(result.respuesta, /600 piezas/);
     assert.match(result.respuesta, /cotizacion con asesor/);
     assert.doesNotMatch(result.respuesta, /cuesta \$297/);
+  });
+
+  it('validates final MOK demo bot flow with real service data', async () => {
+    const services = [
+      {
+        id: 1,
+        nombre: 'Diseño de logotipo',
+        descripcion: 'Diseño de marca',
+        precio: null,
+        tipo_precio: 'COTIZACION',
+        unidad_medida: 'asesor',
+        duracion: null,
+        requiere_medidas: false,
+        requiere_cantidad: false,
+        incluye: null,
+        no_incluye: null,
+        notas_cotizacion: 'Cotización según alcance, aplicaciones y entregables.',
+        precio_minimo: null,
+        categoria: 'Diseño'
+      },
+      {
+        id: 3,
+        nombre: 'Diseño web',
+        descripcion: 'Página web para negocios',
+        precio: null,
+        tipo_precio: 'COTIZACION',
+        unidad_medida: 'asesor',
+        duracion: null,
+        requiere_medidas: false,
+        requiere_cantidad: false,
+        incluye: null,
+        no_incluye: null,
+        notas_cotizacion: 'Cotización según secciones, funciones y contenido.',
+        precio_minimo: null,
+        categoria: 'Diseño'
+      },
+      {
+        id: 5,
+        nombre: 'Tarjetas digitales laminado mate 100 pzs',
+        descripcion: 'Tarjetas impresas en paquete de 100 piezas',
+        precio: 297,
+        tipo_precio: 'FIJO',
+        unidad_medida: 'paquete',
+        duracion: null,
+        requiere_medidas: false,
+        requiere_cantidad: true,
+        incluye: null,
+        no_incluye: null,
+        notas_cotizacion: '100 piezas laminado mate. Para más de 500 piezas consultar con asesor.',
+        precio_minimo: null,
+        categoria: 'Impresión'
+      },
+      {
+        id: 6,
+        nombre: 'Impresión de lona',
+        descripcion: 'Lona impresa por metro cuadrado',
+        precio: 390,
+        tipo_precio: 'POR_M2',
+        unidad_medida: 'm2',
+        duracion: null,
+        requiere_medidas: true,
+        requiere_cantidad: false,
+        incluye: 'Diseño',
+        no_incluye: 'Instalación',
+        notas_cotizacion: null,
+        precio_minimo: null,
+        categoria: 'Impresión'
+      },
+      {
+        id: 7,
+        nombre: 'Vinil impreso',
+        descripcion: 'Vinil impreso por metro cuadrado',
+        precio: 390,
+        tipo_precio: 'POR_M2',
+        unidad_medida: 'm2',
+        duracion: null,
+        requiere_medidas: true,
+        requiere_cantidad: false,
+        incluye: 'Diseño',
+        no_incluye: 'Instalación',
+        notas_cotizacion: null,
+        precio_minimo: null,
+        categoria: 'Vinil'
+      },
+      {
+        id: 9,
+        nombre: 'Instalación',
+        descripcion: 'Instalación de materiales en sitio',
+        precio: null,
+        tipo_precio: 'COTIZACION',
+        unidad_medida: 'asesor',
+        duracion: null,
+        requiere_medidas: false,
+        requiere_cantidad: false,
+        incluye: null,
+        no_incluye: null,
+        notas_cotizacion: 'Cotización según ubicación, superficie, altura y complejidad de instalación.',
+        precio_minimo: null,
+        categoria: 'Instalación'
+      },
+      {
+        id: 11,
+        nombre: 'Vinil reflejante',
+        descripcion: 'Vinil reflejante por metro cuadrado',
+        precio: 800,
+        tipo_precio: 'POR_M2',
+        unidad_medida: 'm2',
+        duracion: null,
+        requiere_medidas: true,
+        requiere_cantidad: false,
+        incluye: 'Depilado y transfer',
+        no_incluye: 'Instalación',
+        notas_cotizacion: null,
+        precio_minimo: null,
+        categoria: 'Vinil'
+      }
+    ];
+    const stopWords = new Set([
+      'a',
+      'con',
+      'cotizame',
+      'cuanto',
+      'cuesta',
+      'de',
+      'del',
+      'el',
+      'en',
+      'hacen',
+      'la',
+      'las',
+      'los',
+      'manejan',
+      'ofrecen',
+      'para',
+      'por',
+      'que',
+      'quiero',
+      'servicio',
+      'servicios',
+      'tienen',
+      'una',
+      'un',
+      'x'
+    ]);
+    const normalize = (value) => String(value ?? '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .trim();
+    const tokenVariants = (token) => {
+      const variants = new Set([token]);
+
+      if (token.length > 4 && token.endsWith('es')) {
+        variants.add(token.slice(0, -2));
+      }
+
+      if (token.length > 3 && token.endsWith('s')) {
+        variants.add(token.slice(0, -1));
+      }
+
+      return [...variants];
+    };
+    const searchServices = (text) => {
+      const tokens = normalize(text)
+        .split(/\s+/)
+        .filter((token) => token.length > 1 && !/^\d+$/.test(token) && !stopWords.has(token));
+
+      if (!tokens.length) {
+        return services;
+      }
+
+      return services.filter((service) => {
+        const haystack = normalize(`${service.nombre} ${service.descripcion} ${service.categoria}`);
+        return tokens.some((token) => tokenVariants(token).some((variant) => haystack.includes(variant)));
+      });
+    };
+    const calls = [];
+    const contexts = new Map();
+    const rows = [];
+    const leads = [];
+    let nextConversationId = 700;
+    const mcpClient = {
+      async callTool(toolName, args) {
+        calls.push({ toolName, args });
+
+        if (toolName === 'buscar_servicios') {
+          return { servicios: searchServices(args.texto) };
+        }
+
+        if (toolName === 'obtener_servicio') {
+          return { servicio: services.find((service) => service.id === args.servicio_id) };
+        }
+
+        if (toolName === 'crear_lead' || toolName === 'registrar_intencion_compra') {
+          const lead = {
+            lead_id: 900 + leads.length,
+            nombre_cliente: args.nombre_cliente ?? args.contact_name ?? 'Cliente WhatsApp',
+            telefono: args.telefono,
+            whatsapp_id: args.whatsapp_id,
+            contact_name: args.contact_name,
+            interes: args.interes,
+            producto_id: args.producto_id ?? null,
+            servicio_id: args.servicio_id ?? null
+          };
+          leads.push({ toolName, args, lead });
+          return lead;
+        }
+
+        if (toolName === 'guardar_conversacion') {
+          rows.push(args);
+          return { conversacion_id: nextConversationId++ };
+        }
+
+        throw new Error(`Unexpected tool: ${toolName}`);
+      }
+    };
+    const contextStore = {
+      async find({ empresaId, phone }) {
+        return contexts.get(`${empresaId}:${phone}`) ?? null;
+      },
+      async save(context) {
+        contexts.set(`${context.empresaId}:${context.phone}`, {
+          ultima_intencion: context.ultimaIntencion,
+          ultimo_producto_id: context.ultimoProductoId,
+          ultimo_servicio_id: context.ultimoServicioId,
+          ultimo_texto_busqueda: context.ultimoTextoBusqueda,
+          datos_json: context.datos
+        });
+      }
+    };
+    const handoffRequests = [];
+    const handoffManager = {
+      async hasActive() {
+        return false;
+      },
+      async request(args) {
+        handoffRequests.push(args);
+        return { handoff_id: 1000 + handoffRequests.length, estado: 'PENDING_OWNER', duplicate: false };
+      }
+    };
+    const run = (message) => orchestrateIncomingMessage({
+      empresaId: 5,
+      phone: '5212205722560@c.us',
+      whatsappChatId: '5212205722560@c.us',
+      contactName: 'Francisco',
+      message,
+      contexto: { nombre: 'MOK Estudio + Taller', tipo_negocio: 'MIXTO' },
+      interpreter: async () => ({
+        intencion: 'MENSAJE_GENERAL',
+        herramienta_mcp: '',
+        parametros: {},
+        confianza: 0.8,
+        requiere_respuesta_ia: false
+      }),
+      mcpClient,
+      handoffManager,
+      contextStore
+    });
+
+    const catalog = await run('Hola, ¿qué servicios tienen?');
+    assert.match(catalog.respuesta, /Diseño de logotipo/);
+    assert.match(catalog.respuesta, /Impresión de lona/);
+
+    const lonaMeters = await run('cuánto cuesta una lona de 2x1');
+    assert.match(lonaMeters.respuesta, /2 m²/);
+    assert.match(lonaMeters.respuesta, /\$780\.00/);
+
+    const lonaCentimeters = await run('cotízame una lona de 200cm x 100cm');
+    assert.match(lonaCentimeters.respuesta, /2 x 1 m/);
+    assert.match(lonaCentimeters.respuesta, /2 m²/);
+    assert.match(lonaCentimeters.respuesta, /\$780\.00/);
+
+    const vinilImpreso = await run('vinil impreso 1.5x2');
+    assert.match(vinilImpreso.respuesta, /3 m²/);
+    assert.match(vinilImpreso.respuesta, /\$1,170\.00/);
+
+    const vinilReflejante = await run('vinil reflejante 1x1');
+    assert.match(vinilReflejante.respuesta, /1 m²/);
+    assert.match(vinilReflejante.respuesta, /\$800\.00/);
+
+    const tarjetas100 = await run('quiero tarjetas 100 piezas');
+    assert.match(tarjetas100.respuesta, /\$297\.00/);
+
+    const tarjetas600 = await run('quiero 600 tarjetas');
+    assert.match(tarjetas600.respuesta, /600 piezas/);
+    assert.match(tarjetas600.respuesta, /cotizacion con asesor/i);
+    assert.doesNotMatch(tarjetas600.respuesta, /\$1,782|\$297\.00/);
+
+    const web = await run('hacen diseño web');
+    assert.match(web.respuesta, /Diseño web/);
+    assert.match(web.respuesta, /asesor/);
+    assert.doesNotMatch(web.respuesta, /\$\d/);
+
+    const logo = await run('hacen logotipos');
+    assert.match(logo.respuesta, /Diseño de logotipo/);
+    assert.match(logo.respuesta, /alcance/);
+    assert.doesNotMatch(logo.respuesta, /\$\d/);
+
+    const installation = await run('quiero instalación');
+    assert.match(installation.respuesta, /Instalación/);
+    assert.match(installation.respuesta, /ubicación|superficie|altura|asesor/i);
+    assert.doesNotMatch(installation.respuesta, /\$\d/);
+
+    const interest = await run('me interesa');
+    assert.equal(interest.lead_id, 900);
+    assert.equal(interest.mcp_result.telefono, '522205722560');
+    assert.equal(interest.mcp_result.whatsapp_id, '5212205722560@c.us');
+    assert.equal(interest.mcp_result.contact_name, 'Francisco');
+    assert.equal(interest.mcp_result.servicio_id, 9);
+
+    const advisor = await run('pásame con un asesor');
+    assert.equal(advisor.lead_id, 901);
+    assert.equal(advisor.mcp_result.telefono, '522205722560');
+    assert.equal(advisor.mcp_result.whatsapp_id, '5212205722560@c.us');
+    assert.equal(advisor.mcp_result.contact_name, 'Francisco');
+    assert.equal(advisor.mcp_result.servicio_id, 9);
+
+    assert.equal(calls.filter((call) => call.toolName === 'buscar_servicios').every((call) => call.args.empresa_id === 5), true);
+    assert.equal(calls.some((call) => call.toolName === 'buscar_productos'), false);
+    assert.equal(rows.every((row) => row.empresa_id === 5), true);
+    const mojibakePattern = new RegExp('[\\u00c3\\u00c2]|\\u00f0\\u0178|m\\u00c2\\u00b2');
+    assert.equal(rows.every((row) => !mojibakePattern.test(`${row.mensaje} ${row.respuesta}`)), true);
+    assert.equal(rows.every((row) => !/duraci[oó]n/i.test(row.respuesta)), true);
+    assert.equal(leads.every(({ args }) => args.empresa_id === 5), true);
   });
 
   it('normalizes customer text for intent and MCP search without changing saved message', async () => {

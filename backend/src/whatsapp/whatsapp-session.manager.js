@@ -222,12 +222,11 @@ export async function startSession(companyId) {
     await destroyClientQuietly(existing.client);
   }
 
-  await removeCompanyLocalAuthQuietly(id);
-
   const client = clientFactory(id);
   markStarted(id, client);
   setClient(id, client);
   registerWhatsappClientEvents({ companyId: id, client });
+  logger.info('whatsapp_session_initialize_requested', { empresaId: id });
 
   try {
     const initializePromise = client.initialize();
@@ -333,6 +332,12 @@ export async function sendWhatsappMessage(companyId, phone, message) {
 
   const to = await resolveWhatsappRecipientId(session.client, phone);
   await session.client.sendMessage(to, cleanMessage);
+  upsertSession(id, { lastOutboundAt: new Date().toISOString() });
+  logger.info('whatsapp_message_sent', {
+    empresaId: id,
+    phone,
+    to
+  });
 
   return {
     companyId: id,
@@ -344,6 +349,7 @@ export async function sendWhatsappMessage(companyId, phone, message) {
 
 export async function restoreSessionsOnBoot() {
   if (process.env.WHATSAPP_RESTORE_SESSIONS !== 'true') {
+    logger.info('whatsapp_restore_sessions_skipped', { enabled: false });
     return [];
   }
 
@@ -361,6 +367,7 @@ export async function restoreSessionsOnBoot() {
 
   for (const company of companies) {
     try {
+      logger.info('whatsapp_restore_session_start', { empresaId: company.id });
       restored.push(await startSession(company.id));
     } catch (error) {
       logger.error('whatsapp_restore_session_error', {
