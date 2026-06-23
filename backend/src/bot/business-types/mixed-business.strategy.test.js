@@ -41,8 +41,16 @@ describe('mixedBusinessStrategy commercial routing', () => {
     assert.match(responseOf(result), /asesor/);
   });
 
-  it('keeps asking for clarification when product or service intent is unclear', () => {
+  it('keeps greeting messages as greetings even when the interpreter is generic', () => {
     const result = run('hola');
+
+    assert.equal(result.intencion, 'SALUDO');
+    assert.equal(result.herramienta_mcp, '');
+    assert.equal(responseOf(result), '');
+  });
+
+  it('keeps asking for clarification when product or service intent is unclear', () => {
+    const result = run('info');
 
     assert.equal(result.intencion, 'MENSAJE_GENERAL');
     assert.match(responseOf(result), /producto especifico/);

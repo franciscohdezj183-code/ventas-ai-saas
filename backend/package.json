@@ -5,7 +5,7 @@
   "type": "module",
   "main": "src/server.js",
   "scripts": {
-    "dev": "nodemon --ignore storage/ --ignore uploads/ --ignore logs/ src/server.js",
+    "dev": "nodemon --delay 1.5 --ignore storage/ --ignore uploads/ --ignore logs/ --ignore src/**/*.test.js src/server.js",
     "migrate": "node src/database/migrate.js",
     "db:check": "node src/database/check-connection.js",
     "db:seed:super-admin": "node src/database/seed-super-admin.js",

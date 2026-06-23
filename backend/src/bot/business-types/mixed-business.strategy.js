@@ -49,6 +49,14 @@ function isPurchaseQuestion(message) {
   return /\b(me interesa|lo quiero|la quiero|quiero comprar|comprar|ap[aá]rtamelo|apartamelo|ap[aá]rtalo|apartalo|me lo llevo|quiero ese|quiero informacion|quiero informaci[oó]n)\b/i.test(message);
 }
 
+function isGreetingIntent(intent) {
+  return intent.intencion === 'SALUDO';
+}
+
+function isGreetingMessage(message) {
+  return /^(hola|buenas|buenos dias|buen dia|buenas tardes|buenas noches|hey|hello)$/i.test(String(message ?? '').trim());
+}
+
 function isLikelyProductQuestion(message) {
   return /\b(producto|productos|art[ií]culo|articulo|mercanc[ií]a|mercancia|pieza|piezas|modelo|modelos|cat[aá]logo|catalogo|stock|existencia|existencias|inventario|disponible|disponibilidad|comprar|precio)\b/i.test(message);
 }
@@ -142,6 +150,15 @@ export const mixedBusinessStrategy = {
     const contextType = lastContextType(conversationContext);
     const productLike = isLikelyProductQuestion(normalizedMessage);
     const serviceLike = isLikelyServiceQuestion(normalizedMessage);
+
+    if (isGreetingIntent(intent) || isGreetingMessage(normalizedMessage)) {
+      return {
+        ...intent,
+        intencion: 'SALUDO',
+        herramienta_mcp: '',
+        parametros: { ...(intent.parametros ?? {}) }
+      };
+    }
 
     if (isPurchaseQuestion(normalizedMessage) || intent.intencion === 'INTENCION_COMPRA') {
       return buildInterestIntent(intent, normalizedMessage, conversationContext);

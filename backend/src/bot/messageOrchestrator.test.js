@@ -678,6 +678,47 @@ describe('messageOrchestrator', () => {
     assert.equal(result.respuesta, welcomeMessage);
   });
 
+  it('uses configured welcome message for plain greeting text even with generic intent', async () => {
+    const mcpClient = {
+      async callTool(toolName) {
+        if (toolName === 'guardar_conversacion') {
+          return { conversacion_id: 109 };
+        }
+
+        throw new Error(`Unexpected tool: ${toolName}`);
+      }
+    };
+    const welcomeMessage = 'Hola, gracias por contactar a MOK Estudio + Taller.';
+
+    const result = await orchestrateIncomingMessage({
+      empresaId: 1,
+      phone: '5215550000000@c.us',
+      message: 'Hola',
+      contexto: {
+        nombre: 'MOK Estudio + Taller',
+        tipo_negocio: 'Mixto',
+        mensaje_bienvenida: welcomeMessage
+      },
+      interpreter: async () => ({
+        intencion: 'MENSAJE_GENERAL',
+        herramienta_mcp: '',
+        parametros: {},
+        confianza: 0.6,
+        requiere_respuesta_ia: false
+      }),
+      mcpClient,
+      contextStore: {
+        async find() {
+          return null;
+        },
+        async save() {}
+      }
+    });
+
+    assert.equal(result.intencion, 'SALUDO');
+    assert.equal(result.respuesta, welcomeMessage);
+  });
+
   it('falls back to service search when product search is empty for a service category', async () => {
     const calls = [];
     const mcpClient = {
