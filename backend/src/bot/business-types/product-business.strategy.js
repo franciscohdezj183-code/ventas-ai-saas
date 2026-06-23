@@ -20,8 +20,52 @@ function isStockQuestion(message) {
   return /\b(stock|disponible|disponibilidad|existencia|existencias)\b/i.test(message);
 }
 
+function isCategoryQuestion(message) {
+  return /\b(categor[ií]a|categoria|categor[ií]as|categorias|departamentos|secciones)\b/i.test(message);
+}
+
 function isPurchaseQuestion(message) {
-  return /\b(lo quiero|la quiero|me interesa|quiero comprar|comprar|ap[aá]rtamelo|apartamelo|ap[aá]rtalo|apartalo|me lo llevo|quiero ese|quiero informacion|quiero informaci[oó]n)\b/i.test(message);
+  return /\b(lo quiero|la quiero|me interesa|quiero comprar|comprar|apartar|ap[aá]rtamelo|apartamelo|ap[aá]rtalo|apartalo|apartarlo|ap[aá]rtarlo|aparto|ap[aá]rto|como lo aparto|c[oó]mo lo aparto|separar|separamelo|me lo llevo|quiero ese|quiero informacion|quiero informaci[oó]n|hacer pedido|levantar pedido|finalizar compra|cerrar compra)\b/i.test(message);
+}
+
+function isAdvisorQuestion(message) {
+  return /\b(asesor|humano|persona|vendedor|ejecutivo|atiendeme|ati[eé]ndeme)\b/i.test(message);
+}
+
+function isVagueProductRequest(message) {
+  return /^(un producto|producto|productos|catalogo|catalogo de productos|opciones|info|informacion)$/i.test(String(message ?? '').trim());
+}
+
+function isLikelyProductSearch(message) {
+  const cleanMessage = String(message ?? '').trim();
+  const tokens = cleanMessage.split(/\s+/).filter(Boolean);
+
+  return tokens.length > 0
+    && tokens.length <= 6
+    && /[a-z0-9]/i.test(cleanMessage)
+    && !isVagueProductRequest(cleanMessage)
+    && !isPriceQuestion(cleanMessage)
+    && !isStockQuestion(cleanMessage)
+    && !isPurchaseQuestion(cleanMessage);
+}
+
+function productSearchTextFromPurchase(message) {
+  return String(message ?? '')
+    .replace(/\b(lo quiero|la quiero|me interesa|quiero comprar|comprar|apartar|apartamelo|apartalo|apartarlo|aparto|como lo aparto|separar|separamelo|me lo llevo|quiero ese|quiero informacion|quiero información|hacer pedido|levantar pedido|finalizar compra|cerrar compra|quiero|una|un|el|la)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function buildProductClarificationIntent(intent) {
+  return {
+    ...intent,
+    intencion: 'MENSAJE_GENERAL',
+    herramienta_mcp: '',
+    parametros: {
+      ...(intent.parametros ?? {}),
+      respuesta_sugerida: 'Claro. Dime el nombre, categoria o caracteristica del producto que buscas, por ejemplo: silla, mesa de madera o escritorio negro.'
+    }
+  };
 }
 
 function withParams(intent, overrides = {}) {
@@ -46,18 +90,21 @@ function buildProductDetailIntent(intent, conversationContext) {
 }
 
 function buildPurchaseIntent(intent, message, conversationContext) {
+  const productId = conversationContext?.ultimo_producto_id ?? intent.parametros?.producto_id;
+  const hasProduct = Number(productId) > 0;
+
   return withParams(
     {
       ...intent,
       intencion: 'INTENCION_COMPRA',
-      herramienta_mcp: 'registrar_intencion_compra'
+      herramienta_mcp: hasProduct ? 'crear_pedido' : 'registrar_intencion_compra'
     },
     {
       interes: intent.parametros?.interes
         ?? conversationContext?.ultimo_texto_busqueda
         ?? intent.parametros?.texto
         ?? message,
-      producto_id: conversationContext?.ultimo_producto_id ?? intent.parametros?.producto_id
+      producto_id: productId
     }
   );
 }
@@ -85,6 +132,35 @@ export const productBusinessStrategy = {
       return buildAdvisorIntent(intent, normalizedMessage);
     }
 
+    if (intent.intencion === 'MENSAJE_GENERAL' && isVagueProductRequest(normalizedMessage)) {
+      return buildProductClarificationIntent(intent);
+    }
+
+    if (isAdvisorQuestion(normalizedMessage) || intent.intencion === 'HABLAR_ASESOR') {
+      return buildAdvisorIntent(intent, normalizedMessage);
+    }
+
+    if (isCategoryQuestion(normalizedMessage) || intent.intencion === 'VER_CATEGORIAS') {
+      return {
+        ...intent,
+        intencion: 'VER_CATEGORIAS',
+        herramienta_mcp: 'obtener_categorias',
+        parametros: { ...(intent.parametros ?? {}) }
+      };
+    }
+
+    if (
+      (isPurchaseQuestion(normalizedMessage) || intent.intencion === 'INTENCION_COMPRA')
+      && !hasLastProduct(conversationContext)
+      && !intent.parametros?.producto_id
+    ) {
+      const searchText = productSearchTextFromPurchase(intent.parametros?.texto ?? normalizedMessage);
+
+      if (isLikelyProductSearch(searchText)) {
+        return asProductSearchIntent(withParams(intent, { texto: searchText }));
+      }
+    }
+
     if (isPurchaseQuestion(normalizedMessage) || intent.intencion === 'INTENCION_COMPRA') {
       return buildPurchaseIntent(intent, normalizedMessage, conversationContext);
     }
@@ -103,6 +179,10 @@ export const productBusinessStrategy = {
 
     if (intent.intencion === 'BUSCAR_PRODUCTO' || intent.herramienta_mcp === 'buscar_productos') {
       return asProductSearchIntent(intent);
+    }
+
+    if (intent.intencion === 'MENSAJE_GENERAL' && isLikelyProductSearch(normalizedMessage)) {
+      return asProductSearchIntent(withParams(intent, { texto: normalizedMessage }));
     }
 
     return intent;

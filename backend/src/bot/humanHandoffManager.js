@@ -19,7 +19,7 @@ async function getHandoffConfig(empresaId) {
     timeoutMinutes: Number.isInteger(timeoutMinutes) && timeoutMinutes > 0 ? Math.min(timeoutMinutes, 120) : 4,
     mensajeTomar: profile?.handoff?.mensaje_tomar || 'Listo, un asesor continuara contigo por aqui',
     mensajeDeclinar: profile?.handoff?.mensaje_declinar || 'Por ahora el asesor no esta disponible, pero yo puedo seguir ayudandote',
-    mensajeExpirado: profile?.handoff?.mensaje_expirado || 'Por ahora el asesor no esta disponible, pero puedo seguir ayudandote por aqui',
+    mensajeExpirado: profile?.handoff?.mensaje_expirado || 'Por ahora el asesor no esta disponible, pero yo puedo seguir ayudandote',
     mensajeReactivar: profile?.handoff?.mensaje_reactivar || 'Voy a continuar apoyandote por aqui. Que otra duda tienes?'
   };
 }
@@ -425,7 +425,9 @@ export async function handleOwnerResponse({ empresa_id: empresaId, telefono_duen
       action: 'ACCEPTED',
       telefono_cliente: handoff.telefono_cliente,
       whatsapp_chat_id: handoff.whatsapp_chat_id,
-      mensaje_cliente: handoffConfig.mensajeTomar
+      mensaje_cliente: handoffConfig.mensajeTomar,
+      telefono_dueno: ownerPhone,
+      mensaje_dueno: 'Entiendo.'
     };
   }
 
@@ -456,7 +458,9 @@ export async function handleOwnerResponse({ empresa_id: empresaId, telefono_duen
       action: 'DECLINED',
       telefono_cliente: handoff.telefono_cliente,
       whatsapp_chat_id: handoff.whatsapp_chat_id,
-      mensaje_cliente: handoffConfig.mensajeDeclinar
+      mensaje_cliente: handoffConfig.mensajeDeclinar,
+      telefono_dueno: ownerPhone,
+      mensaje_dueno: 'Entiendo, seguiré por mi cuenta.'
     };
   }
 
@@ -559,6 +563,7 @@ export async function resumeBotForCustomer({ empresa_id: empresaId, telefono_cli
 
 export async function expirePendingHandoffs() {
   await ensureHumanHandoffTable();
+  const handoffConfigs = new Map();
   const [rows] = await query(
     `SELECT *
      FROM human_handoffs
@@ -567,9 +572,12 @@ export async function expirePendingHandoffs() {
   );
 
   for (const handoff of rows) {
+    const handoffConfig = handoffConfigs.get(handoff.empresa_id) ?? await getHandoffConfig(handoff.empresa_id);
+    handoffConfigs.set(handoff.empresa_id, handoffConfig);
+
     await query(
       `UPDATE human_handoffs
-       SET estado = 'EXPIRED',
+       SET estado = 'BOT_ACTIVE',
            last_activity_at = NOW()
        WHERE id = ? AND estado = 'PENDING_OWNER'`,
       [handoff.id]
@@ -584,8 +592,14 @@ export async function expirePendingHandoffs() {
     await sendWhatsappText(
       handoff.empresa_id,
       handoff.telefono_cliente,
-      (await getHandoffConfig(handoff.empresa_id)).mensajeExpirado
+      handoffConfig.mensajeDeclinar
     ).catch((error) => logger.error('human_handoff_pending_expire_message_error', { error, handoffId: handoff.id }));
+
+    await sendWhatsappText(
+      handoff.empresa_id,
+      handoff.telefono_dueno,
+      'Entiendo, seguiré por mi cuenta.'
+    ).catch((error) => logger.error('human_handoff_pending_expire_owner_message_error', { error, handoffId: handoff.id }));
 
     logger.info('human_handoff_pending_expired', {
       empresaId: handoff.empresa_id,

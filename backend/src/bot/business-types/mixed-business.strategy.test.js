@@ -53,4 +53,49 @@ describe('mixedBusinessStrategy commercial routing', () => {
     assert.equal(result.intencion, 'MENSAJE_GENERAL');
     assert.match(responseOf(result), /producto especifico/);
   });
+
+  it('routes a short product name to product search when the interpreter is generic', () => {
+    const result = run('silla');
+
+    assert.equal(result.intencion, 'BUSCAR_PRODUCTO');
+    assert.equal(result.herramienta_mcp, 'buscar_productos');
+    assert.equal(result.parametros.texto, 'silla');
+  });
+
+  it('routes product purchase phrases with a product name to product search first', () => {
+    const result = run('quiero comprar silla');
+
+    assert.equal(result.intencion, 'BUSCAR_PRODUCTO');
+    assert.equal(result.herramienta_mcp, 'buscar_productos');
+    assert.equal(result.parametros.texto, 'silla');
+  });
+
+  it('keeps purchase follow-up on service context as a lead flow', () => {
+    const result = run('me interesa', {
+      ultima_intencion: 'BUSCAR_SERVICIO',
+      ultimo_producto_id: null,
+      ultimo_servicio_id: 9,
+      ultimo_texto_busqueda: 'instalacion',
+      datos_json: {}
+    });
+
+    assert.equal(result.intencion, 'INTENCION_COMPRA');
+    assert.equal(result.herramienta_mcp, 'registrar_intencion_compra');
+    assert.equal(result.parametros.servicio_id, 9);
+  });
+
+  it('routes category requests to the categories tool', () => {
+    const result = run('categorias');
+
+    assert.equal(result.intencion, 'VER_CATEGORIAS');
+    assert.equal(result.herramienta_mcp, 'obtener_categorias');
+  });
+
+  it('creates an advisor lead for direct advisor requests', () => {
+    const result = run('asesor');
+
+    assert.equal(result.intencion, 'HABLAR_ASESOR');
+    assert.equal(result.herramienta_mcp, 'crear_lead');
+    assert.equal(result.parametros.interes, 'asesor');
+  });
 });

@@ -232,8 +232,316 @@ function configuredText(profile, key, fallback) {
   return value || fallback;
 }
 
+function normalizeGreetingText(value) {
+  const text = String(value ?? '').trim();
+  const normalized = normalizarTextoBusqueda(text);
+
+  if (normalized === 'hola mucho gusto') {
+    return 'Hola, mucho gusto.';
+  }
+
+  return text;
+}
+
 function configuredFallback(companyContext = {}) {
   return companyContext.fallback_message || 'Puedo ayudarte con productos, servicios y atencion comercial. Dime que estas buscando.';
+}
+
+const BUSINESS_TIME_ZONE = 'America/Mexico_City';
+const DAY_NAMES = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+const DAY_ALIASES = new Map([
+  ['domingo', 0],
+  ['dom', 0],
+  ['d', 0],
+  ['lunes', 1],
+  ['lun', 1],
+  ['l', 1],
+  ['martes', 2],
+  ['mar', 2],
+  ['ma', 2],
+  ['miercoles', 3],
+  ['mier', 3],
+  ['mie', 3],
+  ['mi', 3],
+  ['miércoles', 3],
+  ['jueves', 4],
+  ['jue', 4],
+  ['j', 4],
+  ['viernes', 5],
+  ['vie', 5],
+  ['v', 5],
+  ['sabado', 6],
+  ['sab', 6],
+  ['s', 6],
+  ['sábado', 6]
+]);
+
+function normalizeScheduleText(value) {
+  return String(value ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[–—]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function zonedNowParts(date = new Date()) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: BUSINESS_TIME_ZONE,
+      weekday: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23'
+    }).formatToParts(date).map((part) => [part.type, part.value])
+  );
+  const weekday = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }[parts.weekday] ?? null;
+
+  return {
+    weekday,
+    minutes: (Number(parts.hour) * 60) + Number(parts.minute)
+  };
+}
+
+function minutesFromTime(hour, minute = '0', meridiem = '') {
+  let nextHour = Number(hour);
+  const nextMinute = Number(minute ?? 0);
+  const suffix = String(meridiem ?? '').toLowerCase();
+
+  if (!Number.isInteger(nextHour) || !Number.isInteger(nextMinute) || nextHour < 0 || nextHour > 24 || nextMinute < 0 || nextMinute > 59) {
+    return null;
+  }
+
+  if (suffix === 'pm' && nextHour < 12) {
+    nextHour += 12;
+  }
+
+  if (suffix === 'am' && nextHour === 12) {
+    nextHour = 0;
+  }
+
+  if (nextHour === 24 && nextMinute > 0) {
+    return null;
+  }
+
+  return Math.min((nextHour * 60) + nextMinute, 24 * 60);
+}
+
+function dayNumber(value) {
+  return DAY_ALIASES.get(normalizeScheduleText(value));
+}
+
+function daysBetween(startDay, endDay) {
+  if (!Number.isInteger(startDay) || !Number.isInteger(endDay)) {
+    return [];
+  }
+
+  const days = [];
+  let day = startDay;
+
+  for (let index = 0; index < 7; index += 1) {
+    days.push(day);
+
+    if (day === endDay) {
+      break;
+    }
+
+    day = (day + 1) % 7;
+  }
+
+  return days;
+}
+
+function extractScheduleDays(section) {
+  const text = normalizeScheduleText(section);
+
+  if (/\b(diario|todos los dias|toda la semana)\b/.test(text)) {
+    return [0, 1, 2, 3, 4, 5, 6];
+  }
+
+  if (/\bl\s*(?:a|-)\s*v\b/.test(text)) {
+    return [1, 2, 3, 4, 5];
+  }
+
+  if (/\bl\s*(?:a|-)\s*s\b/.test(text)) {
+    return [1, 2, 3, 4, 5, 6];
+  }
+
+  const dayPattern = '(domingo|dom|lunes|lun|martes|mar|miercoles|mier|mie|jueves|jue|viernes|vie|sabado|sab)';
+  const rangeMatch = text.match(new RegExp(`\\b${dayPattern}\\s*(?:a|-)\\s*${dayPattern}\\b`));
+
+  if (rangeMatch) {
+    return daysBetween(dayNumber(rangeMatch[1]), dayNumber(rangeMatch[2]));
+  }
+
+  const days = [...text.matchAll(new RegExp(`\\b${dayPattern}\\b`, 'g'))]
+    .map((match) => dayNumber(match[1]))
+    .filter((day) => Number.isInteger(day));
+
+  return [...new Set(days)];
+}
+
+function extractScheduleRanges(section) {
+  const ranges = [];
+  const timePattern = /(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:a|-|hasta)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/gi;
+  let match = timePattern.exec(section);
+
+  while (match) {
+    const start = minutesFromTime(match[1], match[2] ?? '0', match[3] ?? '');
+    const end = minutesFromTime(match[4], match[5] ?? '0', match[6] ?? match[3] ?? '');
+
+    if (start !== null && end !== null && start !== end) {
+      ranges.push({ start, end });
+    }
+
+    match = timePattern.exec(section);
+  }
+
+  return ranges;
+}
+
+function parseBusinessSchedule(value) {
+  const text = normalizeScheduleText(value);
+
+  if (!text) {
+    return null;
+  }
+
+  if (/\b(24\/7|24 horas|siempre abierto)\b/.test(text)) {
+    return [{ days: [0, 1, 2, 3, 4, 5, 6], ranges: [{ start: 0, end: 24 * 60 }] }];
+  }
+
+  if (/\b(cerrado|sin horario)\b/.test(text) && !/\d/.test(text)) {
+    return [];
+  }
+
+  const sections = text.split(/(?:;|\n|,\s*(?=(?:dom|lun|mar|mie|jue|vie|sab|domingo|lunes|martes|miercoles|jueves|viernes|sabado)\b))/i);
+  const parsedSections = sections
+    .map((section) => ({
+      days: extractScheduleDays(section),
+      ranges: extractScheduleRanges(section)
+    }))
+    .filter((section) => section.ranges.length > 0);
+
+  if (parsedSections.length === 0) {
+    const ranges = extractScheduleRanges(text);
+
+    return ranges.length > 0
+      ? [{ days: [1, 2, 3, 4, 5], ranges }]
+      : null;
+  }
+
+  return parsedSections.map((section) => ({
+    days: section.days.length > 0 ? section.days : [1, 2, 3, 4, 5],
+    ranges: section.ranges
+  }));
+}
+
+function isWithinRange(minutes, range) {
+  if (range.end > range.start) {
+    return minutes >= range.start && minutes < range.end;
+  }
+
+  return minutes >= range.start || minutes < range.end;
+}
+
+function isWithinBusinessHours(horarioAtencion, date = new Date()) {
+  const schedule = parseBusinessSchedule(horarioAtencion);
+
+  if (schedule === null) {
+    return true;
+  }
+
+  const now = zonedNowParts(date);
+
+  return schedule.some((section) => (
+    section.days.includes(now.weekday)
+    && section.ranges.some((range) => isWithinRange(now.minutes, range))
+  ));
+}
+
+function formatMinutesAsTime(minutes) {
+  const hour = Math.floor(minutes / 60);
+  const minute = minutes % 60;
+
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+function nextOpeningDescription(horarioAtencion, date = new Date()) {
+  const schedule = parseBusinessSchedule(horarioAtencion);
+
+  if (!schedule || schedule.length === 0) {
+    return 'hasta el siguiente dia habil';
+  }
+
+  const now = zonedNowParts(date);
+  let nextOpening = null;
+
+  for (let dayOffset = 0; dayOffset <= 7; dayOffset += 1) {
+    const weekday = (now.weekday + dayOffset) % 7;
+
+    for (const section of schedule) {
+      if (!section.days.includes(weekday)) {
+        continue;
+      }
+
+      for (const range of section.ranges) {
+        if (dayOffset === 0 && range.start <= now.minutes) {
+          continue;
+        }
+
+        const candidate = {
+          dayOffset,
+          weekday,
+          minutes: range.start
+        };
+
+        if (
+          !nextOpening
+          || candidate.dayOffset < nextOpening.dayOffset
+          || (candidate.dayOffset === nextOpening.dayOffset && candidate.minutes < nextOpening.minutes)
+        ) {
+          nextOpening = candidate;
+        }
+      }
+    }
+
+    if (nextOpening) {
+      break;
+    }
+  }
+
+  if (!nextOpening) {
+    return 'hasta el siguiente dia habil';
+  }
+
+  const time = formatMinutesAsTime(nextOpening.minutes);
+
+  if (nextOpening.dayOffset === 0) {
+    return `hoy a las ${time}`;
+  }
+
+  if (nextOpening.dayOffset === 1) {
+    return `manana a las ${time}`;
+  }
+
+  return `el ${DAY_NAMES[nextOpening.weekday]} a las ${time}`;
+}
+
+function buildAfterHoursAdvisorResponse(companyContext = {}, date = new Date()) {
+  const configured = String(companyContext.mensaje_fuera_horario ?? '').trim();
+  const advisorAvailability = `Un asesor podra atenderte ${nextOpeningDescription(companyContext.horario_atencion, date)}. Mientras tanto puedo seguir ayudandote por aqui.`;
+
+  if (configured) {
+    return `${configured}\n${advisorAvailability}`;
+  }
+
+  if (companyContext.horario_atencion) {
+    return `En este momento estamos fuera de horario. ${advisorAvailability} Nuestro horario de atencion es: ${companyContext.horario_atencion}.`;
+  }
+
+  return `En este momento estamos fuera de horario. ${advisorAvailability}`;
 }
 
 function parseBlockedTopics(value) {
@@ -312,7 +620,7 @@ function buildProductResponse(result, profile = {}) {
       `📦 Disponibles: ${stock}`,
       product.categoria ? `📂 Categoría: ${product.categoria}` : null,
       '',
-      'Te puedo mostrar mas opciones similares o pasarte con un asesor.'
+      'Puedes responder "apartalo" para registrar el apartado, "mas opciones" para seguir viendo productos o "asesor" para atencion personalizada.'
     ].filter(Boolean);
 
     return details.join('\n');
@@ -320,7 +628,7 @@ function buildProductResponse(result, profile = {}) {
 
   if (!products.length) {
     return applyResponseTemplate(
-      profile.mensaje_sin_resultados ?? '{emoji_principal} Por ahora no encontre ese producto exacto.\nPuedo ayudarte a buscar algo similar o pasarte con un asesor.',
+      profile.mensaje_sin_resultados ?? '{emoji_principal} Por ahora no encontre ese producto exacto.\nPuedes escribirme otra categoria, pedir "categorias" o responder "asesor" para que alguien te ayude.',
       { emoji_principal: responseEmoji(profile, 'principal', '') }
     ).trim();
   }
@@ -340,7 +648,7 @@ function buildProductResponse(result, profile = {}) {
   });
 
   return applyResponseTemplate(
-    profile.formato_respuesta ?? '{emoji_principal} Claro, encontre estas opciones para ti:\n\n{items}\n\nResponde con el numero de la opcion que quieres ver, por ejemplo: 1.',
+    profile.formato_respuesta ?? '{emoji_principal} Claro, encontre estas opciones para ti:\n\n{items}\n\nResponde con el numero para ver detalle, por ejemplo: 1.\nTambien puedes escribir "mas opciones", "apartalo", "categorias" o "asesor".',
     {
       emoji_principal: responseEmoji(profile, 'principal', ''),
       items: productLines.join('\n\n')
@@ -454,10 +762,10 @@ function buildCategoriesResponse(result) {
   const categories = result?.categorias ?? [];
 
   if (categories.length === 0) {
-    return 'Por ahora no hay categorias configuradas. Puedo ayudarte a buscar por nombre de producto o pasarte con un asesor.';
+    return 'Por ahora no hay categorias configuradas. Dime el producto que buscas por nombre o responde "asesor" para que alguien te ayude.';
   }
 
-  return `Tenemos estas categorias: ${categories.map((category) => category.nombre).join(', ')}. Dime cual quieres revisar.`;
+  return `Tenemos estas categorias: ${categories.map((category) => category.nombre).join(', ')}. Dime cual quieres revisar o responde "asesor" para atencion personalizada.`;
 }
 
 function buildCompanyInfoResponse(intent, result) {
@@ -510,16 +818,19 @@ function buildLeadResponse(intent, result) {
   return 'Perfecto, voy a avisarle a un asesor para ayudarte con la compra. Mientras tanto puedo seguir resolviendo tus dudas.';
 }
 
-function buildOrderResponse(result) {
+function buildOrderResponse(intent, result) {
   const orderId = result?.pedido_id ? ` #${result.pedido_id}` : '';
-  return `Listo, registre tu pedido${orderId}. Un asesor puede confirmar detalles, pago y entrega.`;
+  const productName = intent?.parametros?.producto_nombre ?? intent?.parametros?.interes;
+  const productText = productName ? ` para *${productName}*` : '';
+
+  return `Listo, tu apartado${productText} quedo registrado${orderId}. Te comparto el folio para seguimiento. Puedes escribir "asesor" si necesitas que alguien lo revise contigo.`;
 }
 
 function buildStaticResponse(intent, companyContext = {}) {
   const profile = companyContext.response_profile ?? {};
   const fallback = configuredFallback(companyContext);
   const responses = {
-    SALUDO: configuredText(profile, 'saludo_personalizado', companyContext.mensaje_bienvenida || 'Hola, gracias por escribirnos. Dime que producto o servicio buscas y te ayudo a revisarlo.'),
+    SALUDO: normalizeGreetingText(configuredText(profile, 'saludo_personalizado', companyContext.mensaje_bienvenida || 'Hola, gracias por escribirnos. Dime que producto o servicio buscas y te ayudo a revisarlo.')),
     DESPEDIDA: configuredText(profile, 'despedida_personalizada', 'Gracias por escribirnos. Cuando necesites algo mas, aqui te ayudamos.'),
     AGRADECIMIENTO: 'Con gusto. Te puedo mostrar mas opciones o pasarte con un asesor.',
     AYUDA: 'Puedo ayudarte a buscar productos, revisar precios, confirmar disponibilidad o pasarte con un asesor.',
@@ -554,7 +865,7 @@ function buildResponse(intent, toolResult, companyContext = {}) {
     case 'registrar_intencion_compra':
       return buildLeadResponse(intent, { ...toolResult, profile });
     case 'crear_pedido':
-      return buildOrderResponse(toolResult);
+      return buildOrderResponse(intent, toolResult);
     default:
       return buildStaticResponse(intent, companyContext);
   }
@@ -615,14 +926,28 @@ function buildToolArgs(toolName, { empresaId, phone, message, normalizedMessage,
         servicio_id: params.servicio_id ?? conversationContext?.ultimo_servicio_id
       };
     case 'crear_pedido':
-      return {
-        empresa_id: empresaId,
-        telefono: params.telefono_cliente ?? params.telefono ?? phone,
-        cliente_nombre: params.cliente_nombre ?? params.nombre_cliente,
-        conversation_id: params.conversation_id,
-        total: params.total,
-        notas: params.notas ?? params.interes ?? params.texto ?? message
-      };
+      {
+        const selectedProduct = findContextProduct(conversationContext, params.producto_id);
+        const productName = params.producto_nombre ?? selectedProduct?.nombre ?? params.interes ?? params.texto;
+        const total = params.total ?? selectedProduct?.precio ?? 0;
+        const notes = [
+          productName ? `Apartado de producto: ${productName}` : 'Apartado de producto',
+          params.producto_id || selectedProduct?.id ? `Producto ID: ${params.producto_id ?? selectedProduct?.id}` : null,
+          params.notas ?? params.interes ?? params.texto ?? message
+        ].filter(Boolean).join('\n');
+
+        intent.parametros.producto_nombre = productName;
+        intent.parametros.total = total;
+
+        return {
+          empresa_id: empresaId,
+          telefono: params.telefono_cliente ?? params.telefono ?? phone,
+          cliente_nombre: params.cliente_nombre ?? params.nombre_cliente ?? contactName ?? 'Cliente WhatsApp',
+          conversation_id: params.conversation_id,
+          total,
+          notas: notes
+        };
+      }
     case 'obtener_categorias':
     case 'obtener_promociones':
     case 'obtener_configuracion_empresa':
@@ -650,6 +975,18 @@ function getLastShownProducts(conversationContext) {
 function getLastProductSearch(conversationContext) {
   const search = conversationContext?.datos_json?.ultima_busqueda_productos;
   return search && typeof search === 'object' && !Array.isArray(search) ? search : null;
+}
+
+function findContextProduct(conversationContext, productId = null) {
+  const normalizedProductId = Number(productId ?? conversationContext?.ultimo_producto_id);
+  const currentProduct = conversationContext?.datos_json?.producto;
+
+  if (currentProduct?.id && Number(currentProduct.id) === normalizedProductId) {
+    return currentProduct;
+  }
+
+  return getLastShownProducts(conversationContext)
+    .find((product) => Number(product?.id) === normalizedProductId) ?? null;
 }
 
 function extractSelectedOptionNumber(message) {
@@ -692,7 +1029,7 @@ function isPriceFollowUp(message) {
 }
 
 function isPurchaseFollowUp(message) {
-  return /\b(me interesa|lo quiero|la quiero|quiero comprar|comprar|ap[aá]rtamelo|apartamelo|ap[aá]rtalo|apartalo|me lo llevo|quiero ese|p[aá]same con asesor|pasame con asesor|quiero informaci[oó]n|quiero informacion)\b/i.test(message);
+  return /\b(me interesa|lo quiero|la quiero|quiero comprar|comprar|apartar|ap[aá]rtamelo|apartamelo|ap[aá]rtalo|apartalo|apartarlo|ap[aá]rtarlo|aparto|ap[aá]rto|como lo aparto|c[oó]mo lo aparto|separar|separamelo|me lo llevo|quiero ese|p[aá]same con asesor|pasame con asesor|quiero informaci[oó]n|quiero informacion|hacer pedido|levantar pedido|finalizar compra|cerrar compra)\b/i.test(message);
 }
 
 function isShippingFollowUp(message) {
@@ -782,7 +1119,7 @@ function applyConversationContext(intent, message, conversationContext) {
       return {
         ...nextIntent,
         intencion: 'INTENCION_COMPRA',
-        herramienta_mcp: 'registrar_intencion_compra',
+        herramienta_mcp: 'crear_pedido',
         parametros: {
           interes: conversationContext.ultimo_texto_busqueda ?? message,
           producto_id: conversationContext.ultimo_producto_id
@@ -831,6 +1168,7 @@ function applyConversationContext(intent, message, conversationContext) {
     }
 
     if (nextIntent.intencion === 'INTENCION_COMPRA') {
+      nextIntent.herramienta_mcp = 'crear_pedido';
       nextIntent.parametros.producto_id = conversationContext.ultimo_producto_id;
       nextIntent.parametros.interes = nextIntent.parametros.interes ?? conversationContext.ultimo_texto_busqueda ?? message;
       return nextIntent;
@@ -881,10 +1219,11 @@ function applyConversationContext(intent, message, conversationContext) {
   }
 
   if (nextIntent.intencion === 'MENSAJE_GENERAL' && isPurchaseFollowUp(message)) {
+    const hasProduct = hasProductContext(conversationContext);
     return {
       ...nextIntent,
       intencion: 'INTENCION_COMPRA',
-      herramienta_mcp: 'registrar_intencion_compra',
+      herramienta_mcp: hasProduct ? 'crear_pedido' : 'registrar_intencion_compra',
       parametros: {
         interes: conversationContext.ultimo_texto_busqueda ?? message,
         producto_id: conversationContext.ultimo_producto_id ?? undefined,
@@ -1023,6 +1362,7 @@ export async function orchestrateIncomingMessage({
   whatsappChatId = null,
   contactName = null,
   contexto = null,
+  currentDate = new Date(),
   interpreter = interpretIntent,
   mcpClient = defaultMcpClient,
   handoffManager = {
@@ -1142,7 +1482,43 @@ export async function orchestrateIncomingMessage({
   let toolResult = null;
   let notificationResult = null;
   let responseIntent = intent;
-  const shouldRequestHuman = shouldNotifyOwner(intent.intencion);
+  const shouldRequestHuman = shouldNotifyOwner(intent.intencion) && intent.herramienta_mcp !== 'crear_pedido';
+
+  if (shouldRequestHuman && !isWithinBusinessHours(contextoEmpresa.horario_atencion, currentDate)) {
+    const response = buildAfterHoursAdvisorResponse(contextoEmpresa, currentDate);
+    const savedConversation = await mcpClient.callTool('guardar_conversacion', {
+      empresa_id: empresaId,
+      telefono: cleanPhone,
+      whatsapp_id: whatsappChatId,
+      contact_name: contactName,
+      mensaje: message,
+      respuesta: response,
+      estado: 'bot_active',
+      tipo_mensaje: 'bot'
+    });
+
+    await contextStore.save({
+      empresaId,
+      phone: cleanPhone,
+      ...extractContextPatch({ intent, toolResult: null, message, conversationContext })
+    });
+
+    return {
+      respuesta: response,
+      medios: [],
+      intencion: intent.intencion,
+      herramienta_mcp: null,
+      parametros: intent.parametros,
+      confianza: intent.confianza,
+      requiere_respuesta_ia: intent.requiere_respuesta_ia,
+      mcp_result: null,
+      notificacion: null,
+      lead_id: null,
+      conversacion_id: savedConversation.conversacion_id,
+      fuera_horario: true
+    };
+  }
+
   const activeHandoffExists = shouldRequestHuman
     ? await handoffManager.hasActive({ empresaId, phone: cleanPhone })
     : false;
@@ -1242,7 +1618,7 @@ export async function orchestrateIncomingMessage({
         error: error.message
       };
     }
-  } else if (shouldNotifyOwner(intent.intencion) && toolResult?.lead_id) {
+  } else if (shouldRequestHuman && toolResult?.lead_id) {
     try {
       notificationResult = await notifyOwnerForLead({
         empresaId,
