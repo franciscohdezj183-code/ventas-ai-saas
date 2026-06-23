@@ -792,25 +792,11 @@ describe('messageOrchestrator', () => {
     assert.match(result.respuesta, /asesor/);
   });
 
-  it('uses service strategy for service businesses', async () => {
+  it('uses service strategy direct quote flow for service businesses', async () => {
     const calls = [];
     const mcpClient = {
       async callTool(toolName, args) {
         calls.push({ toolName, args });
-
-        if (toolName === 'buscar_servicios') {
-          return {
-            servicios: [
-              {
-                id: 91,
-                nombre: 'Instalacion electrica',
-                precio: 1200,
-                tipo_precio: 'DESDE',
-                duracion: 90
-              }
-            ]
-          };
-        }
 
         if (toolName === 'guardar_conversacion') {
           return { conversacion_id: 111 };
@@ -841,10 +827,11 @@ describe('messageOrchestrator', () => {
       }
     });
 
-    assert.equal(result.herramienta_mcp, 'buscar_servicios');
+    assert.equal(result.herramienta_mcp, '');
     assert.equal(calls.some((call) => call.toolName === 'buscar_productos'), false);
-    assert.equal(calls.some((call) => call.toolName === 'buscar_servicios'), true);
-    assert.match(result.respuesta, /Instalacion electrica/);
+    assert.equal(calls.some((call) => call.toolName === 'buscar_servicios'), false);
+    assert.match(result.respuesta, /instalacion/);
+    assert.match(result.respuesta, /asesor/);
   });
 
   it('normalizes customer text for intent and MCP search without changing saved message', async () => {

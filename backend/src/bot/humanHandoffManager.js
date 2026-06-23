@@ -3,6 +3,7 @@ import { mcpClient } from '../mcp/mcpClient.js';
 import { getBotResponseProfile } from '../modules/bot-prompts/bot-prompts.service.js';
 import { CONVERSATION_STATES, markThreadState } from '../modules/conversations/conversation-status.service.js';
 import { logger } from '../utils/logger.js';
+import { normalizeMexicanPhoneNumber } from '../whatsapp/whatsapp-number.helper.js';
 
 const HANDOFF_TIMEOUT_MS = 4 * 60 * 1000;
 const EXPIRATION_JOB_INTERVAL_MS = 30 * 1000;
@@ -24,9 +25,7 @@ async function getHandoffConfig(empresaId) {
 }
 
 function normalizePhone(value) {
-  return String(value ?? '')
-    .replace('@c.us', '')
-    .replace(/\D/g, '');
+  return normalizeMexicanPhoneNumber(value);
 }
 
 function phoneKey(value) {
@@ -133,6 +132,64 @@ async function sendWhatsappText(empresaId, phone, message) {
   await sendWhatsappMessage(empresaId, phone, message);
 }
 
+async function notifyOwnerForHandoff({
+  empresaId,
+  handoffId,
+  ownerPhone,
+  customerPhone,
+  companyName,
+  productOrService,
+  customerMessage
+}) {
+  if (!ownerPhone) {
+    logger.info('human_handoff_owner_notification_omitted', {
+      empresaId,
+      telefonoCliente: customerPhone,
+      handoffId,
+      reason: 'missing_owner_phone'
+    });
+    return { estado: 'OMITIDA', motivo: 'telefono_dueno no configurado' };
+  }
+
+  const message = buildOwnerNotification({
+    customerPhone,
+    companyName,
+    productOrService,
+    customerMessage
+  });
+
+  try {
+    await sendWhatsappText(empresaId, ownerPhone, message);
+    await query(
+      `UPDATE human_handoffs
+       SET owner_notified_at = NOW(),
+           telefono_dueno = COALESCE(telefono_dueno, ?)
+       WHERE id = ?`,
+      [ownerPhone, handoffId]
+    );
+    logger.info('human_handoff_owner_notified', {
+      empresaId,
+      telefonoCliente: customerPhone,
+      telefonoDueno: ownerPhone,
+      handoffId
+    });
+    return { estado: 'ENVIADA', telefono_dueno: ownerPhone };
+  } catch (error) {
+    logger.error('human_handoff_owner_notification_error', {
+      empresaId,
+      telefonoCliente: customerPhone,
+      telefonoDueno: ownerPhone,
+      handoffId,
+      error
+    });
+    return {
+      estado: 'ERROR',
+      telefono_dueno: ownerPhone,
+      error: error instanceof Error ? error.message : String(error ?? 'Error enviando notificacion')
+    };
+  }
+}
+
 async function getCompanyConfig(empresaId, mcpClientInstance = mcpClient) {
   const result = await mcpClientInstance.callTool('obtener_configuracion_empresa', {
     empresa_id: empresaId
@@ -201,24 +258,54 @@ export async function requestHandoff({
   const activeHandoff = await findActiveHandoff({ empresaId, phone: customerPhone });
 
   if (activeHandoff) {
+    const company = await getCompanyConfig(empresaId, mcpClientInstance);
+    const ownerPhone = normalizePhone(activeHandoff.telefono_dueno ?? company.telefono_dueno ?? company.telefono);
+
     await query(
       `UPDATE human_handoffs
        SET last_activity_at = NOW(),
            expires_at = DATE_ADD(NOW(), INTERVAL ${handoffConfig.timeoutMinutes} MINUTE),
            mensaje_cliente = COALESCE(?, mensaje_cliente),
-           whatsapp_chat_id = COALESCE(?, whatsapp_chat_id)
+           whatsapp_chat_id = COALESCE(?, whatsapp_chat_id),
+           telefono_dueno = COALESCE(telefono_dueno, ?)
        WHERE id = ?`,
-      [mensajeCliente ?? null, whatsappChatId ?? null, activeHandoff.id]
+      [mensajeCliente ?? null, whatsappChatId ?? null, ownerPhone || null, activeHandoff.id]
     );
+    const ownerNotification = await notifyOwnerForHandoff({
+      empresaId,
+      handoffId: activeHandoff.id,
+      ownerPhone,
+      customerPhone,
+      companyName: company.nombre,
+      productOrService: mensajeCliente,
+      customerMessage: mensajeCliente
+    });
 
-    logger.info('human_handoff_duplicate_ignored', {
+    if (ownerNotification.estado !== 'ENVIADA') {
+      logger.error('human_handoff_duplicate_owner_notification_not_sent', {
+        empresaId,
+        telefonoCliente: customerPhone,
+        handoffId: activeHandoff.id,
+        ownerNotification
+      });
+    }
+
+    const nextStatus = ownerNotification.estado === 'ENVIADA' ? activeHandoff.estado : 'ERROR';
+
+    logger.info('human_handoff_duplicate_processed', {
       empresaId,
       telefonoCliente: customerPhone,
       handoffId: activeHandoff.id,
-      estado: activeHandoff.estado
+      estado: activeHandoff.estado,
+      ownerNotification
     });
 
-    return { handoff_id: activeHandoff.id, estado: activeHandoff.estado, duplicate: true };
+    return {
+      handoff_id: activeHandoff.id,
+      estado: nextStatus,
+      duplicate: true,
+      owner_notification: ownerNotification
+    };
   }
 
   const company = await getCompanyConfig(empresaId, mcpClientInstance);
@@ -228,7 +315,7 @@ export async function requestHandoff({
     `INSERT INTO human_handoffs
       (empresa_id, conversation_id, telefono_cliente, telefono_dueno, estado, motivo,
        mensaje_cliente, whatsapp_chat_id, producto_id, servicio_id, owner_notified_at, expires_at, last_activity_at)
-     VALUES (?, ?, ?, ?, 'PENDING_OWNER', ?, ?, ?, ?, ?, NOW(), DATE_ADD(NOW(), INTERVAL ${handoffConfig.timeoutMinutes} MINUTE), NOW())`,
+     VALUES (?, ?, ?, ?, 'PENDING_OWNER', ?, ?, ?, ?, ?, NULL, DATE_ADD(NOW(), INTERVAL ${handoffConfig.timeoutMinutes} MINUTE), NOW())`,
     [
       empresaId,
       conversationId ?? null,
@@ -248,36 +335,39 @@ export async function requestHandoff({
     estado: CONVERSATION_STATES.REQUIRES_HUMAN
   });
 
-  if (ownerPhone) {
-    try {
-      await sendWhatsappText(
-        empresaId,
-        ownerPhone,
-        buildOwnerNotification({
-          customerPhone,
-          companyName: company.nombre,
-          productOrService,
-          customerMessage: mensajeCliente
-        })
-      );
-    } catch (error) {
-      logger.error('human_handoff_owner_notification_error', {
-        empresaId,
-        telefonoCliente: customerPhone,
-        telefonoDueno: ownerPhone,
-        error
-      });
-    }
+  const ownerNotification = await notifyOwnerForHandoff({
+    empresaId,
+    handoffId: result.insertId,
+    ownerPhone,
+    customerPhone,
+    companyName: company.nombre,
+    productOrService,
+    customerMessage: mensajeCliente
+  });
+
+  if (ownerNotification.estado !== 'ENVIADA') {
+    logger.error('human_handoff_owner_notification_not_sent', {
+      empresaId,
+      telefonoCliente: customerPhone,
+      handoffId: result.insertId,
+      ownerNotification
+    });
   }
 
   logger.info('human_handoff_requested', {
     empresaId,
     telefonoCliente: customerPhone,
     telefonoDueno: ownerPhone || null,
-    handoffId: result.insertId
+    handoffId: result.insertId,
+    ownerNotification
   });
 
-  return { handoff_id: result.insertId, estado: 'PENDING_OWNER', duplicate: false };
+  return {
+    handoff_id: result.insertId,
+    estado: ownerNotification.estado === 'ENVIADA' ? 'PENDING_OWNER' : 'ERROR',
+    duplicate: false,
+    owner_notification: ownerNotification
+  };
 }
 
 export async function handleOwnerResponse({ empresa_id: empresaId, telefono_dueno: telefonoDueno, mensaje }) {

@@ -178,6 +178,8 @@ CREATE TABLE IF NOT EXISTS leads (
   nombre_cliente VARCHAR(150) NOT NULL,
   email VARCHAR(180) NULL,
   telefono VARCHAR(40) NULL,
+  whatsapp_id VARCHAR(80) NULL,
+  contact_name VARCHAR(150) NULL,
   interes VARCHAR(180) NULL,
   estado ENUM('NUEVO', 'EN_PROCESO', 'CONTACTADO', 'COTIZADO', 'GANADO', 'PERDIDO') NOT NULL DEFAULT 'NUEVO',
   notas TEXT NULL,
@@ -192,6 +194,7 @@ CREATE TABLE IF NOT EXISTS leads (
   KEY leads_empresa_id_id_index (empresa_id, id),
   KEY leads_email_index (email),
   KEY leads_telefono_index (telefono),
+  KEY leads_whatsapp_id_index (whatsapp_id),
   KEY leads_estado_index (estado),
   KEY leads_prioridad_index (prioridad),
   KEY leads_score_index (score),
@@ -205,6 +208,8 @@ CREATE TABLE IF NOT EXISTS conversaciones (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   empresa_id BIGINT UNSIGNED NOT NULL,
   telefono_cliente VARCHAR(40) NOT NULL,
+  whatsapp_id VARCHAR(80) NULL,
+  contact_name VARCHAR(150) NULL,
   mensaje TEXT NOT NULL,
   respuesta TEXT NULL,
   estado ENUM('open','bot_active','requires_human','human_active','closed') NOT NULL DEFAULT 'open',
@@ -216,6 +221,7 @@ CREATE TABLE IF NOT EXISTS conversaciones (
   PRIMARY KEY (id),
   KEY conversaciones_empresa_id_index (empresa_id),
   KEY conversaciones_telefono_cliente_index (telefono_cliente),
+  KEY conversaciones_whatsapp_id_index (whatsapp_id),
   KEY conversaciones_estado_index (estado),
   KEY conversaciones_empresa_cliente_estado_index (empresa_id, telefono_cliente, estado),
   KEY conversaciones_empresa_cliente_fecha_index (empresa_id, telefono_cliente, fecha),
@@ -320,6 +326,8 @@ CREATE TABLE IF NOT EXISTS configuracion_empresas (
 
 CREATE TABLE IF NOT EXISTS whatsapp_session_status (
   empresa_id BIGINT UNSIGNED NOT NULL,
+  session_id VARCHAR(80) NULL,
+  owner_instance VARCHAR(120) NULL,
   status VARCHAR(40) NOT NULL DEFAULT 'DISCONNECTED',
   qr MEDIUMTEXT NULL,
   qr_image MEDIUMTEXT NULL,
@@ -328,12 +336,60 @@ CREATE TABLE IF NOT EXISTS whatsapp_session_status (
   last_error TEXT NULL,
   reconnect_attempt INT UNSIGNED NOT NULL DEFAULT 0,
   next_reconnect_at DATETIME NULL,
+  lease_until DATETIME NULL,
+  heartbeat_at DATETIME NULL,
+  last_qr_at DATETIME NULL,
+  qr_expires_at DATETIME NULL,
   events_json JSON NULL,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (empresa_id),
+  KEY whatsapp_session_status_owner_index (owner_instance),
   KEY whatsapp_session_status_status_index (status),
+  KEY whatsapp_session_status_lease_until_index (lease_until),
   KEY whatsapp_session_status_updated_at_index (updated_at),
   CONSTRAINT whatsapp_session_status_empresa_foreign
+    FOREIGN KEY (empresa_id) REFERENCES empresas (id)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS whatsapp_session_commands (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  empresa_id BIGINT UNSIGNED NOT NULL,
+  command VARCHAR(30) NOT NULL,
+  status VARCHAR(30) NOT NULL DEFAULT 'PENDING',
+  requested_by BIGINT UNSIGNED NULL,
+  requested_by_role VARCHAR(40) NULL,
+  owner_instance VARCHAR(120) NULL,
+  error TEXT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  claimed_at DATETIME NULL,
+  completed_at DATETIME NULL,
+  PRIMARY KEY (id),
+  KEY whatsapp_session_commands_pending_index (status, created_at),
+  KEY whatsapp_session_commands_empresa_index (empresa_id, created_at),
+  CONSTRAINT whatsapp_session_commands_empresa_foreign
+    FOREIGN KEY (empresa_id) REFERENCES empresas (id)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS whatsapp_outbound_messages (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  empresa_id BIGINT UNSIGNED NOT NULL,
+  phone VARCHAR(80) NOT NULL,
+  message TEXT NOT NULL,
+  status VARCHAR(30) NOT NULL DEFAULT 'PENDING',
+  attempts INT UNSIGNED NOT NULL DEFAULT 0,
+  owner_instance VARCHAR(120) NULL,
+  last_error TEXT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  claimed_at DATETIME NULL,
+  sent_at DATETIME NULL,
+  PRIMARY KEY (id),
+  KEY whatsapp_outbound_pending_index (status, created_at),
+  KEY whatsapp_outbound_empresa_index (empresa_id, created_at),
+  CONSTRAINT whatsapp_outbound_messages_empresa_foreign
     FOREIGN KEY (empresa_id) REFERENCES empresas (id)
     ON DELETE CASCADE
     ON UPDATE CASCADE

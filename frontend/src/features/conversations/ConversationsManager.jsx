@@ -72,14 +72,20 @@ function getThreadPreview(thread) {
 
 function getThreadDisplayName(thread) {
   return (
+    thread?.contact_name ||
     thread?.nombre_contacto ||
     thread?.contacto_nombre ||
     thread?.nombre_cliente ||
     thread?.cliente_nombre ||
     thread?.pushname ||
-    thread?.telefono_cliente ||
+    getThreadPhone(thread) ||
     'Contacto'
   );
+}
+
+function getThreadPhone(thread) {
+  const phone = thread?.customerPhone || thread?.customer_phone || thread?.telefono || thread?.telefono_cliente;
+  return String(phone ?? '').includes('@') ? '' : phone;
 }
 
 function normalizeBubbleText(value, { preserveBreaks = false } = {}) {
@@ -128,6 +134,12 @@ function ThreadList({ selectedThread, threads, onSelect }) {
   return (
     <div className="inbox-thread-list">
       {threads.map((thread) => (
+        (() => {
+          const displayName = getThreadDisplayName(thread);
+          const displayPhone = getThreadPhone(thread);
+          const showPhone = displayPhone && displayPhone !== displayName;
+
+          return (
         <button
           className={selectedThread?.telefono_cliente === thread.telefono_cliente && selectedThread?.empresa_id === thread.empresa_id ? 'inbox-thread active' : 'inbox-thread'}
           key={getThreadKey(thread)}
@@ -139,9 +151,10 @@ function ThreadList({ selectedThread, threads, onSelect }) {
           </span>
           <div className="inbox-thread-main">
             <div className="inbox-thread-title-row">
-              <strong>{thread.telefono_cliente}</strong>
+              <strong>{displayName}</strong>
               <time>{formatThreadDate(thread.ultima_fecha)}</time>
             </div>
+            {showPhone ? <small>{displayPhone}</small> : null}
             <p>{getThreadPreview(thread)}</p>
             <small>{thread.empresa_nombre ?? `Empresa #${thread.empresa_id}`}</small>
           </div>
@@ -151,6 +164,8 @@ function ThreadList({ selectedThread, threads, onSelect }) {
             ) : null}
           </div>
         </button>
+          );
+        })()
       ))}
     </div>
   );
@@ -203,6 +218,8 @@ function ContactPanel({ isOpen, onClose, onDismiss, onPause, onResume, thread })
   }
 
   const stateLabel = conversationStateLabels[thread.estado_inbox] ?? thread.estado_inbox;
+  const displayName = getThreadDisplayName(thread);
+  const displayPhone = getThreadPhone(thread);
 
   return (
     <div className="inbox-contact-popover" role="dialog" aria-label="Informacion del contacto">
@@ -211,10 +228,11 @@ function ContactPanel({ isOpen, onClose, onDismiss, onPause, onResume, thread })
           <X size={16} aria-hidden="true" />
         </button>
         <section className="contact-card hero">
-          <span className="contact-avatar">{getInitials(thread.telefono_cliente)}</span>
+          <span className="contact-avatar">{getInitials(displayName || displayPhone)}</span>
           <div>
             <p className="eyebrow">Contacto</p>
-            <h2>{thread.telefono_cliente}</h2>
+            <h2>{displayName}</h2>
+            {displayPhone && displayPhone !== displayName ? <span>{displayPhone}</span> : null}
             <span>{thread.empresa_nombre ?? `Empresa #${thread.empresa_id}`}</span>
           </div>
         </section>
@@ -224,7 +242,7 @@ function ContactPanel({ isOpen, onClose, onDismiss, onPause, onResume, thread })
           <dl className="contact-detail-list">
             <div>
               <dt><Phone size={15} aria-hidden="true" /> Telefono</dt>
-              <dd>{thread.telefono_cliente}</dd>
+              <dd>{displayPhone || '-'}</dd>
             </div>
             <div>
               <dt><Building2 size={15} aria-hidden="true" /> Empresa</dt>
@@ -317,7 +335,7 @@ function ChatPanel({
           <div>
             <strong>{getThreadDisplayName(thread)}</strong>
             <span>
-              WhatsApp - {conversationStateLabels[thread.estado_inbox] ?? thread.estado_inbox}
+              {getThreadPhone(thread) ? `${getThreadPhone(thread)} - ` : ''}WhatsApp - {conversationStateLabels[thread.estado_inbox] ?? thread.estado_inbox}
             </span>
           </div>
         </div>

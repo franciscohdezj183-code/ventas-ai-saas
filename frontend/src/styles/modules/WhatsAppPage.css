@@ -467,6 +467,12 @@
   box-shadow: 0 12px 28px rgba(15, 23, 42, 0.1);
 }
 
+.whatsapp-qr-expiration {
+  color: var(--whatsapp-muted);
+  font-size: 0.85rem;
+  margin-top: 12px;
+}
+
 .qr-placeholder {
   display: grid;
   place-items: center;

@@ -7,6 +7,8 @@ const LEAD_COLUMNS = `
   l.empresa_id,
   l.nombre_cliente,
   l.telefono,
+  l.whatsapp_id,
+  l.contact_name,
   l.interes,
   l.estado,
   l.notas,

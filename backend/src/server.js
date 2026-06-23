@@ -1,14 +1,40 @@
 import { env } from './config/env.js';
 import { app } from './app.js';
+import http from 'node:http';
+import { Server } from 'socket.io';
 import { closeDatabase } from './config/database.js';
 import { shutdownWhatsappSessions } from './modules/whatsapp/whatsapp.service.js';
+import { initializeWhatsappSocket } from './whatsapp/whatsapp-socket.gateway.js';
 import {
   startHumanHandoffExpirationJob,
   stopHumanHandoffExpirationJob
 } from './bot/humanHandoffManager.js';
 import { logger } from './utils/logger.js';
 
-const server = app.listen(env.port, () => {
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin(origin, callback) {
+      if (!origin && env.nodeEnv !== 'production') {
+        callback(null, true);
+        return;
+      }
+
+      if (env.cors.allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error('CORS origin not allowed'));
+    },
+    credentials: true,
+    methods: ['GET', 'POST']
+  }
+});
+
+initializeWhatsappSocket(io);
+
+server.listen(env.port, () => {
   logger.info('server_started', {
     port: env.port,
     environment: env.nodeEnv

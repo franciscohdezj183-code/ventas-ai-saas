@@ -43,12 +43,16 @@ function resolveApiUrl() {
 export const api = axios.create({
   baseURL: resolveApiUrl(),
   headers: {
-    'Content-Type': 'application/json'
+    'Content-Type': 'application/json',
+    'Cache-Control': 'no-store',
+    Pragma: 'no-cache'
   }
 });
 
 api.interceptors.request.use((config) => {
   const token = getStoredToken();
+
+  config.headers = config.headers ?? {};
 
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;

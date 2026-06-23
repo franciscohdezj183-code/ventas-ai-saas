@@ -1,5 +1,6 @@
 import { resolveScopedEmpresaId } from '../../middlewares/company-scope.middleware.js';
 import { createHttpError } from '../../utils/http-error.js';
+import { normalizeMexicanPhoneNumber } from '../../whatsapp/whatsapp-number.helper.js';
 
 const FORBIDDEN_ARG_KEYS = new Set(['sql', 'query', 'raw_sql', 'statement']);
 
@@ -68,9 +69,7 @@ export function normalizePrice(value) {
 }
 
 export function normalizePhone(value) {
-  return String(value ?? '')
-    .replace('@c.us', '')
-    .replace(/\D/g, '');
+  return normalizeMexicanPhoneNumber(value);
 }
 
 export function normalizeBoolean(value, defaultValue = false) {

@@ -4,11 +4,14 @@ import { resumeBotForCustomer, isBotPausedForCustomer } from '../../bot/humanHan
 import { sendWhatsappMessage } from '../whatsapp/whatsapp.service.js';
 import { CONVERSATION_STATES, markThreadState, normalizeConversationState } from './conversation-status.service.js';
 import { createHttpError } from '../../utils/http-error.js';
+import { normalizeMexicanPhoneNumber } from '../../whatsapp/whatsapp-number.helper.js';
 
 const CONVERSATION_COLUMNS = `
   c.id,
   c.empresa_id,
   c.telefono_cliente,
+  c.whatsapp_id,
+  c.contact_name,
   c.mensaje,
   c.respuesta,
   c.estado,
@@ -56,9 +59,7 @@ function mapDatabaseError(error) {
 }
 
 function normalizePhone(value) {
-  return String(value ?? '')
-    .replace('@c.us', '')
-    .replace(/\D/g, '');
+  return normalizeMexicanPhoneNumber(value);
 }
 
 function normalizeInboxStateFilter(value) {
@@ -118,8 +119,8 @@ function buildInboxWhere(auth, filters = {}, alias = 'c') {
     conditions.push(`${alias}.telefono_cliente LIKE ?`);
     params.push(`%${input.telefono}%`);
   } else if (input.search) {
-    conditions.push(`(${alias}.telefono_cliente LIKE ? OR ${alias}.mensaje LIKE ? OR ${alias}.respuesta LIKE ?)`);
-    params.push(`%${input.search}%`, `%${input.search}%`, `%${input.search}%`);
+    conditions.push(`(${alias}.telefono_cliente LIKE ? OR ${alias}.contact_name LIKE ? OR ${alias}.whatsapp_id LIKE ? OR ${alias}.mensaje LIKE ? OR ${alias}.respuesta LIKE ?)`);
+    params.push(`%${input.search}%`, `%${input.search}%`, `%${input.search}%`, `%${input.search}%`, `%${input.search}%`);
   }
 
   return {
@@ -167,6 +168,8 @@ export async function findInboxThreads(auth, filters = {}) {
     `SELECT
        latest.empresa_id,
        latest.telefono_cliente,
+       latest.whatsapp_id,
+       latest.contact_name,
        latest.empresa_nombre,
        latest.ultimo_mensaje,
        latest.ultima_respuesta,
@@ -179,6 +182,8 @@ export async function findInboxThreads(auth, filters = {}) {
        SELECT
          c.empresa_id,
          c.telefono_cliente,
+         SUBSTRING_INDEX(GROUP_CONCAT(COALESCE(c.whatsapp_id, '') ORDER BY c.fecha DESC, c.id DESC SEPARATOR '\n---\n'), '\n---\n', 1) AS whatsapp_id,
+         SUBSTRING_INDEX(GROUP_CONCAT(COALESCE(c.contact_name, '') ORDER BY c.fecha DESC, c.id DESC SEPARATOR '\n---\n'), '\n---\n', 1) AS contact_name,
          e.nombre AS empresa_nombre,
          SUBSTRING_INDEX(GROUP_CONCAT(c.mensaje ORDER BY c.fecha DESC, c.id DESC SEPARATOR '\n---\n'), '\n---\n', 1) AS ultimo_mensaje,
          SUBSTRING_INDEX(GROUP_CONCAT(COALESCE(c.respuesta, '') ORDER BY c.fecha DESC, c.id DESC SEPARATOR '\n---\n'), '\n---\n', 1) AS ultima_respuesta,
@@ -245,6 +250,8 @@ export async function findInboxThread(auth, { empresaId, telefono }) {
   return {
     empresa_id: scopedEmpresaId,
     telefono_cliente: cleanPhone,
+    whatsapp_id: messages[messages.length - 1]?.whatsapp_id ?? null,
+    contact_name: messages.find((message) => message.contact_name)?.contact_name ?? null,
     estado_inbox: handoffs.find((handoff) => handoff.estado === 'PENDING_OWNER')
       ? CONVERSATION_STATES.REQUIRES_HUMAN
       : handoffs.find((handoff) => handoff.estado === 'HUMAN_TAKEOVER')
@@ -298,12 +305,23 @@ export async function sendThreadReply(auth, { empresaId, telefono, mensaje }) {
     throw createHttpError(400, 'Telefono y mensaje son requeridos');
   }
 
-  await sendWhatsappMessage(scopedEmpresaId, cleanPhone, cleanMessage);
+  const thread = await findInboxThread(auth, { empresaId: scopedEmpresaId, telefono: cleanPhone });
+  const whatsappId = thread.whatsapp_id || thread.mensajes?.find((message) => message.whatsapp_id)?.whatsapp_id || null;
+
+  await sendWhatsappMessage(scopedEmpresaId, whatsappId || cleanPhone, cleanMessage);
   await query(
     `INSERT INTO conversaciones
-      (empresa_id, telefono_cliente, mensaje, respuesta, estado, tipo_mensaje, agente_usuario_id, fecha)
-     VALUES (?, ?, ?, ?, 'human_active', 'human', ?, NOW())`,
-    [scopedEmpresaId, cleanPhone, '[Respuesta manual desde inbox]', cleanMessage, auth.user?.id ?? null]
+      (empresa_id, telefono_cliente, whatsapp_id, contact_name, mensaje, respuesta, estado, tipo_mensaje, agente_usuario_id, fecha)
+     VALUES (?, ?, ?, ?, ?, ?, 'human_active', 'human', ?, NOW())`,
+    [
+      scopedEmpresaId,
+      thread.telefono_cliente,
+      whatsappId,
+      thread.contact_name || null,
+      '[Respuesta manual desde inbox]',
+      cleanMessage,
+      auth.user?.id ?? null
+    ]
   );
   await markThreadState({
     empresaId: scopedEmpresaId,
@@ -312,7 +330,7 @@ export async function sendThreadReply(auth, { empresaId, telefono, mensaje }) {
     agenteUsuarioId: auth.user?.id
   });
 
-  return findInboxThread(auth, { empresaId: scopedEmpresaId, telefono: cleanPhone });
+  return findInboxThread(auth, { empresaId: scopedEmpresaId, telefono: thread.telefono_cliente });
 }
 
 export async function closeThread(auth, { empresaId, telefono }) {
@@ -355,12 +373,14 @@ export async function createConversation(payload, auth) {
 
   try {
     const [result] = await query(
-      `INSERT INTO conversaciones
-        (empresa_id, telefono_cliente, mensaje, respuesta, estado, tipo_mensaje, fecha)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO conversaciones
+        (empresa_id, telefono_cliente, whatsapp_id, contact_name, mensaje, respuesta, estado, tipo_mensaje, fecha)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         conversation.empresaId,
         conversation.telefonoCliente,
+        null,
+        null,
         conversation.mensaje,
         conversation.respuesta,
         conversation.respuesta ? CONVERSATION_STATES.BOT_ACTIVE : CONVERSATION_STATES.OPEN,

@@ -29,7 +29,8 @@ module.exports = {
       max_memory_restart: '768M',
       env: {
         NODE_ENV: 'production',
-        HANDOFF_JOB_ENABLED: 'true'
+        HANDOFF_JOB_ENABLED: 'true',
+        WHATSAPP_WORKER_COMMAND_INTERVAL_MS: '5000'
       }
     }
   ]

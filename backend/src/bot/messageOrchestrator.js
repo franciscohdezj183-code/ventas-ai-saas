@@ -1,4 +1,4 @@
-import { interpretIntent, validateIntentJson } from '../ai/intentInterpreter.js';
+import { FALLBACK_INTENT, interpretIntent, validateIntentJson } from '../ai/intentInterpreter.js';
 import {
   findConversationContext,
   saveConversationContext
@@ -12,11 +12,10 @@ import { getBotResponseProfile } from '../modules/bot-prompts/bot-prompts.servic
 import { registerAIUsage } from '../modules/ai-usage/ai-usage.service.js';
 import { mcpClient as defaultMcpClient } from '../mcp/mcpClient.js';
 import { getBusinessStrategy } from './business-types/business-strategy.factory.js';
+import { normalizeMexicanPhoneNumber } from '../whatsapp/whatsapp-number.helper.js';
 
 function normalizePhone(value) {
-  return String(value ?? '')
-    .replace('@c.us', '')
-    .replace(/\D/g, '');
+  return normalizeMexicanPhoneNumber(value);
 }
 
 function configuredSynonymEntries(synonyms) {
@@ -362,6 +361,11 @@ function buildStaticResponse(intent, companyContext = {}) {
 
 function buildResponse(intent, toolResult, companyContext = {}) {
   const profile = companyContext.response_profile ?? {};
+
+  if (intent.parametros?.respuesta_sugerida) {
+    return intent.parametros.respuesta_sugerida;
+  }
+
   switch (intent.herramienta_mcp) {
     case 'buscar_productos':
     case 'obtener_producto':
@@ -394,7 +398,7 @@ function buildMedia(intent, toolResult, response) {
   }
 }
 
-function buildToolArgs(toolName, { empresaId, phone, message, normalizedMessage, intent, conversationContext }) {
+function buildToolArgs(toolName, { empresaId, phone, message, normalizedMessage, intent, conversationContext, whatsappChatId = null, contactName = null }) {
   const params = intent.parametros ?? {};
   const searchText = params.texto ? normalizarTextoBusqueda(params.texto, intent.sinonimos) : normalizedMessage;
 
@@ -432,6 +436,8 @@ function buildToolArgs(toolName, { empresaId, phone, message, normalizedMessage,
       return {
         empresa_id: empresaId,
         telefono: params.telefono ?? phone,
+        whatsapp_id: whatsappChatId,
+        contact_name: contactName,
         nombre_cliente: params.nombre_cliente,
         interes: params.interes ?? params.texto ?? message,
         producto_id: params.producto_id ?? conversationContext?.ultimo_producto_id,
@@ -822,6 +828,7 @@ export async function orchestrateIncomingMessage({
   phone,
   message,
   whatsappChatId = null,
+  contactName = null,
   contexto = null,
   interpreter = interpretIntent,
   mcpClient = defaultMcpClient,
@@ -843,9 +850,11 @@ export async function orchestrateIncomingMessage({
 
   if (matchesBlockedTopic(message, blockedTopics)) {
     const response = configuredFallback(contextoEmpresa);
-    const savedConversation = await mcpClient.callTool('guardar_conversacion', {
+      const savedConversation = await mcpClient.callTool('guardar_conversacion', {
       empresa_id: empresaId,
       telefono: cleanPhone,
+      whatsapp_id: whatsappChatId,
+      contact_name: contactName,
       mensaje: message,
       respuesta: response,
       estado: 'bot_active',
@@ -873,6 +882,8 @@ export async function orchestrateIncomingMessage({
     const savedConversation = await mcpClient.callTool('guardar_conversacion', {
       empresa_id: empresaId,
       telefono: cleanPhone,
+      whatsapp_id: whatsappChatId,
+      contact_name: contactName,
       mensaje: message,
       respuesta: faqAnswer,
       estado: 'bot_active',
@@ -907,14 +918,25 @@ export async function orchestrateIncomingMessage({
       : null
   };
   let usageSnapshot = null;
-  const interpretedIntent = await interpreter({
-    empresa_id: empresaId,
-    mensaje_cliente: normalizedMessage,
-    contexto: contextoCompleto,
-    onUsage: (usage) => {
-      usageSnapshot = usage;
-    }
-  });
+  let interpretedIntent = null;
+
+  try {
+    interpretedIntent = await interpreter({
+      empresa_id: empresaId,
+      mensaje_cliente: normalizedMessage,
+      contexto: contextoCompleto,
+      onUsage: (usage) => {
+        usageSnapshot = usage;
+      }
+    });
+  } catch (error) {
+    interpretedIntent = {
+      ...FALLBACK_INTENT,
+      parametros: {
+        ai_error: error.code ?? error.name ?? 'INTERPRETER_ERROR'
+      }
+    };
+  }
   const intent = businessStrategy.prepareIntent(
     applyConversationContext(validateIntentJson(interpretedIntent), normalizedMessage, conversationContext),
     {
@@ -941,7 +963,9 @@ export async function orchestrateIncomingMessage({
         message,
         normalizedMessage,
         intent,
-        conversationContext
+        conversationContext,
+        whatsappChatId,
+        contactName
       })
     );
 
@@ -973,6 +997,8 @@ export async function orchestrateIncomingMessage({
   const savedConversation = await mcpClient.callTool('guardar_conversacion', {
     empresa_id: empresaId,
     telefono: cleanPhone,
+    whatsapp_id: whatsappChatId,
+    contact_name: contactName,
     mensaje: message,
     respuesta: response,
     estado: shouldRequestHuman ? 'requires_human' : 'bot_active',

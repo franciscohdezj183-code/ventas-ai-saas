@@ -5,6 +5,7 @@ import {
   hasServiceResults,
   searchTextFromIntent
 } from './shared-response-helpers.js';
+import { serviceBusinessStrategy } from './service-business.strategy.js';
 
 function hasLastProduct(conversationContext) {
   return Number(conversationContext?.ultimo_producto_id) > 0;
@@ -53,7 +54,7 @@ function isLikelyProductQuestion(message) {
 }
 
 function isLikelyServiceQuestion(message) {
-  return /\b(servicio|servicios|cita|agenda|agendar|reservar|cotizar|cotizaci[oó]n|instalaci[oó]n|instalacion|mantenimiento|reparaci[oó]n|reparacion|consulta|asesor[ií]a|asesoria|atenci[oó]n|atencion|dise[nñ]o|limpieza|soporte|diagn[oó]stico|diagnostico)\b/i.test(message);
+  return /\b(servicio|servicios|cita|agenda|agendar|reservar|cotizar|cotizaci[oó]n|instalaci[oó]n|instalacion|mantenimiento|reparaci[oó]n|reparacion|consulta|asesor[ií]a|asesoria|atenci[oó]n|atencion|dise[nñ]o|diseno|limpieza|soporte|diagn[oó]stico|diagnostico|lona|lonas|vinil|tarjeta|tarjetas|logotipo|logotipos|marketing|se[nñ]aletica|senaletica|textil|promocionales|banner)\b/i.test(message);
 }
 
 function withParams(intent, overrides = {}) {
@@ -119,9 +120,19 @@ function buildAmbiguousIntent(intent) {
     herramienta_mcp: '',
     parametros: {
       ...(intent.parametros ?? {}),
-      respuesta_sugerida: '¿Buscas un producto específico o quieres información de algún servicio?'
+      respuesta_sugerida: 'Buscas un producto especifico o quieres informacion de algun servicio?'
     }
   };
+}
+
+function buildDirectServiceIntent(intent, context) {
+  const serviceIntent = serviceBusinessStrategy.prepareIntent(intent, context);
+
+  if (serviceIntent.parametros?.respuesta_sugerida) {
+    return serviceIntent;
+  }
+
+  return null;
 }
 
 export const mixedBusinessStrategy = {
@@ -134,6 +145,12 @@ export const mixedBusinessStrategy = {
 
     if (isPurchaseQuestion(normalizedMessage) || intent.intencion === 'INTENCION_COMPRA') {
       return buildInterestIntent(intent, normalizedMessage, conversationContext);
+    }
+
+    const directServiceIntent = buildDirectServiceIntent(intent, { conversationContext, normalizedMessage });
+
+    if (directServiceIntent) {
+      return directServiceIntent;
     }
 
     if (isShortContextQuestion(normalizedMessage) && (isPriceQuestion(normalizedMessage) || intent.intencion === 'CONSULTAR_STOCK')) {

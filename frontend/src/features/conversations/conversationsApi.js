@@ -1,5 +1,9 @@
 import { api } from '../../config/api.js';
 
+function threadPath({ empresaId, telefono }) {
+  return `/conversations/inbox/threads/${encodeURIComponent(empresaId)}/${encodeURIComponent(telefono)}`;
+}
+
 export async function fetchConversations(filters = {}) {
   const response = await api.get('/conversations', { params: filters });
   return response.data.data;
@@ -11,27 +15,27 @@ export async function fetchInboxThreads(filters = {}) {
 }
 
 export async function fetchInboxThread({ empresaId, telefono }) {
-  const response = await api.get(`/conversations/inbox/threads/${empresaId}/${telefono}`);
+  const response = await api.get(threadPath({ empresaId, telefono }));
   return response.data.data;
 }
 
 export async function pauseInboxThread({ empresaId, telefono }) {
-  const response = await api.post(`/conversations/inbox/threads/${empresaId}/${telefono}/pause`);
+  const response = await api.post(`${threadPath({ empresaId, telefono })}/pause`);
   return response.data.data;
 }
 
 export async function resumeInboxThread({ empresaId, telefono }) {
-  const response = await api.post(`/conversations/inbox/threads/${empresaId}/${telefono}/resume`);
+  const response = await api.post(`${threadPath({ empresaId, telefono })}/resume`);
   return response.data.data;
 }
 
 export async function sendInboxReply({ empresaId, telefono, mensaje }) {
-  const response = await api.post(`/conversations/inbox/threads/${empresaId}/${telefono}/reply`, { mensaje });
+  const response = await api.post(`${threadPath({ empresaId, telefono })}/reply`, { mensaje });
   return response.data.data;
 }
 
 export async function closeInboxThread({ empresaId, telefono }) {
-  const response = await api.post(`/conversations/inbox/threads/${empresaId}/${telefono}/close`);
+  const response = await api.post(`${threadPath({ empresaId, telefono })}/close`);
   return response.data.data;
 }
 

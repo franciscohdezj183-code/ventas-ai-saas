@@ -11,6 +11,10 @@ function normalizeLeadArgs(args, auth, defaultInterest) {
     'empresa_id',
     'nombre_cliente',
     'telefono',
+    'whatsapp_id',
+    'external_id',
+    'contact_name',
+    'nombre_contacto',
     'interes',
     'texto',
     'producto_id',
@@ -19,10 +23,12 @@ function normalizeLeadArgs(args, auth, defaultInterest) {
 
   return {
     empresaId: normalizeEmpresaId(args.empresa_id, auth),
-    nombreCliente: normalizeText(args.nombre_cliente, 'nombre_cliente', {
+    nombreCliente: normalizeText(args.nombre_cliente ?? args.contact_name ?? args.nombre_contacto, 'nombre_cliente', {
       fallback: 'Cliente WhatsApp'
     }),
     telefono: normalizePhone(args.telefono),
+    whatsappId: normalizeText(args.whatsapp_id ?? args.external_id, 'whatsapp_id'),
+    contactName: normalizeText(args.contact_name ?? args.nombre_contacto, 'contact_name'),
     interes: normalizeText(args.interes ?? args.texto, 'interes', {
       fallback: defaultInterest
     }),
@@ -33,15 +39,18 @@ function normalizeLeadArgs(args, auth, defaultInterest) {
 
 async function insertLead(input) {
   const [result] = await query(
-    `INSERT INTO leads (empresa_id, nombre_cliente, telefono, interes, estado)
-     VALUES (?, ?, ?, ?, 'NUEVO')`,
-    [input.empresaId, input.nombreCliente, input.telefono, input.interes]
+    `INSERT INTO leads
+      (empresa_id, nombre_cliente, telefono, whatsapp_id, contact_name, interes, estado)
+     VALUES (?, ?, ?, ?, ?, ?, 'NUEVO')`,
+    [input.empresaId, input.nombreCliente, input.telefono, input.whatsappId, input.contactName, input.interes]
   );
 
   return {
     lead_id: result.insertId,
     nombre_cliente: input.nombreCliente,
     telefono: input.telefono,
+    whatsapp_id: input.whatsappId,
+    contact_name: input.contactName,
     interes: input.interes,
     producto_id: input.productoId,
     servicio_id: input.servicioId
@@ -70,6 +79,10 @@ const leadSchema = {
     empresa_id: { type: 'integer' },
     nombre_cliente: { type: 'string' },
     telefono: { type: 'string' },
+    whatsapp_id: { type: 'string' },
+    external_id: { type: 'string' },
+    contact_name: { type: 'string' },
+    nombre_contacto: { type: 'string' },
     interes: { type: 'string' },
     texto: { type: 'string' },
     producto_id: { type: 'integer' },

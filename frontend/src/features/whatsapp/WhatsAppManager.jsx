@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { io } from 'socket.io-client';
 import {
   AlertTriangle,
   Bot,
@@ -25,30 +26,99 @@ import {
   disconnectWhatsappSession,
   fetchWhatsappQr,
   fetchWhatsappStatus,
+  getWhatsappSocketToken,
+  restartWhatsappSession,
+  resolveSocketUrl,
   startWhatsappSession
 } from './whatsappApi.js';
 
 const statusCopy = {
+  ready: {
+    label: 'Conectado',
+    tone: 'connected',
+    icon: CheckCircle2,
+    description: 'WhatsApp esta listo para recibir y responder mensajes de clientes.'
+  },
+  idle: {
+    label: 'Sin iniciar',
+    tone: 'disconnected',
+    icon: CircleOff,
+    description: 'Inicia la vinculacion para generar un codigo QR.'
+  },
+  qr: {
+    label: 'QR disponible',
+    tone: 'scanning',
+    icon: QrCode,
+    description: 'Escanea el codigo con el telefono del negocio para completar la vinculacion.'
+  },
+  initializing: {
+    label: 'Iniciando',
+    tone: 'scanning',
+    icon: Clock3,
+    description: 'Estamos preparando la vinculacion.'
+  },
+  authenticated: {
+    label: 'Autenticando',
+    tone: 'scanning',
+    icon: ShieldCheck,
+    description: 'WhatsApp valido la sesion. Esperando conexion final.'
+  },
+  disconnected: {
+    label: 'Desconectado',
+    tone: 'disconnected',
+    icon: CircleOff,
+    description: 'Conecta WhatsApp para activar la atencion desde este canal.'
+  },
+  failed: {
+    label: 'Error',
+    tone: 'error',
+    icon: AlertTriangle,
+    description: 'La sesion requiere atencion. Intenta reiniciar la conexion.'
+  },
+  destroyed: {
+    label: 'Sesion destruida',
+    tone: 'disconnected',
+    icon: CircleOff,
+    description: 'La sesion local se elimino. Inicia una nueva vinculacion para generar QR.'
+  },
   CONNECTED: {
     label: 'Conectado',
     tone: 'connected',
     icon: CheckCircle2,
     description: 'WhatsApp esta listo para recibir y responder mensajes de clientes.'
   },
+  NOT_STARTED: {
+    label: 'Sin iniciar',
+    tone: 'disconnected',
+    icon: CircleOff,
+    description: 'Inicia la vinculacion para generar un codigo QR.'
+  },
   QR_READY: {
-    label: 'QR listo',
+    label: 'QR disponible',
     tone: 'scanning',
     icon: QrCode,
     description: 'Escanea el codigo con el telefono del negocio para completar la vinculacion.'
   },
+  QR_EXPIRED: {
+    label: 'QR expirado',
+    tone: 'error',
+    icon: AlertTriangle,
+    description: 'El codigo expiro. Reinicia la vinculacion para generar uno nuevo.'
+  },
   INITIALIZING: {
-    label: 'Preparando sesion',
+    label: 'Iniciando',
     tone: 'scanning',
     icon: Clock3,
-    description: 'Estamos abriendo la sesion. El QR aparecera en unos segundos.'
+    description: 'Estamos preparando la vinculacion.'
+  },
+  WAITING_QR: {
+    label: 'Esperando QR',
+    tone: 'scanning',
+    icon: Clock3,
+    description: 'Estamos generando el codigo QR. Normalmente tarda unos segundos.'
   },
   AUTHENTICATED: {
-    label: 'Autenticado',
+    label: 'Autenticando',
     tone: 'scanning',
     icon: ShieldCheck,
     description: 'WhatsApp valido la sesion. Esperando conexion final.'
@@ -71,6 +141,12 @@ const statusCopy = {
     icon: AlertTriangle,
     description: 'No se pudo autenticar la sesion. Reinicia y escanea un QR nuevo.'
   },
+  ERROR: {
+    label: 'Error',
+    tone: 'error',
+    icon: AlertTriangle,
+    description: 'La sesion requiere atencion. Intenta reiniciar la conexion.'
+  },
   DISCONNECTED: {
     label: 'Desconectado',
     tone: 'disconnected',
@@ -80,15 +156,70 @@ const statusCopy = {
 };
 
 function getApiError(error) {
+  if (error?.response?.status === 401) {
+    return 'Tu sesion del sistema expiro. Inicia sesion nuevamente.';
+  }
+
   return error?.response?.data?.message ?? 'No se pudo completar la operacion.';
 }
 
 function getStatusValue(status) {
-  return String(status?.status ?? 'DISCONNECTED').toUpperCase();
+  if (!status || !status.status) {
+    return 'idle';
+  }
+
+  return String(status.status);
+}
+
+function getStatusCompanyId(payload) {
+  return payload?.companyId ?? payload?.empresaId ?? payload?.empresa_id;
+}
+
+function mergeWhatsappStatus(currentStatus, payload) {
+  const qrImage = payload?.qrImage ?? payload?.qr_image ?? currentStatus?.qrImage ?? currentStatus?.qr_image ?? null;
+  const qrText = payload?.qrText ?? payload?.qr ?? currentStatus?.qrText ?? currentStatus?.qr ?? null;
+
+  return {
+    ...currentStatus,
+    ...payload,
+    qr: qrText,
+    qrText,
+    qrImage,
+    qr_image: qrImage,
+    qr_available: Boolean(qrImage)
+  };
 }
 
 function getStatusInfo(status) {
   return statusCopy[getStatusValue(status)] ?? statusCopy.DISCONNECTED;
+}
+
+function shouldFetchQrForStatus(statusValue) {
+  return ['initializing', 'qr', 'INITIALIZING', 'WAITING_QR', 'QR_READY'].includes(statusValue);
+}
+
+function getPollingInterval(statusValue) {
+  if (['initializing', 'qr', 'authenticated', 'INITIALIZING', 'WAITING_QR', 'QR_READY', 'AUTHENTICATED'].includes(statusValue)) {
+    return 3000;
+  }
+
+  return null;
+}
+
+function shouldShowTechnicalDetails(user) {
+  return isSuperAdminRole(user?.rol) || import.meta.env.DEV || window.localStorage?.getItem('whatsapp_debug') === 'true';
+}
+
+function friendlyStatusMessage(status, info) {
+  if (status?.user_message) {
+    return status.user_message;
+  }
+
+  if (info.tone === 'error') {
+    return 'No se pudo completar la vinculacion. Reinicia la sesion y vuelve a intentar.';
+  }
+
+  return info.description;
 }
 
 function formatDateTime(value) {
@@ -104,6 +235,15 @@ function formatPhone(value) {
   return clean.startsWith('+') ? clean : `+${clean}`;
 }
 
+function formatTimeRemaining(value) {
+  if (!value) {
+    return null;
+  }
+
+  const remainingSeconds = Math.max(0, Math.ceil((new Date(value).getTime() - Date.now()) / 1000));
+  return remainingSeconds > 0 ? `${remainingSeconds}s` : 'expirado';
+}
+
 function getFirstValue(source, keys, fallback = '-') {
   for (const key of keys) {
     const value = source?.[key];
@@ -116,7 +256,7 @@ function getFirstValue(source, keys, fallback = '-') {
   return fallback;
 }
 
-function WhatsAppHeader({ canAct, canSelectCompany, companies, empresaId, isBusy, onCompanyChange, onDisconnect, onRefresh, onRestart, onStart, user }) {
+function WhatsAppHeader({ canAct, canDisconnect, canRestart, canSelectCompany, canStart, companies, empresaId, isBusy, onCompanyChange, onDisconnect, onRefresh, onRestart, onStart, user }) {
   return (
     <header className="whatsapp-hero">
       <div className="whatsapp-hero-copy">
@@ -152,19 +292,19 @@ function WhatsAppHeader({ canAct, canSelectCompany, companies, empresaId, isBusy
 
         <div className="whatsapp-actions">
           <Can permission="whatsapp.manage">
-            <button className="primary-button" disabled={!canAct} onClick={onStart} type="button">
+            <button className="primary-button" disabled={!canStart} onClick={onStart} type="button">
               <MessageCircle size={18} aria-hidden="true" />
               Conectar
             </button>
           </Can>
           <Can permission="whatsapp.manage">
-            <button className="secondary-button" disabled={!canAct} onClick={onRestart} type="button">
+            <button className="secondary-button" disabled={!canRestart} onClick={onRestart} type="button">
               <RotateCcw size={18} aria-hidden="true" />
               Reconectar
             </button>
           </Can>
           <Can permission="whatsapp.manage">
-            <button className="secondary-button" disabled={!canAct} onClick={onDisconnect} type="button">
+            <button className="secondary-button" disabled={!canDisconnect} onClick={onDisconnect} type="button">
               <Power size={18} aria-hidden="true" />
               Desconectar
             </button>
@@ -178,9 +318,10 @@ function WhatsAppHeader({ canAct, canSelectCompany, companies, empresaId, isBusy
   );
 }
 
-function StatusOverview({ hasQr, status }) {
+function StatusOverview({ hasQr, showTechnicalDetails, status }) {
   const info = getStatusInfo(status);
   const Icon = info.icon;
+  const message = friendlyStatusMessage(status, info);
 
   return (
     <section className={`whatsapp-status-overview ${info.tone}`}>
@@ -191,7 +332,7 @@ function StatusOverview({ hasQr, status }) {
         <div>
           <p className="eyebrow">Estado de conexion</p>
           <h2>{info.label}</h2>
-          <p>{status?.last_error && info.tone === 'error' ? status.last_error : info.description}</p>
+          <p>{showTechnicalDetails && status?.last_error && info.tone === 'error' ? status.last_error : message}</p>
         </div>
       </div>
 
@@ -234,7 +375,7 @@ function WhatsAppMetrics({ hasQr, status }) {
       key: 'bot',
       icon: Bot,
       label: 'Bot',
-      value: getFirstValue(status, ['bot_status', 'bot_estado'], statusValue === 'CONNECTED' ? 'Activo' : 'En espera'),
+      value: getFirstValue(status, ['bot_status', 'bot_estado'], statusValue === 'ready' ? 'Activo' : 'En espera'),
       detail: 'Atencion automatizada'
     },
     {
@@ -274,7 +415,11 @@ function WhatsAppMetrics({ hasQr, status }) {
   );
 }
 
-function QRPanel({ hasQr, isQrFlow, status, statusInfo }) {
+function QRPanel({ hasQr, isQrFlow, qrTimeRemaining, status, statusInfo }) {
+  const waitMessage = status?.qr_wait_warning
+    ? 'WhatsApp esta tardando mas de lo normal. Puedes esperar un momento o usar Reconectar.'
+    : statusInfo.description;
+
   return (
     <article className="whatsapp-qr-console">
       <div className="whatsapp-web-login-copy">
@@ -284,7 +429,7 @@ function QRPanel({ hasQr, isQrFlow, status, statusInfo }) {
             <h3>Inicia sesion en WhatsApp Web</h3>
             <p>Envia mensajes privados a tus clientes a traves de WhatsApp en tu negocio.</p>
           </div>
-          <StatusBadge status={status?.status ?? 'DISCONNECTED'}>{statusInfo.label}</StatusBadge>
+            <StatusBadge status={status?.status ?? 'DISCONNECTED'}>{statusInfo.label}</StatusBadge>
         </div>
 
         <ol className="whatsapp-web-steps">
@@ -302,11 +447,14 @@ function QRPanel({ hasQr, isQrFlow, status, statusInfo }) {
 
       <div className="whatsapp-qr-stage">
         {hasQr ? (
-          <img alt="QR de WhatsApp" src={status.qr_image} />
+          <>
+            <img alt="QR de WhatsApp" src={status.qrImage ?? status.qr_image} />
+            {qrTimeRemaining ? <small className="whatsapp-qr-expiration">Expira en {qrTimeRemaining}</small> : null}
+          </>
         ) : (
           <div className={isQrFlow ? 'qr-placeholder large waiting' : 'qr-placeholder large'}>
             <QrCode size={42} aria-hidden="true" />
-            <span>{isQrFlow ? 'Generando QR...' : 'Sin QR activo'}</span>
+            <span>{isQrFlow ? waitMessage : statusInfo.description}</span>
           </div>
         )}
       </div>
@@ -322,13 +470,21 @@ export function WhatsAppManager() {
   const [error, setError] = useState('');
   const [isBusy, setIsBusy] = useState(false);
   const [status, setStatus] = useState(null);
+  const isLoadingStatusRef = useRef(false);
+  const socketRef = useRef(null);
 
   const selectedCompanyId = canSelectCompany ? empresaId : undefined;
+  const showTechnicalDetails = shouldShowTechnicalDetails(user);
   const statusInfo = getStatusInfo(status);
   const statusValue = getStatusValue(status);
-  const hasQr = Boolean(status?.qr_image);
-  const isQrFlow = ['INITIALIZING', 'QR_READY', 'AUTHENTICATED'].includes(statusValue);
+  const hasQr = Boolean(status?.qrImage ?? status?.qr_image);
+  const isQrFlow = ['initializing', 'qr', 'authenticated', 'INITIALIZING', 'WAITING_QR', 'QR_READY', 'AUTHENTICATED'].includes(statusValue);
+  const pollingInterval = getPollingInterval(statusValue);
   const canAct = Boolean(user) && !isBusy && (!canSelectCompany || empresaId);
+  const canStart = canAct && ['idle', 'destroyed'].includes(statusValue);
+  const canRestart = canAct && ['failed', 'disconnected'].includes(statusValue);
+  const canDisconnect = canAct && !['idle', 'destroyed'].includes(statusValue);
+  const qrTimeRemaining = formatTimeRemaining(status?.qr_expires_at);
 
   async function loadCompanies() {
     if (!user || !canSelectCompany) {
@@ -339,6 +495,10 @@ export function WhatsAppManager() {
   }
 
   async function loadStatus() {
+    if (isLoadingStatusRef.current) {
+      return;
+    }
+
     if (!user) {
       setStatus(null);
       return;
@@ -349,9 +509,24 @@ export function WhatsAppManager() {
       return;
     }
 
-    const nextStatus = await fetchWhatsappStatus(selectedCompanyId);
-    const qr = await fetchWhatsappQr(selectedCompanyId);
-    setStatus({ ...nextStatus, qr_image: qr.qr_image });
+    try {
+      isLoadingStatusRef.current = true;
+      const nextStatus = await fetchWhatsappStatus(selectedCompanyId);
+      const nextStatusValue = getStatusValue(nextStatus);
+      const qr = shouldFetchQrForStatus(nextStatusValue) ? await fetchWhatsappQr(selectedCompanyId) : null;
+      setStatus({
+        ...nextStatus,
+        qrImage: qr?.qrImage ?? nextStatus.qrImage ?? null,
+        qr_image: qr?.qrImage ?? nextStatus.qrImage ?? null,
+        qr_available: Boolean(qr?.qrImage ?? nextStatus.qrImage),
+        last_qr_at: qr?.last_qr_at ?? nextStatus.last_qr_at,
+        qr_expires_at: qr?.qr_expires_at ?? nextStatus.qr_expires_at,
+        qr_wait_warning: qr?.qr_wait_warning ?? nextStatus.qr_wait_warning,
+        user_message: qr?.user_message ?? nextStatus.user_message
+      });
+    } finally {
+      isLoadingStatusRef.current = false;
+    }
   }
 
   useEffect(() => {
@@ -362,7 +537,84 @@ export function WhatsAppManager() {
     loadStatus().catch((requestError) => setError(getApiError(requestError)));
   }, [empresaId, canSelectCompany, user]);
 
+  useEffect(() => {
+    if (!user || (canSelectCompany && !empresaId) || !pollingInterval) {
+      return undefined;
+    }
+
+    const timer = setInterval(() => {
+      loadStatus().catch((requestError) => setError(getApiError(requestError)));
+    }, pollingInterval);
+
+    return () => clearInterval(timer);
+  }, [empresaId, canSelectCompany, user, pollingInterval]);
+
+  useEffect(() => {
+    const token = getWhatsappSocketToken();
+
+    if (!user || !token || (canSelectCompany && !empresaId)) {
+      socketRef.current?.disconnect();
+      socketRef.current = null;
+      return undefined;
+    }
+
+    const selectedId = canSelectCompany ? Number(empresaId) : (user?.empresaId ?? user?.empresa?.id);
+    const socket = io(resolveSocketUrl(), {
+      auth: { token },
+      transports: ['websocket', 'polling']
+    });
+
+    socketRef.current = socket;
+
+    socket.on('connect', () => {
+      setError('');
+
+      if (canSelectCompany && selectedId) {
+        socket.emit('whatsapp:join', { companyId: selectedId });
+      }
+    });
+
+    socket.on('whatsapp:status', (payload) => {
+      if (selectedId && Number(getStatusCompanyId(payload)) !== Number(selectedId)) {
+        return;
+      }
+
+      setStatus((currentStatus) => mergeWhatsappStatus(currentStatus, payload));
+    });
+
+    socket.on('whatsapp:qr', (payload) => {
+      if (selectedId && Number(getStatusCompanyId(payload)) !== Number(selectedId)) {
+        return;
+      }
+
+      setStatus((currentStatus) => mergeWhatsappStatus(currentStatus, payload));
+    });
+
+    socket.on('whatsapp:error', (payload) => {
+      if (selectedId && Number(getStatusCompanyId(payload)) !== Number(selectedId)) {
+        return;
+      }
+
+      setError(payload?.message ?? 'No se pudo actualizar la sesion de WhatsApp.');
+    });
+
+    socket.on('connect_error', () => {
+      socket.disconnect();
+    });
+
+    return () => {
+      socket.disconnect();
+      if (socketRef.current === socket) {
+        socketRef.current = null;
+      }
+    };
+  }, [canSelectCompany, empresaId, user]);
+
   async function handleStart() {
+    if (!canStart) {
+      return;
+    }
+
     try {
       setIsBusy(true);
       setError('');
@@ -376,11 +628,14 @@ export function WhatsAppManager() {
   }
 
   async function handleRestart() {
+    if (!canRestart) {
+      return;
+    }
+
     try {
       setIsBusy(true);
       setError('');
-      await disconnectWhatsappSession(selectedCompanyId);
-      setStatus(await startWhatsappSession(selectedCompanyId));
+      setStatus(await restartWhatsappSession(selectedCompanyId));
       await loadStatus();
     } catch (requestError) {
       setError(getApiError(requestError));
@@ -402,6 +657,10 @@ export function WhatsAppManager() {
   }
 
   async function handleDisconnect() {
+    if (!canDisconnect) {
+      return;
+    }
+
     try {
       setIsBusy(true);
       setError('');
@@ -420,7 +679,10 @@ export function WhatsAppManager() {
       <div className="whatsapp-manager">
         <WhatsAppHeader
           canAct={canAct}
+          canDisconnect={canDisconnect}
+          canRestart={canRestart}
           canSelectCompany={canSelectCompany}
+          canStart={canStart}
           companies={companies}
           empresaId={empresaId}
           isBusy={isBusy}
@@ -435,9 +697,9 @@ export function WhatsAppManager() {
         <WhatsAppMetrics hasQr={hasQr} status={status} />
 
         <section className="whatsapp-console-grid">
-          <QRPanel hasQr={hasQr} isQrFlow={isQrFlow} status={status} statusInfo={statusInfo} />
+          <QRPanel hasQr={hasQr} isQrFlow={isQrFlow} qrTimeRemaining={qrTimeRemaining} status={status} statusInfo={statusInfo} />
           <div className="whatsapp-console-side">
-            <StatusOverview hasQr={hasQr} status={status} />
+            <StatusOverview hasQr={hasQr} showTechnicalDetails={showTechnicalDetails} status={status} />
           </div>
         </section>
       </div>

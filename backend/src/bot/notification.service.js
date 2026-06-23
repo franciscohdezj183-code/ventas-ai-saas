@@ -1,12 +1,11 @@
 import { query } from '../config/database.js';
 import { mcpClient } from '../mcp/mcpClient.js';
+import { normalizeMexicanPhoneNumber } from '../whatsapp/whatsapp-number.helper.js';
 
 const NOTIFIABLE_INTENTS = new Set(['INTENCION_COMPRA', 'HABLAR_ASESOR', 'AGENDAR_CITA']);
 
 function normalizePhone(value) {
-  return String(value ?? '')
-    .replace('@c.us', '')
-    .replace(/\D/g, '');
+  return normalizeMexicanPhoneNumber(value);
 }
 
 function buildOwnerNotificationMessage({
@@ -104,7 +103,7 @@ export async function notifyOwnerForLead({
     empresa_id: empresaId
   });
   const empresa = configResult.empresa;
-  const telefonoDestino = normalizePhone(empresa?.telefono_dueno);
+  const telefonoDestino = normalizePhone(empresa?.telefono_dueno ?? empresa?.telefono);
 
   if (!telefonoDestino) {
     return { notification_id: null, estado: 'OMITIDA', motivo: 'telefono_dueno no configurado' };

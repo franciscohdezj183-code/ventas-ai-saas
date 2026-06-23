@@ -16,6 +16,14 @@ import {
 
 export const conversationsRouter = Router();
 
+function preventConversationCache(req, res, next) {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  next();
+}
+
+conversationsRouter.use(preventConversationCache);
 conversationsRouter.use(requireAuth, attachTenantScope);
 
 conversationsRouter.get('/inbox/threads', requirePermission('conversations.view'), listInboxThreads);

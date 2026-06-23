@@ -5,17 +5,18 @@ import { mcpClient } from '../../mcp/mcpClient.js';
 import { createAuditLog } from '../audit/audit.service.js';
 import { isPlanLimitAvailable } from '../plans/plan-limits.service.js';
 import { registerAIUsage } from '../ai-usage/ai-usage.service.js';
+import { normalizeMexicanPhoneNumber } from '../../whatsapp/whatsapp-number.helper.js';
 
 function normalizePhone(value) {
-  return String(value ?? '')
-    .replace('@c.us', '')
-    .replace(/\D/g, '');
+  return normalizeMexicanPhoneNumber(value);
 }
 
-async function saveConversationWithoutReply({ empresaId, phone, message }) {
+async function saveConversationWithoutReply({ empresaId, phone, message, whatsappChatId = null, contactName = null }) {
   const result = await mcpClient.callTool('guardar_conversacion', {
     empresa_id: empresaId,
     telefono: phone,
+    whatsapp_id: whatsappChatId,
+    contact_name: contactName,
     mensaje: message,
     estado: 'open',
     tipo_mensaje: 'customer'
@@ -33,7 +34,7 @@ export function getAIStatus() {
   };
 }
 
-export async function generateCompanyReply({ empresaId, userId = null, phone, message, whatsappChatId = null }) {
+export async function generateCompanyReply({ empresaId, userId = null, phone, message, whatsappChatId = null, contactName = null }) {
   try {
     const aiLimit = await isPlanLimitAvailable(empresaId, 'aiMessagesMonthly');
 
@@ -52,7 +53,8 @@ export async function generateCompanyReply({ empresaId, userId = null, phone, me
       userId,
       phone,
       message,
-      whatsappChatId
+      whatsappChatId,
+      contactName
     });
   } catch (error) {
     await createAuditLog({
@@ -113,14 +115,16 @@ export async function interpretCustomerIntent({ empresaId, userId = null, messag
   }
 }
 
-export async function processIncomingCustomerMessage({ empresaId, userId = null, phone, message, whatsappChatId = null }) {
+export async function processIncomingCustomerMessage({ empresaId, userId = null, phone, message, whatsappChatId = null, contactName = null }) {
   const cleanPhone = normalizePhone(phone);
 
-  if (!env.openai.apiKey || !env.openai.autoReply) {
+  if (!env.openai.autoReply) {
     const conversationId = await saveConversationWithoutReply({
       empresaId,
       phone: cleanPhone,
-      message
+      message,
+      whatsappChatId,
+      contactName
     });
 
     return {
@@ -138,7 +142,9 @@ export async function processIncomingCustomerMessage({ empresaId, userId = null,
     const conversationId = await saveConversationWithoutReply({
       empresaId,
       phone: cleanPhone,
-      message
+      message,
+      whatsappChatId,
+      contactName
     });
 
     return {
@@ -155,7 +161,8 @@ export async function processIncomingCustomerMessage({ empresaId, userId = null,
     userId,
     phone: cleanPhone,
     message,
-    whatsappChatId
+    whatsappChatId,
+    contactName
   });
 }
 

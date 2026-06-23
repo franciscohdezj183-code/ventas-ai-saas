@@ -149,11 +149,12 @@ function LeadActions({ lead, onDelete, onEdit, onView }) {
 
 function PhoneLink({ phone }) {
   const clean = String(phone ?? '').replace(/\s/g, '');
+  const visiblePhone = String(phone ?? '').includes('@') ? '' : phone;
 
-  return phone ? (
+  return visiblePhone ? (
     <a className="customer-contact-link" href={`tel:${clean}`}>
       <Phone size={15} aria-hidden="true" />
-      {phone}
+      {visiblePhone}
     </a>
   ) : (
     <span className="customer-muted-value">Sin telefono</span>
