@@ -55,7 +55,7 @@ const navigationByRole = {
     { label: 'Configuracion', section: 'Sistema', icon: Settings, to: '/configuracion', permission: 'ai_config.view' },
     { label: 'Reportes', section: 'Administracion', icon: BarChart3, to: '/reportes', permission: 'reports.view' },
     { label: 'Usuarios', section: 'Administracion', icon: UserCog, to: '/usuarios', permission: 'users.view' },
-    { label: 'Plan', section: 'Administracion', icon: CreditCard, to: '/mi-empresa', roles: ['owner'], permission: 'subscriptions.view' }
+    { label: 'Plan', section: 'Administracion', icon: CreditCard, to: '/plan', roles: ['owner'], permission: 'subscriptions.view' }
   ],
   seller: [
     { label: 'Conversaciones', section: 'Operacion', icon: Inbox, to: '/conversaciones', permission: 'conversations.view' },

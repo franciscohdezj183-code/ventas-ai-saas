@@ -129,7 +129,7 @@ describe('whatsapp session manager', () => {
     assert.equal(status.phoneNumber, '5217711234567');
   });
 
-  it('marks ready immediately after authenticated like Casa Perez flow', async () => {
+  it('keeps authenticated pending until WhatsApp emits ready', async () => {
     let client;
     setWhatsappClientFactoryForTests(() => {
       client = new FakeWhatsappClient();
@@ -139,11 +139,14 @@ describe('whatsapp session manager', () => {
     await startSession(1);
     client.emit('authenticated');
 
-    const status = await waitForStatus(1, 'ready');
+    const authenticatedStatus = await waitForStatus(1, 'authenticated');
+    assert.equal(authenticatedStatus.status, 'authenticated');
+    assert.equal(authenticatedStatus.phoneNumber, null);
 
+    client.emit('ready');
+    const status = await waitForStatus(1, 'ready');
     assert.equal(status.status, 'ready');
     assert.equal(status.phoneNumber, '5217711234567');
-    assert.equal(client.getStateCalls, 0);
   });
 
   it('auth_failure updates status to failed', async () => {

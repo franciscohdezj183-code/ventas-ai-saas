@@ -67,7 +67,7 @@ export function App() {
       >
         <Route index element={<HomeRoute />} />
         <Route
-          path="mi-empresa"
+          path="plan"
           element={
             <RoleRoute roles={['owner']}>
               <PermissionRoute permission="subscriptions.view">

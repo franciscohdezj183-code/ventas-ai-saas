@@ -12,6 +12,10 @@ import { getBotResponseProfile } from '../modules/bot-prompts/bot-prompts.servic
 import { registerAIUsage } from '../modules/ai-usage/ai-usage.service.js';
 import { mcpClient as defaultMcpClient } from '../mcp/mcpClient.js';
 import { getBusinessStrategy } from './business-types/business-strategy.factory.js';
+import {
+  buildCatalogServiceResponse,
+  formatMoney
+} from './business-types/service-pricing.helper.js';
 import { normalizeMexicanPhoneNumber } from '../whatsapp/whatsapp-number.helper.js';
 
 function normalizePhone(value) {
@@ -85,6 +89,119 @@ function normalizarTextoBusqueda(value, synonyms = null) {
     .split(' ')
     .map((word) => replacements.get(word) ?? word)
     .join(' ');
+}
+
+const SERVICE_SEARCH_STOP_WORDS = new Set([
+  'ancho',
+  'alto',
+  'costo',
+  'cotizame',
+  'cuanto',
+  'cuesta',
+  'cuales',
+  'de',
+  'del',
+  'el',
+  'en',
+  'hola',
+  'la',
+  'las',
+  'los',
+  'm',
+  'metro',
+  'metros',
+  'por',
+  'precio',
+  'que',
+  'quiero',
+  'sale',
+  'servicio',
+  'servicios',
+  'tienen',
+  'una',
+  'un',
+  'x'
+]);
+
+function serviceSearchTokens(value, synonyms = null) {
+  return normalizarTextoBusqueda(value, synonyms)
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 1)
+    .filter((token) => !/^\d+$/.test(token))
+    .filter((token) => !SERVICE_SEARCH_STOP_WORDS.has(token));
+}
+
+function isGenericServiceCatalogRequest(message) {
+  const normalized = normalizarTextoBusqueda(message);
+  const tokens = serviceSearchTokens(message);
+
+  return tokens.length === 0 && /\b(servicio|servicios|hacen|ofrecen|manejan|tienen)\b/.test(normalized);
+}
+
+function rankServicesForMessage(services, message, synonyms = null) {
+  if (!Array.isArray(services) || services.length <= 1) {
+    return services;
+  }
+
+  const tokens = serviceSearchTokens(message, synonyms);
+
+  if (tokens.length === 0) {
+    return services;
+  }
+
+  return services
+    .map((service, index) => {
+      const name = normalizarTextoBusqueda(service?.nombre, synonyms);
+      const description = normalizarTextoBusqueda(service?.descripcion, synonyms);
+      const category = normalizarTextoBusqueda(service?.categoria, synonyms);
+      const haystack = `${name} ${description} ${category}`;
+      const queryPhrase = tokens.join(' ');
+      const phraseScore = queryPhrase && name === queryPhrase
+        ? 18
+        : queryPhrase && name.startsWith(queryPhrase)
+          ? 12
+          : queryPhrase && name.includes(queryPhrase)
+            ? 6
+            : 0;
+      const score = phraseScore + tokens.reduce((total, token) => {
+        if (name.split(/\s+/).includes(token)) {
+          return total + 6;
+        }
+
+        if (category.split(/\s+/).includes(token)) {
+          return total + 3;
+        }
+
+        if (haystack.includes(token)) {
+          return total + 1;
+        }
+
+        return total;
+      }, 0);
+
+      return { service, index, score, nameTokens: name.split(/\s+/).filter(Boolean).length };
+    })
+    .sort((left, right) => right.score - left.score || left.nameTokens - right.nameTokens || left.index - right.index)
+    .map((entry) => entry.service);
+}
+
+function prepareServiceToolResult(toolResult, { message, synonyms = null, catalogRequest = false } = {}) {
+  if (!toolResult || typeof toolResult !== 'object') {
+    return toolResult;
+  }
+
+  const nextResult = { ...toolResult };
+
+  if (Array.isArray(nextResult.servicios)) {
+    nextResult.servicios = rankServicesForMessage(nextResult.servicios, message, synonyms);
+  }
+
+  if (catalogRequest) {
+    nextResult.solicitud_catalogo_servicios = true;
+  }
+
+  return nextResult;
 }
 
 function responseEmoji(profile, key, fallback = '') {
@@ -228,18 +345,37 @@ function buildProductMedia(result, caption = '') {
 function buildServiceResponse(result, profile = {}) {
   const services = result?.servicios ?? [];
   const service = result?.servicio;
+  const customerMessage = result?.mensaje_original ?? result?.mensaje_cliente ?? result?.message ?? '';
+  const isCatalogRequest = Boolean(result?.solicitud_catalogo_servicios) || isGenericServiceCatalogRequest(customerMessage);
+
+  function buildInstallationResponse(currentService) {
+    if (!isInstallationFollowUp(customerMessage)) {
+      return null;
+    }
+
+    const includes = normalizarTextoBusqueda(currentService?.incluye);
+    const excludes = normalizarTextoBusqueda(currentService?.no_incluye);
+    const name = String(currentService?.nombre ?? 'este servicio').trim();
+
+    if (excludes.includes('instalacion')) {
+      return `No, el precio de ${name} no incluye instalacion. Puedo pasarte con un asesor para cotizarla.`;
+    }
+
+    if (includes.includes('instalacion')) {
+      return `Si, el precio de ${name} incluye instalacion.`;
+    }
+
+    return `La ficha de ${name} no especifica si incluye instalacion. Puedo pasarte con un asesor para confirmarlo.`;
+  }
 
   function formatServicePrice(currentService) {
     const type = String(currentService.tipo_precio ?? 'FIJO').toUpperCase();
 
     if (type === 'COTIZACION') {
-      return 'requiere cotizacion con asesor';
+      return 'cotizacion con asesor';
     }
 
-    const price = Number(currentService.precio).toLocaleString('es-MX', {
-      style: 'currency',
-      currency: 'MXN'
-    });
+    const price = formatMoney(currentService.precio);
 
     if (type === 'DESDE') {
       return `desde ${price}`;
@@ -249,14 +385,20 @@ function buildServiceResponse(result, profile = {}) {
       return `${price} por m2`;
     }
 
+    if (type === 'POR_UNIDAD') {
+      return `${price} por unidad`;
+    }
+
+    if (type === 'POR_HORA') {
+      return `${price} por hora`;
+    }
+
     return price;
   }
 
   if (service) {
-    const price = formatServicePrice(service);
-    const duration = service.duracion ? ` Dura aproximadamente ${service.duracion} min.` : '';
-
-    return `Si, tenemos disponible *${service.nombre}*: ${price}.${duration} Te puedo agendar una cita o pasarte con un asesor.`;
+    return buildInstallationResponse(service)
+      ?? buildCatalogServiceResponse({ service, message: customerMessage });
   }
 
   if (services.length === 0) {
@@ -266,10 +408,20 @@ function buildServiceResponse(result, profile = {}) {
     ).trim();
   }
 
+  if (!isCatalogRequest) {
+    return buildInstallationResponse(services[0])
+      ?? buildCatalogServiceResponse({ service: services[0], message: customerMessage });
+  }
+
   const lines = services.map((service) => {
     const price = formatServicePrice(service);
     const duration = service.duracion ? `, duracion ${service.duracion} min` : '';
-    return `- ${service.nombre}: ${price}${duration}`;
+    const requiredData = [
+      service.requiere_medidas ? 'requiere medidas' : null,
+      service.requiere_cantidad ? 'requiere cantidad' : null
+    ].filter(Boolean);
+    const requiredDataText = requiredData.length ? `, ${requiredData.join(' y ')}` : '';
+    return `- ${service.nombre}: ${price}${duration}${requiredDataText}`;
   });
 
   return [
@@ -424,7 +576,7 @@ function buildToolArgs(toolName, { empresaId, phone, message, normalizedMessage,
     case 'buscar_servicios':
       return {
         empresa_id: empresaId,
-        texto: searchText
+        texto: isGenericServiceCatalogRequest(message) ? '' : searchText
       };
     case 'obtener_servicio':
       return {
@@ -528,6 +680,12 @@ function isShippingFollowUp(message) {
   return /\b(env[ií]o|envio|entrega|mandan|llevan|domicilio)\b/i.test(message);
 }
 
+function isInstallationFollowUp(message) {
+  const normalized = normalizarTextoBusqueda(message);
+  return /\b(instalacion|instalar|instalado)\b/.test(normalized)
+    && /\b(incluye|incluido|incluida|precio|costo)\b/.test(normalized);
+}
+
 function isMoreOptionsFollowUp(message) {
   return /\b(m[aá]s|mas|m[aá]s opciones|mas opciones|tienes m[aá]s|tienes mas|otros|ver m[aá]s|ver mas|m[aá]s productos|mas productos)\b/i.test(message);
 }
@@ -615,6 +773,15 @@ function applyConversationContext(intent, message, conversationContext) {
   }
 
   if (isShortContextualQuestion(message) && hasServiceContext(conversationContext)) {
+    if (isInstallationFollowUp(message)) {
+      return {
+        ...nextIntent,
+        intencion: 'CONSULTAR_PRECIO',
+        herramienta_mcp: 'obtener_servicio',
+        parametros: { servicio_id: conversationContext.ultimo_servicio_id }
+      };
+    }
+
     if (isPriceFollowUp(message)) {
       return {
         ...nextIntent,
@@ -784,7 +951,14 @@ function extractContextPatch({ intent, toolResult, message, conversationContext 
             id: service.id,
             nombre: service.nombre,
             precio: service.precio,
-            tipo_precio: service.tipo_precio
+            tipo_precio: service.tipo_precio,
+            unidad_medida: service.unidad_medida,
+            requiere_medidas: service.requiere_medidas,
+            requiere_cantidad: service.requiere_cantidad,
+            incluye: service.incluye,
+            no_incluye: service.no_incluye,
+            notas_cotizacion: service.notas_cotizacion,
+            precio_minimo: service.precio_minimo
           }
         : null
     }
@@ -982,6 +1156,14 @@ export async function orchestrateIncomingMessage({
       toolResult = strategyResolution.toolResult;
       responseIntent = strategyResolution.responseIntent;
     }
+
+    if (responseIntent.herramienta_mcp === 'buscar_servicios') {
+      toolResult = prepareServiceToolResult(toolResult, {
+        message,
+        synonyms: contextoEmpresa.response_profile?.sinonimos,
+        catalogRequest: isGenericServiceCatalogRequest(message)
+      });
+    }
   } else if (activeHandoffExists) {
     toolResult = {
       handoff_duplicate: true,
@@ -990,6 +1172,11 @@ export async function orchestrateIncomingMessage({
       producto_id: intent.parametros?.producto_id ?? conversationContext?.ultimo_producto_id ?? null,
       servicio_id: intent.parametros?.servicio_id ?? conversationContext?.ultimo_servicio_id ?? null
     };
+  }
+
+  if (toolResult && typeof toolResult === 'object') {
+    toolResult.mensaje_cliente = normalizedMessage;
+    toolResult.mensaje_original = message;
   }
 
   const response = buildResponse(responseIntent, toolResult, contextoEmpresa);

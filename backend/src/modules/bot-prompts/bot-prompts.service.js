@@ -470,6 +470,14 @@ function formatServicePrice(service) {
     return `${money(service.precio)} por m2`;
   }
 
+  if (type === 'POR_UNIDAD') {
+    return `${money(service.precio)} por unidad`;
+  }
+
+  if (type === 'POR_HORA') {
+    return `${money(service.precio)} por hora`;
+  }
+
   return money(service.precio);
 }
 
@@ -536,7 +544,20 @@ async function previewServices(empresaId, text) {
   }
 
   const [rows] = await query(
-    `SELECT s.id, s.nombre, s.precio, s.tipo_precio, s.duracion_minutos AS duracion, c.nombre AS categoria
+    `SELECT
+       s.id,
+       s.nombre,
+       s.precio,
+       s.tipo_precio,
+       s.unidad_medida,
+       s.duracion_minutos AS duracion,
+       s.requiere_medidas,
+       s.requiere_cantidad,
+       s.incluye,
+       s.no_incluye,
+       s.notas_cotizacion,
+       s.precio_minimo,
+       c.nombre AS categoria
      FROM servicios s
      LEFT JOIN categorias c ON c.empresa_id = s.empresa_id AND c.id = s.categoria_id
      WHERE ${conditions.join(' AND ')}

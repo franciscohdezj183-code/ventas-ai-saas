@@ -1,0 +1,66 @@
+ALTER TABLE servicios
+  MODIFY precio DECIMAL(12,2) NULL DEFAULT 0.00,
+  MODIFY tipo_precio ENUM('FIJO', 'DESDE', 'POR_UNIDAD', 'POR_M2', 'POR_HORA', 'COTIZACION') NOT NULL DEFAULT 'FIJO';
+
+SET @sql = (
+  SELECT IF(COUNT(*) = 0, 'ALTER TABLE servicios ADD COLUMN unidad_medida ENUM(''servicio'', ''pieza'', ''paquete'', ''m2'', ''hora'', ''asesor'') NULL AFTER tipo_precio', 'SELECT 1')
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'servicios' AND COLUMN_NAME = 'unidad_medida'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql = (
+  SELECT IF(COUNT(*) = 0, 'ALTER TABLE servicios ADD COLUMN requiere_medidas TINYINT(1) NOT NULL DEFAULT 0 AFTER duracion_minutos', 'SELECT 1')
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'servicios' AND COLUMN_NAME = 'requiere_medidas'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql = (
+  SELECT IF(COUNT(*) = 0, 'ALTER TABLE servicios ADD COLUMN requiere_cantidad TINYINT(1) NOT NULL DEFAULT 0 AFTER requiere_medidas', 'SELECT 1')
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'servicios' AND COLUMN_NAME = 'requiere_cantidad'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql = (
+  SELECT IF(COUNT(*) = 0, 'ALTER TABLE servicios ADD COLUMN incluye TEXT NULL AFTER requiere_cantidad', 'SELECT 1')
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'servicios' AND COLUMN_NAME = 'incluye'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql = (
+  SELECT IF(COUNT(*) = 0, 'ALTER TABLE servicios ADD COLUMN no_incluye TEXT NULL AFTER incluye', 'SELECT 1')
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'servicios' AND COLUMN_NAME = 'no_incluye'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql = (
+  SELECT IF(COUNT(*) = 0, 'ALTER TABLE servicios ADD COLUMN notas_cotizacion TEXT NULL AFTER no_incluye', 'SELECT 1')
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'servicios' AND COLUMN_NAME = 'notas_cotizacion'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql = (
+  SELECT IF(COUNT(*) = 0, 'ALTER TABLE servicios ADD COLUMN precio_minimo DECIMAL(12,2) NULL AFTER notas_cotizacion', 'SELECT 1')
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'servicios' AND COLUMN_NAME = 'precio_minimo'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;

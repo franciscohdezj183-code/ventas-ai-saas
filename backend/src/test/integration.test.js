@@ -150,37 +150,111 @@ describe('API integration with demo data', { skip: !runDbTests }, () => {
     assert.equal(deleteA.response.status, 204);
   });
 
-  it('supports OWNER service CRUD', async () => {
-    const createService = await requestJson(baseUrl, '/services', {
+  it('supports flexible OWNER service CRUD without mixing tenants', async () => {
+    const quoteService = await requestJson(baseUrl, '/services', {
       method: 'POST',
       token: ownerAToken,
       body: {
-        nombre: 'Servicio Demo',
-        descripcion: 'Servicio de prueba',
-        precio: 300,
-        duracion: 60
+        nombre: 'Servicio con asesor',
+        descripcion: 'Requiere revisar alcance',
+        tipo_precio: 'COTIZACION',
+        unidad_medida: 'asesor',
+        notas_cotizacion: 'Pedir alcance y fecha requerida'
       }
     });
-    const updateService = await requestJson(baseUrl, `/services/${createService.payload.data.id}`, {
+    const m2Service = await requestJson(baseUrl, '/services', {
+      method: 'POST',
+      token: ownerAToken,
+      body: {
+        nombre: 'Servicio por metro cuadrado',
+        descripcion: 'Cotizable por superficie',
+        precio: 390,
+        tipo_precio: 'POR_M2'
+      }
+    });
+    const fixedService = await requestJson(baseUrl, '/services', {
+      method: 'POST',
+      token: ownerAToken,
+      body: {
+        nombre: 'Servicio fijo',
+        descripcion: 'Precio cerrado',
+        precio: 300,
+        tipo_precio: 'FIJO',
+        unidad_medida: 'servicio'
+      }
+    });
+    const otherTenantService = await requestJson(baseUrl, '/services', {
+      method: 'POST',
+      token: ownerBToken,
+      body: {
+        nombre: 'Servicio Owner B',
+        precio: 500,
+        tipo_precio: 'DESDE'
+      }
+    });
+
+    assert.equal(quoteService.response.status, 201);
+    assert.equal(quoteService.payload.data.tipo_precio, 'COTIZACION');
+    assert.equal(quoteService.payload.data.precio, null);
+    assert.equal(quoteService.payload.data.duracion, null);
+    assert.equal(quoteService.payload.data.notas_cotizacion, 'Pedir alcance y fecha requerida');
+
+    assert.equal(m2Service.response.status, 201);
+    assert.equal(m2Service.payload.data.tipo_precio, 'POR_M2');
+    assert.equal(m2Service.payload.data.unidad_medida, 'm2');
+    assert.equal(Boolean(m2Service.payload.data.requiere_medidas), true);
+    assert.equal(Number(m2Service.payload.data.precio), 390);
+
+    assert.equal(fixedService.response.status, 201);
+    assert.equal(fixedService.payload.data.tipo_precio, 'FIJO');
+    assert.equal(fixedService.payload.data.duracion, null);
+    assert.equal(Number(fixedService.payload.data.empresa_id), demo.companyAId);
+    assert.equal(otherTenantService.response.status, 201);
+
+    const updateService = await requestJson(baseUrl, `/services/${fixedService.payload.data.id}`, {
       method: 'PUT',
       token: ownerAToken,
       body: {
-        nombre: 'Servicio Demo Editado',
-        descripcion: 'Servicio de prueba',
+        nombre: 'Servicio fijo editado',
+        descripcion: 'Precio cerrado actualizado',
         precio: 350,
-        duracion: 90
+        tipo_precio: 'FIJO',
+        unidad_medida: 'paquete'
       }
     });
-    const deleteService = await requestJson(baseUrl, `/services/${createService.payload.data.id}`, {
+    const ownerAList = await requestJson(baseUrl, '/services', { token: ownerAToken });
+    const ownerBReadFromA = await requestJson(baseUrl, `/services/${otherTenantService.payload.data.id}`, { token: ownerAToken });
+    const deleteQuote = await requestJson(baseUrl, `/services/${quoteService.payload.data.id}`, {
       method: 'DELETE',
       token: ownerAToken
     });
+    const deleteM2 = await requestJson(baseUrl, `/services/${m2Service.payload.data.id}`, {
+      method: 'DELETE',
+      token: ownerAToken
+    });
+    const deleteFixed = await requestJson(baseUrl, `/services/${fixedService.payload.data.id}`, {
+      method: 'DELETE',
+      token: ownerAToken
+    });
+    const deleteOtherTenant = await requestJson(baseUrl, `/services/${otherTenantService.payload.data.id}`, {
+      method: 'DELETE',
+      token: ownerBToken
+    });
 
-    assert.equal(createService.response.status, 201);
-    assert.equal(Number(createService.payload.data.empresa_id), demo.companyAId);
     assert.equal(updateService.response.status, 200);
-    assert.equal(updateService.payload.data.nombre, 'Servicio Demo Editado');
-    assert.equal(deleteService.response.status, 204);
+    assert.equal(updateService.payload.data.nombre, 'Servicio fijo editado');
+    assert.equal(Number(updateService.payload.data.empresa_id), demo.companyAId);
+    assert.equal(updateService.payload.data.unidad_medida, 'paquete');
+
+    assert.equal(ownerAList.response.status, 200);
+    assert.ok(ownerAList.payload.data.some((service) => service.id === quoteService.payload.data.id && service.tipo_precio === 'COTIZACION'));
+    assert.ok(ownerAList.payload.data.some((service) => service.id === m2Service.payload.data.id && service.unidad_medida === 'm2'));
+    assert.ok(ownerAList.payload.data.every((service) => Number(service.empresa_id) === demo.companyAId));
+    assert.equal(ownerBReadFromA.response.status, 404);
+    assert.equal(deleteQuote.response.status, 204);
+    assert.equal(deleteM2.response.status, 204);
+    assert.equal(deleteFixed.response.status, 204);
+    assert.equal(deleteOtherTenant.response.status, 204);
   });
 
   it('enforces role permissions and supports tenant-scoped orders', async () => {

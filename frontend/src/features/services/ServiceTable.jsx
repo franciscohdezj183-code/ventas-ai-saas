@@ -1,6 +1,42 @@
 import { Edit3, Trash2 } from 'lucide-react';
 import { DataTable } from '../../components/ui/DataTable.jsx';
 
+function formatCurrency(value) {
+  return new Intl.NumberFormat('es-MX', { currency: 'MXN', style: 'currency' }).format(Number(value ?? 0));
+}
+
+function formatPrice(service) {
+  const type = String(service.tipo_precio ?? 'FIJO').toUpperCase();
+
+  if (type === 'COTIZACION') return 'Cotizacion con asesor';
+  if (type === 'DESDE') return `Desde ${formatCurrency(service.precio)}`;
+  if (type === 'POR_M2') return `${formatCurrency(service.precio)} / m²`;
+  if (type === 'POR_HORA') return `${formatCurrency(service.precio)} / hora`;
+  if (type === 'POR_UNIDAD') return `${formatCurrency(service.precio)} / unidad`;
+
+  return formatCurrency(service.precio);
+}
+
+function formatUnit(unit) {
+  return {
+    servicio: 'Servicio',
+    pieza: 'Pieza',
+    paquete: 'Paquete',
+    m2: 'm²',
+    hora: 'Hora',
+    asesor: 'Asesor'
+  }[String(unit ?? '')] ?? 'No aplica';
+}
+
+function formatRequiredData(service) {
+  const data = [
+    service.requiere_medidas ? 'Medidas' : null,
+    service.requiere_cantidad ? 'Cantidad' : null
+  ].filter(Boolean);
+
+  return data.length ? data.join(', ') : 'No aplica';
+}
+
 export function ServiceTable({ isLoading, onDelete, onEdit, services }) {
   const columns = [
     {
@@ -13,8 +49,12 @@ export function ServiceTable({ isLoading, onDelete, onEdit, services }) {
         </>
       )
     },
-    { key: 'precio', header: 'Precio', render: (service) => `$${Number(service.precio).toFixed(2)}` },
-    { key: 'duracion', header: 'Duracion', render: (service) => `${service.duracion} min` },
+    { key: 'categoria', header: 'Categoria', render: (service) => service.categoria_nombre || 'Sin categoria' },
+    { key: 'precio', header: 'Precio/Modalidad', render: formatPrice },
+    { key: 'unidad', header: 'Unidad', render: (service) => formatUnit(service.unidad_medida) },
+    { key: 'requiere_datos', header: 'Requiere datos', render: formatRequiredData },
+    { key: 'duracion', header: 'Duracion', render: (service) => (Number(service.duracion) > 0 ? `${service.duracion} min` : 'No aplica') },
+    { key: 'estado', header: 'Estado', render: (service) => service.estado },
     { key: 'empresa', header: 'Empresa', render: (service) => service.empresa_nombre },
     {
       key: 'acciones',
@@ -36,7 +76,7 @@ export function ServiceTable({ isLoading, onDelete, onEdit, services }) {
     <DataTable
       columns={columns}
       data={services}
-      emptyDescription="Agrega servicios para que el bot pueda consultar precios y disponibilidad."
+      emptyDescription="Agrega servicios para que el bot pueda consultar precios, modalidad y datos requeridos."
       emptyTitle="No hay servicios registrados"
       isLoading={isLoading}
       loadingMessage="Cargando servicios..."

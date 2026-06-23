@@ -242,6 +242,17 @@
   color: var(--whatsapp-danger);
 }
 
+.whatsapp-status-icon.loading svg,
+.qr-status-spinner {
+  animation: whatsapp-spin 0.9s linear infinite;
+}
+
+.whatsapp-status-icon.connected,
+.qr-placeholder.connected {
+  background: var(--whatsapp-success-soft);
+  color: var(--whatsapp-success);
+}
+
 .whatsapp-status-facts {
   display: grid;
   gap: 10px;
@@ -458,6 +469,7 @@
 
 .whatsapp-qr-stage img,
 .qr-placeholder.large {
+  box-sizing: border-box;
   width: min(100%, 320px);
   height: auto;
   aspect-ratio: 1;
@@ -478,16 +490,43 @@
   place-items: center;
   align-content: center;
   gap: 12px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 22px;
   border: 1px dashed var(--whatsapp-border);
   color: var(--whatsapp-muted);
   font-weight: 900;
+  line-height: 1.35;
   text-align: center;
+  overflow: hidden;
+}
+
+.qr-placeholder span {
+  display: block;
+  width: 100%;
+  max-width: 24ch;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 
 .qr-placeholder.waiting {
   border-color: color-mix(in srgb, var(--whatsapp-warning) 42%, var(--whatsapp-border));
   background: var(--whatsapp-warning-soft);
   color: var(--whatsapp-warning);
+}
+
+.qr-placeholder.connected {
+  border-color: color-mix(in srgb, var(--whatsapp-success) 42%, var(--whatsapp-border));
+}
+
+.qr-status-icon {
+  color: var(--whatsapp-success);
+}
+
+@keyframes whatsapp-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .whatsapp-warning {

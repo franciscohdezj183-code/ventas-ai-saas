@@ -25,20 +25,18 @@ function responseOf(result) {
 }
 
 describe('mixedBusinessStrategy commercial routing', () => {
-  it('answers known service catalog terms instead of asking for clarification', () => {
+  it('routes known service catalog terms to service search instead of asking for clarification', () => {
     const result = run('tienes lonas?');
 
-    assert.equal(result.herramienta_mcp, '');
-    assert.match(responseOf(result), /impresion de lona/);
+    assert.equal(result.herramienta_mcp, 'buscar_servicios');
     assert.doesNotMatch(responseOf(result), /producto especifico/);
   });
 
-  it('routes lona installation questions to the service advisor flow', () => {
+  it('searches services before products when service wording also has product-like terms', () => {
     const result = run('hacen instalacion de lona?');
 
-    assert.equal(result.herramienta_mcp, '');
-    assert.match(responseOf(result), /instalacion/);
-    assert.match(responseOf(result), /asesor/);
+    assert.equal(result.intencion, 'BUSCAR_SERVICIO');
+    assert.equal(result.herramienta_mcp, 'buscar_servicios');
   });
 
   it('keeps greeting messages as greetings even when the interpreter is generic', () => {

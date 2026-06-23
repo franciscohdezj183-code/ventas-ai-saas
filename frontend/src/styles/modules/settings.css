@@ -830,3 +830,444 @@
     bottom: 10px;
   }
 }
+
+.owner-subscription-page {
+  --owner-sub-bg: #e9f1fa;
+  --owner-sub-card: #ffffff;
+  --owner-sub-muted-card: #f7fbff;
+  --owner-sub-border: rgba(148, 163, 184, 0.28);
+  --owner-sub-text: #1d1d1d;
+  --owner-sub-muted: #64748b;
+  --owner-sub-accent: #00abe4;
+  --owner-sub-accent-strong: #008fc0;
+  --owner-sub-accent-soft: rgba(0, 171, 228, 0.12);
+  --owner-sub-success: #148456;
+  --owner-sub-warning: #b7791f;
+  display: grid;
+  gap: 18px;
+  color: var(--owner-sub-text);
+}
+
+.owner-subscription-page .eyebrow {
+  margin: 0 0 8px;
+  color: var(--owner-sub-accent-strong);
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.owner-subscription-hero,
+.owner-plan-card,
+.owner-subscription-section,
+.owner-recommendation-card {
+  border: 1px solid var(--owner-sub-border);
+  border-radius: 14px;
+  background: var(--owner-sub-card);
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.06);
+}
+
+.owner-subscription-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 164px;
+  padding: 24px;
+  background:
+    linear-gradient(135deg, rgba(0, 171, 228, 0.13), rgba(255, 255, 255, 0) 62%),
+    var(--owner-sub-card);
+}
+
+.owner-subscription-hero-copy,
+.owner-plan-card-main {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.owner-subscription-hero-copy > span,
+.owner-plan-card-main > span,
+.owner-subscription-section > header > span,
+.owner-recommendation-card > span,
+.owner-benefits-grid article > span,
+.owner-usage-card header > span,
+.owner-plan-comparison-grid article header > span {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--owner-sub-accent-soft);
+  color: var(--owner-sub-accent);
+}
+
+.owner-subscription-hero-copy > span {
+  width: 56px;
+  height: 56px;
+}
+
+.owner-subscription-hero h1 {
+  margin: 0 0 8px;
+  color: var(--owner-sub-text);
+  font-size: clamp(2rem, 3vw, 2.8rem);
+  line-height: 1;
+}
+
+.owner-subscription-hero p:not(.eyebrow),
+.owner-plan-card p,
+.owner-subscription-section p,
+.owner-recommendation-card p,
+.owner-usage-card small,
+.owner-subscription-muted {
+  margin: 0;
+  color: var(--owner-sub-muted);
+  line-height: 1.48;
+}
+
+.owner-subscription-hero-side {
+  display: grid;
+  justify-items: end;
+  gap: 12px;
+}
+
+.owner-subscription-badges {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.owner-subscription-badges > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--owner-sub-accent-soft);
+  color: var(--owner-sub-accent-strong);
+  font-weight: 900;
+}
+
+.owner-subscription-page .secondary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--owner-sub-border);
+  border-radius: 10px;
+  background: var(--owner-sub-muted-card);
+  color: var(--owner-sub-text);
+  font-weight: 850;
+}
+
+.owner-plan-card {
+  display: grid;
+  gap: 20px;
+  padding: 22px;
+}
+
+.owner-plan-card-main > span {
+  width: 54px;
+  height: 54px;
+}
+
+.owner-plan-card h2,
+.owner-subscription-section h2,
+.owner-recommendation-card h2 {
+  margin: 0 0 6px;
+  color: var(--owner-sub-text);
+}
+
+.owner-plan-card h2 {
+  font-size: clamp(1.6rem, 2.4vw, 2.2rem);
+}
+
+.owner-plan-card dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.owner-plan-card dl div,
+.owner-plan-comparison-grid dl div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--owner-sub-border);
+  border-radius: 10px;
+  background: var(--owner-sub-muted-card);
+}
+
+.owner-plan-card dt,
+.owner-plan-comparison-grid dt {
+  color: var(--owner-sub-muted);
+  font-size: 0.74rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.owner-plan-card dd,
+.owner-plan-comparison-grid dd {
+  overflow: hidden;
+  margin: 0;
+  color: var(--owner-sub-text);
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.owner-subscription-section {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+
+.owner-subscription-section > header {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.owner-subscription-section > header > span,
+.owner-recommendation-card > span {
+  width: 42px;
+  height: 42px;
+}
+
+.owner-benefits-grid,
+.owner-usage-grid,
+.owner-plan-comparison-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.owner-benefits-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.owner-benefits-grid article {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-height: 76px;
+  padding: 12px;
+  border: 1px solid var(--owner-sub-border);
+  border-radius: 12px;
+  background: var(--owner-sub-muted-card);
+}
+
+.owner-benefits-grid article > span,
+.owner-usage-card header > span,
+.owner-plan-comparison-grid article header > span {
+  width: 38px;
+  height: 38px;
+}
+
+.owner-benefits-grid strong,
+.owner-usage-card strong,
+.owner-plan-comparison-grid strong {
+  color: var(--owner-sub-text);
+  font-weight: 900;
+}
+
+.owner-usage-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.owner-usage-card {
+  display: grid;
+  gap: 13px;
+  padding: 15px;
+  border: 1px solid var(--owner-sub-border);
+  border-radius: 12px;
+  background: var(--owner-sub-muted-card);
+}
+
+.owner-usage-card header {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.owner-usage-card p {
+  margin-top: 3px;
+}
+
+.owner-usage-track {
+  overflow: hidden;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(100, 116, 139, 0.18);
+}
+
+.owner-usage-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--owner-sub-accent), var(--owner-sub-accent-strong));
+}
+
+.owner-recommendation-card {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 18px;
+}
+
+.owner-recommendation-card.ok {
+  border-color: rgba(20, 132, 86, 0.24);
+  background: rgba(20, 132, 86, 0.07);
+}
+
+.owner-recommendation-card.warning {
+  border-color: rgba(183, 121, 31, 0.3);
+  background: rgba(183, 121, 31, 0.09);
+}
+
+.owner-recommendation-card.ok > span {
+  background: rgba(20, 132, 86, 0.12);
+  color: var(--owner-sub-success);
+}
+
+.owner-recommendation-card.warning > span {
+  background: rgba(183, 121, 31, 0.13);
+  color: var(--owner-sub-warning);
+}
+
+.owner-recommendation-card ul {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--owner-sub-muted);
+}
+
+.owner-plan-comparison-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.owner-plan-comparison-grid article {
+  display: grid;
+  gap: 14px;
+  padding: 15px;
+  border: 1px solid var(--owner-sub-border);
+  border-radius: 12px;
+  background: var(--owner-sub-muted-card);
+}
+
+.owner-plan-comparison-grid article.current {
+  border-color: color-mix(in srgb, var(--owner-sub-accent) 44%, var(--owner-sub-border));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--owner-sub-accent) 42%, transparent);
+}
+
+.owner-plan-comparison-grid article header {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.owner-plan-comparison-grid article small {
+  color: var(--owner-sub-muted);
+  font-weight: 800;
+}
+
+.owner-plan-comparison-grid dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.owner-plan-feature-list {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.owner-plan-feature-list span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid var(--owner-sub-border);
+  border-radius: 999px;
+  background: var(--owner-sub-card);
+  color: var(--owner-sub-text);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.owner-billing-empty {
+  min-height: 116px;
+}
+
+:root[data-theme='dark'] .owner-subscription-page {
+  --owner-sub-bg: #1d1d1d;
+  --owner-sub-card: #262626;
+  --owner-sub-muted-card: #20242b;
+  --owner-sub-border: rgba(34, 114, 255, 0.28);
+  --owner-sub-text: #ffffff;
+  --owner-sub-muted: rgba(255, 255, 255, 0.76);
+  --owner-sub-accent: #2272ff;
+  --owner-sub-accent-strong: #7dadff;
+  --owner-sub-accent-soft: rgba(34, 114, 255, 0.16);
+  --owner-sub-success: #6ee7a8;
+  --owner-sub-warning: #ffd166;
+}
+
+:root[data-theme='dark'] .owner-subscription-hero,
+:root[data-theme='dark'] .owner-plan-card,
+:root[data-theme='dark'] .owner-subscription-section {
+  background:
+    linear-gradient(135deg, rgba(34, 114, 255, 0.08), rgba(29, 29, 29, 0) 48%),
+    var(--owner-sub-card);
+}
+
+@media (max-width: 1280px) {
+  .owner-plan-card dl,
+  .owner-benefits-grid,
+  .owner-plan-comparison-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 820px) {
+  .owner-subscription-hero,
+  .owner-subscription-hero-copy,
+  .owner-subscription-hero-side,
+  .owner-plan-card-main {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .owner-subscription-hero-side {
+    justify-items: start;
+    width: 100%;
+  }
+
+  .owner-subscription-hero-side .secondary-button {
+    width: 100%;
+  }
+
+  .owner-plan-card dl,
+  .owner-benefits-grid,
+  .owner-usage-grid,
+  .owner-plan-comparison-grid,
+  .owner-plan-comparison-grid dl {
+    grid-template-columns: 1fr;
+  }
+
+  .owner-recommendation-card,
+  .owner-subscription-section > header {
+    grid-template-columns: 1fr;
+  }
+}

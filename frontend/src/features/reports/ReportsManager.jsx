@@ -3,17 +3,27 @@ import { BarChart } from '@mui/x-charts/BarChart';
 import { LineChart } from '@mui/x-charts/LineChart';
 import { PieChart } from '@mui/x-charts/PieChart';
 import {
+  AlertTriangle,
+  BarChart3,
   Bot,
-  Boxes,
   Building2,
   CalendarDays,
+  Download,
+  Filter,
   MessageCircle,
+  PackageSearch,
+  RefreshCcw,
+  Search,
   ShoppingBag,
+  Sparkles,
+  TrendingDown,
   TrendingUp,
   UserPlus,
-  Users
+  Users,
+  X
 } from 'lucide-react';
-import { EmptyState, ErrorState, LoadingState } from '../../components/ui/index.js';
+import { EmptyState } from '../../components/ui/index.js';
+import { SortablePaginatedTable } from '../../components/ui/SortablePaginatedTable.jsx';
 import { isSuperAdminRole } from '../../config/permissions.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { fetchCompanies } from '../companies/companiesApi.js';
@@ -23,10 +33,14 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function thirtyDaysAgo() {
+function dateDaysAgo(days) {
   const date = new Date();
-  date.setDate(date.getDate() - 29);
+  date.setDate(date.getDate() - (days - 1));
   return date.toISOString().slice(0, 10);
+}
+
+function thirtyDaysAgo() {
+  return dateDaysAgo(30);
 }
 
 const emptyReports = {
@@ -58,6 +72,13 @@ const emptyReports = {
   desglose_empresas: []
 };
 
+const datePresets = [
+  { id: 'today', label: 'Hoy', days: 1 },
+  { id: '7d', label: '7 dias', days: 7 },
+  { id: '30d', label: '30 dias', days: 30 },
+  { id: '90d', label: '90 dias', days: 90 }
+];
+
 function formatCurrency(value) {
   return Number(value ?? 0).toLocaleString('es-MX', {
     currency: 'MXN',
@@ -66,61 +87,488 @@ function formatCurrency(value) {
   });
 }
 
-function ReportMetric({ icon: Icon, label, value, detail, tone = 'blue' }) {
-  return (
-    <article className={`enterprise-metric ${tone}`}>
-      <span className="enterprise-metric-icon">
-        <Icon size={20} aria-hidden="true" />
-      </span>
-      <div>
-        <span>{label}</span>
-        <strong>{value}</strong>
-        <small>{detail}</small>
-      </div>
-    </article>
-  );
+function formatNumber(value) {
+  return Number(value ?? 0).toLocaleString('es-MX');
 }
 
-function BarList({ emptyTitle, items, labelKey, valueKey }) {
-  const maxValue = Math.max(...items.map((item) => Number(item[valueKey] ?? 0)), 1);
+function formatPercent(value) {
+  return `${Number(value ?? 0).toLocaleString('es-MX', { maximumFractionDigits: 2 })}%`;
+}
 
-  if (!items.length || items.every((item) => Number(item[valueKey] ?? 0) === 0)) {
-    return <EmptyState title={emptyTitle} description="Aun no hay datos para el periodo seleccionado." />;
-  }
-
-  return (
-    <div className="dashboard-bar-list">
-      {items.map((item) => (
-        <div className="dashboard-bar-row" key={`${item[labelKey]}-${item.tenant_id ?? ''}`}>
-          <div>
-            <strong>{item[labelKey]}</strong>
-            <span>{Number(item[valueKey] ?? 0).toLocaleString('es-MX')}</span>
-          </div>
-          <div className="bar-track">
-            <div className="bar-fill" style={{ width: `${(Number(item[valueKey] ?? 0) / maxValue) * 100}%` }} />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
+function getRangeLabel(filters) {
+  return `${filters.fecha_inicio} - ${filters.fecha_fin}`;
 }
 
 function chartHasData(items, valueKey) {
   return items.length > 0 && items.some((item) => Number(item[valueKey] ?? 0) > 0);
 }
 
+function getCsvValue(value) {
+  const text = String(value ?? '');
+  return `"${text.replaceAll('"', '""')}"`;
+}
+
+function downloadCsv(filename, rows) {
+  if (!rows.length) {
+    return;
+  }
+
+  const headers = Object.keys(rows[0]);
+  const csv = [
+    headers.map(getCsvValue).join(','),
+    ...rows.map((row) => headers.map((header) => getCsvValue(row[header])).join(','))
+  ].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function ReportsHero({ isLoading, onExport, onRefresh, rangeLabel, scopeLabel }) {
+  return (
+    <header className="reports-hero">
+      <div>
+        <span className="reports-eyebrow">
+          <Sparkles size={16} aria-hidden="true" />
+          Business Intelligence Center
+        </span>
+        <h1>Reportes</h1>
+        <p>Analiza el rendimiento de tu empresa y toma mejores decisiones con informacion en tiempo real.</p>
+        <div className="reports-hero-meta">
+          <span>{scopeLabel}</span>
+          <span>{rangeLabel}</span>
+        </div>
+      </div>
+      <div className="reports-hero-actions">
+        <button className="secondary-button" disabled={isLoading} onClick={onRefresh} type="button">
+          <RefreshCcw size={18} aria-hidden="true" />
+          Actualizar
+        </button>
+        <button className="primary-button" disabled={isLoading} onClick={onExport} type="button">
+          <Download size={18} aria-hidden="true" />
+          Exportar
+        </button>
+      </div>
+    </header>
+  );
+}
+
+function ReportsToolbar({
+  companies,
+  filters,
+  isLoading,
+  isSuperAdmin,
+  onChange,
+  onClear,
+  onPreset,
+  onSubmit,
+  selectedPreset
+}) {
+  return (
+    <form className="reports-toolbar" onSubmit={onSubmit}>
+      <div className="reports-toolbar-header">
+        <span>
+          <Filter size={18} aria-hidden="true" />
+        </span>
+        <div>
+          <h2>Filtros globales</h2>
+          <p>Estos filtros actualizan todos los reportes del centro de inteligencia.</p>
+        </div>
+      </div>
+
+      <div className="reports-preset-row" aria-label="Rangos rapidos">
+        {datePresets.map((preset) => (
+          <button
+            className={selectedPreset === preset.id ? 'active' : ''}
+            key={preset.id}
+            onClick={() => onPreset(preset)}
+            type="button"
+          >
+            {preset.label}
+          </button>
+        ))}
+        <button className={selectedPreset === 'custom' ? 'active' : ''} type="button">
+          Personalizado
+        </button>
+      </div>
+
+      <div className="reports-filter-grid">
+        <label className="reports-field" htmlFor="reports-start-date">
+          <span>Fecha inicio</span>
+          <div>
+            <CalendarDays size={17} aria-hidden="true" />
+            <input id="reports-start-date" name="fecha_inicio" onChange={onChange} type="date" value={filters.fecha_inicio} />
+          </div>
+        </label>
+        <label className="reports-field" htmlFor="reports-end-date">
+          <span>Fecha fin</span>
+          <div>
+            <CalendarDays size={17} aria-hidden="true" />
+            <input id="reports-end-date" name="fecha_fin" onChange={onChange} type="date" value={filters.fecha_fin} />
+          </div>
+        </label>
+        {isSuperAdmin ? (
+          <label className="reports-field" htmlFor="reports-company">
+            <span>Empresa</span>
+            <select id="reports-company" name="empresa_id" onChange={onChange} value={filters.empresa_id}>
+              <option value="">Todas las empresas</option>
+              {companies.map((company) => (
+                <option key={company.id} value={company.id}>
+                  {company.nombre}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        <div className="reports-filter-actions">
+          <button className="ghost-button" onClick={onClear} type="button">
+            <X size={17} aria-hidden="true" />
+            Limpiar
+          </button>
+          <button className="primary-button" disabled={isLoading} type="submit">
+            {isLoading ? 'Actualizando...' : 'Aplicar filtros'}
+          </button>
+        </div>
+      </div>
+    </form>
+  );
+}
+
+function ExecutiveKpiCard({ description, icon: Icon, label, tone = 'blue', value }) {
+  return (
+    <article className={`reports-kpi-card ${tone}`}>
+      <div className="reports-kpi-topline">
+        <span>
+          <Icon size={21} aria-hidden="true" />
+        </span>
+        <small>Periodo actual</small>
+      </div>
+      <div>
+        <p>{label}</p>
+        <strong>{value}</strong>
+        <small>{description}</small>
+      </div>
+      <div className="reports-mini-trend" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+        <span />
+        <span />
+      </div>
+    </article>
+  );
+}
+
+function ExecutiveKPIs({ aiUsage, metrics }) {
+  const cards = [
+    {
+      icon: MessageCircle,
+      label: 'Conversaciones',
+      value: formatNumber(metrics.total_conversaciones),
+      description: 'Total de conversaciones del periodo.'
+    },
+    {
+      icon: Bot,
+      label: 'Atencion IA',
+      value: formatNumber(metrics.conversaciones_atendidas_bot),
+      description: 'Mensajes atendidos por automatizacion.',
+      tone: 'green'
+    },
+    {
+      icon: ShoppingBag,
+      label: 'Pedidos',
+      value: formatNumber(metrics.pedidos_generados),
+      description: metrics.orders_source === 'pending_orders_module' ? 'Modulo de pedidos pendiente.' : 'Pedidos registrados.',
+      tone: 'purple'
+    },
+    {
+      icon: TrendingUp,
+      label: 'Ventas estimadas',
+      value: formatCurrency(metrics.ventas_estimadas),
+      description: 'Valor registrado desde pedidos.'
+    },
+    {
+      icon: UserPlus,
+      label: 'Clientes nuevos',
+      value: formatNumber(metrics.clientes_nuevos),
+      description: 'Primer contacto en el periodo.',
+      tone: 'green'
+    },
+    {
+      icon: Users,
+      label: 'Handoff humano',
+      value: formatNumber(metrics.conversaciones_pidieron_humano),
+      description: 'Conversaciones que pidieron asesor.',
+      tone: 'amber'
+    },
+    {
+      icon: BarChart3,
+      label: 'Conversion',
+      value: formatPercent(metrics.tasa_conversion_conversacion_pedido),
+      description: 'Conversaciones convertidas a pedido.'
+    },
+    {
+      icon: Sparkles,
+      label: 'Consumo IA',
+      value: formatNumber(aiUsage.total_requests),
+      description: `${formatNumber(aiUsage.total_tokens)} tokens usados.`,
+      tone: 'amber'
+    }
+  ];
+
+  return (
+    <section className="reports-kpi-grid" aria-label="KPIs ejecutivos">
+      {cards.map((card) => <ExecutiveKpiCard key={card.label} {...card} />)}
+    </section>
+  );
+}
+
+function ExecutiveSummary({ metrics, topProducts }) {
+  const hasConversationData = Number(metrics.total_conversaciones ?? 0) > 0;
+  const hasOrders = Number(metrics.pedidos_generados ?? 0) > 0;
+  const topProduct = topProducts.find((item) => Number(item.consultas ?? 0) > 0);
+
+  const insights = [];
+
+  if (hasConversationData) {
+    insights.push(`Se registraron ${formatNumber(metrics.total_conversaciones)} conversaciones en el periodo.`);
+  }
+
+  if (Number(metrics.conversaciones_atendidas_bot ?? 0) > 0) {
+    insights.push(`La IA atendio ${formatNumber(metrics.conversaciones_atendidas_bot)} interacciones automatizadas.`);
+  }
+
+  if (hasOrders) {
+    insights.push(`Los pedidos generaron ${formatCurrency(metrics.ventas_estimadas)} en ventas estimadas.`);
+  }
+
+  if (topProduct) {
+    insights.push(`${topProduct.nombre} fue el producto con mayor interes detectado.`);
+  }
+
+  return (
+    <section className="reports-summary-card">
+      <div>
+        <span>
+          {hasOrders ? <TrendingUp size={22} aria-hidden="true" /> : <TrendingDown size={22} aria-hidden="true" />}
+        </span>
+        <div>
+          <h2>Resumen ejecutivo</h2>
+          <p>
+            {insights.length
+              ? insights.join(' ')
+              : 'No hay datos suficientes para generar una lectura ejecutiva confiable en este periodo.'}
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function ReportChartCard({ children, description, icon: Icon, title }) {
   return (
-    <article className="panel-section report-chart-card">
-      <div className="section-header dashboard-section-header">
+    <article className="reports-card reports-chart-card">
+      <header className="reports-card-header">
         <div>
           <h2>{title}</h2>
           <p>{description}</p>
         </div>
-        <Icon size={22} aria-hidden="true" />
+        <span>
+          <Icon size={20} aria-hidden="true" />
+        </span>
+      </header>
+      <div className="reports-card-body">
+        {children}
       </div>
-      {children}
     </article>
+  );
+}
+
+function RankingList({ emptyTitle, items }) {
+  const maxValue = Math.max(...items.map((item) => Number(item.consultas ?? 0)), 1);
+
+  if (!items.length || items.every((item) => Number(item.consultas ?? 0) === 0)) {
+    return <EmptyState title={emptyTitle} description="Aun no hay datos para el periodo seleccionado." />;
+  }
+
+  return (
+    <div className="reports-ranking-list">
+      {items.slice(0, 8).map((item, index) => (
+        <article key={`${item.id}-${item.tenant_id ?? ''}`}>
+          <span>{index + 1}</span>
+          <div>
+            <strong>{item.nombre}</strong>
+            <small>{item.empresa_nombre ?? 'Empresa actual'}</small>
+            <div className="reports-bar-track">
+              <div style={{ width: `${(Number(item.consultas ?? 0) / maxValue) * 100}%` }} />
+            </div>
+          </div>
+          <b>{formatNumber(item.consultas)}</b>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function ActivityTimeline({ metrics }) {
+  const items = [
+    {
+      icon: MessageCircle,
+      title: 'Conversaciones iniciadas',
+      value: formatNumber(metrics.total_conversaciones),
+      description: 'Actividad comercial capturada por el canal.'
+    },
+    {
+      icon: Bot,
+      title: 'Atencion automatizada',
+      value: formatNumber(metrics.conversaciones_atendidas_bot),
+      description: 'Interacciones donde participo la IA.'
+    },
+    {
+      icon: Users,
+      title: 'Escalamientos a humano',
+      value: formatNumber(metrics.conversaciones_pidieron_humano),
+      description: 'Casos que requieren seguimiento personal.'
+    },
+    {
+      icon: ShoppingBag,
+      title: 'Pedidos registrados',
+      value: formatNumber(metrics.pedidos_generados),
+      description: 'Oportunidades que llegaron a pedido.'
+    }
+  ];
+
+  return (
+    <section className="reports-card reports-timeline-card">
+      <header className="reports-card-header">
+        <div>
+          <h2>Actividad comercial</h2>
+          <p>Lectura agregada de los eventos importantes del periodo.</p>
+        </div>
+        <span>
+          <BarChart3 size={20} aria-hidden="true" />
+        </span>
+      </header>
+      <div className="reports-timeline">
+        {items.map((item) => {
+          const Icon = item.icon;
+          return (
+            <article key={item.title}>
+              <span>
+                <Icon size={18} aria-hidden="true" />
+              </span>
+              <div>
+                <strong>{item.title}</strong>
+                <p>{item.description}</p>
+              </div>
+              <b>{item.value}</b>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function ReportsDataTable({ isSuperAdmin, reports, topProducts }) {
+  const [query, setQuery] = useState('');
+  const data = isSuperAdmin ? reports.desglose_empresas ?? [] : topProducts;
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredData = useMemo(() => (
+    normalizedQuery
+      ? data.filter((item) => Object.values(item).some((value) => String(value ?? '').toLowerCase().includes(normalizedQuery)))
+      : data
+  ), [data, normalizedQuery]);
+
+  const columns = isSuperAdmin
+    ? [
+        { key: 'empresa_nombre', label: 'Empresa' },
+        { key: 'total_conversaciones', label: 'Conversaciones', render: (row) => formatNumber(row.total_conversaciones) },
+        { key: 'conversaciones_atendidas_bot', label: 'Atendidas IA', render: (row) => formatNumber(row.conversaciones_atendidas_bot) },
+        { key: 'conversaciones_pidieron_humano', label: 'Handoff', render: (row) => formatNumber(row.conversaciones_pidieron_humano) },
+        { key: 'clientes_unicos', label: 'Clientes unicos', render: (row) => formatNumber(row.clientes_unicos) }
+      ]
+    : [
+        { key: 'nombre', label: 'Producto' },
+        { key: 'empresa_nombre', label: 'Empresa' },
+        { key: 'consultas', label: 'Consultas', render: (row) => formatNumber(row.consultas) }
+      ];
+
+  return (
+    <section className="reports-card reports-detail-card">
+      <header className="reports-card-header">
+        <div>
+          <h2>{isSuperAdmin ? 'Detalle por empresa' : 'Detalle de productos'}</h2>
+          <p>Tabla con busqueda, ordenamiento y paginacion local.</p>
+        </div>
+        <span>
+          <Building2 size={20} aria-hidden="true" />
+        </span>
+      </header>
+      <div className="reports-table-toolbar">
+        <label htmlFor="reports-table-search">
+          <Search size={17} aria-hidden="true" />
+          <input
+            id="reports-table-search"
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Buscar en el detalle"
+            value={query}
+          />
+        </label>
+      </div>
+      <SortablePaginatedTable
+        columns={columns}
+        data={filteredData}
+        emptyMessage="No hay registros para mostrar con los filtros actuales."
+        getRowKey={(row) => row.tenant_id ?? row.id ?? row.nombre}
+        initialSortKey={columns[0].key}
+        pageSizeOptions={[5, 10, 20]}
+      />
+    </section>
+  );
+}
+
+function ReportsSkeleton() {
+  return (
+    <div className="reports-skeleton" role="status" aria-live="polite">
+      <span />
+      <div>
+        <span />
+        <span />
+        <span />
+        <span />
+      </div>
+      <span />
+      <span />
+    </div>
+  );
+}
+
+function ReportsError({ message, onRetry }) {
+  return (
+    <section className="reports-state-card error" role="alert">
+      <AlertTriangle size={24} aria-hidden="true" />
+      <div>
+        <h2>No pudimos cargar los reportes.</h2>
+        <p>{message || 'Revisa tu conexion o intenta actualizar la informacion.'}</p>
+      </div>
+      <button className="secondary-button" onClick={onRetry} type="button">Reintentar</button>
+    </section>
+  );
+}
+
+function ReportsEmpty() {
+  return (
+    <section className="reports-state-card">
+      <Sparkles size={24} aria-hidden="true" />
+      <div>
+        <h2>No hay datos suficientes para generar reportes.</h2>
+        <p>Cuando existan conversaciones, clientes o pedidos en el periodo, el centro de inteligencia mostrara analisis y tendencias.</p>
+      </div>
+    </section>
   );
 }
 
@@ -133,6 +581,7 @@ export function ReportsManager() {
     fecha_fin: today(),
     empresa_id: ''
   });
+  const [selectedPreset, setSelectedPreset] = useState('30d');
   const [reports, setReports] = useState(emptyReports);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -140,24 +589,24 @@ export function ReportsManager() {
   const metrics = reports.metrics ?? emptyReports.metrics;
   const aiUsage = reports.consumo_ia ?? emptyReports.consumo_ia;
   const dailyMessages = useMemo(
-    () => (reports.mensajes_por_dia ?? []).map((item) => ({ ...item, label: item.fecha.slice(5) })),
+    () => (reports.mensajes_por_dia ?? []).map((item) => ({ ...item, label: item.fecha?.slice(5) ?? item.fecha })),
     [reports.mensajes_por_dia]
   );
   const salesOverTime = useMemo(
-    () => (reports.ventas_por_dia ?? reports.ventas_en_tiempo ?? reports.sales_over_time ?? dailyMessages)
+    () => (reports.ventas_por_dia ?? reports.ventas_en_tiempo ?? reports.sales_over_time ?? [])
       .map((item) => ({
         label: item.label ?? item.fecha?.slice(5) ?? item.periodo ?? item.date ?? '',
         ventas: Number(item.ventas ?? item.ventas_estimadas ?? item.total_ventas ?? item.total ?? 0)
       })),
-    [dailyMessages, reports]
+    [reports]
   );
   const ordersByPeriod = useMemo(
-    () => (reports.pedidos_por_periodo ?? reports.pedidos_por_dia ?? reports.orders_by_period ?? dailyMessages)
+    () => (reports.pedidos_por_periodo ?? reports.pedidos_por_dia ?? reports.orders_by_period ?? [])
       .map((item) => ({
         label: item.label ?? item.fecha?.slice(5) ?? item.periodo ?? item.date ?? '',
         pedidos: Number(item.pedidos ?? item.total_pedidos ?? item.orders ?? 0)
       })),
-    [dailyMessages, reports]
+    [reports]
   );
   const ordersByStatus = useMemo(
     () => (reports.pedidos_por_estado ?? reports.orders_by_status ?? [])
@@ -168,15 +617,17 @@ export function ReportsManager() {
       })),
     [reports]
   );
-  const leadsByOrigin = useMemo(
-    () => (reports.leads_por_origen ?? reports.leads_by_origin ?? [])
-      .map((item) => ({
-        origen: item.origen ?? item.source ?? item.label ?? 'Sin origen',
-        leads: Number(item.total ?? item.leads ?? item.value ?? 0)
-      })),
-    [reports]
-  );
   const topProducts = reports.productos_mas_consultados ?? [];
+
+  const selectedCompanyName = useMemo(
+    () => companies.find((company) => String(company.id) === String(filters.empresa_id))?.nombre,
+    [companies, filters.empresa_id]
+  );
+
+  const hasAnyData = Number(metrics.total_conversaciones ?? 0) > 0
+    || Number(metrics.pedidos_generados ?? 0) > 0
+    || Number(metrics.clientes_nuevos ?? 0) > 0
+    || topProducts.some((item) => Number(item.consultas ?? 0) > 0);
 
   async function loadReports(nextFilters = filters) {
     try {
@@ -205,7 +656,30 @@ export function ReportsManager() {
 
   function handleFilterChange(event) {
     const { name, value } = event.target;
+    setSelectedPreset('custom');
     setFilters((current) => ({ ...current, [name]: value }));
+  }
+
+  function handlePreset(preset) {
+    const nextFilters = {
+      ...filters,
+      fecha_inicio: dateDaysAgo(preset.days),
+      fecha_fin: today()
+    };
+    setSelectedPreset(preset.id);
+    setFilters(nextFilters);
+    loadReports(nextFilters);
+  }
+
+  function handleClear() {
+    const nextFilters = {
+      fecha_inicio: thirtyDaysAgo(),
+      fecha_fin: today(),
+      empresa_id: ''
+    };
+    setSelectedPreset('30d');
+    setFilters(nextFilters);
+    loadReports(nextFilters);
   }
 
   function handleSubmit(event) {
@@ -213,154 +687,163 @@ export function ReportsManager() {
     loadReports(filters);
   }
 
+  function handleExportCsv() {
+    const detailRows = isSuperAdmin && (reports.desglose_empresas ?? []).length
+      ? reports.desglose_empresas.map((item) => ({
+          tipo: 'empresa',
+          nombre: item.empresa_nombre,
+          conversaciones: item.total_conversaciones,
+          atendidas_ia: item.conversaciones_atendidas_bot,
+          handoff: item.conversaciones_pidieron_humano,
+          clientes_unicos: item.clientes_unicos
+        }))
+      : topProducts.map((item) => ({
+          tipo: 'producto',
+          nombre: item.nombre,
+          empresa: item.empresa_nombre,
+          consultas: item.consultas
+        }));
+    const summaryRows = [
+      { tipo: 'kpi', nombre: 'Conversaciones', valor: metrics.total_conversaciones },
+      { tipo: 'kpi', nombre: 'Atencion IA', valor: metrics.conversaciones_atendidas_bot },
+      { tipo: 'kpi', nombre: 'Handoff humano', valor: metrics.conversaciones_pidieron_humano },
+      { tipo: 'kpi', nombre: 'Pedidos', valor: metrics.pedidos_generados },
+      { tipo: 'kpi', nombre: 'Ventas estimadas', valor: metrics.ventas_estimadas },
+      { tipo: 'kpi', nombre: 'Clientes nuevos', valor: metrics.clientes_nuevos },
+      { tipo: 'kpi', nombre: 'Conversion', valor: metrics.tasa_conversion_conversacion_pedido },
+      { tipo: 'kpi', nombre: 'Consumo IA requests', valor: aiUsage.total_requests },
+      { tipo: 'kpi', nombre: 'Consumo IA tokens', valor: aiUsage.total_tokens }
+    ];
+    downloadCsv('reportes.csv', detailRows.length ? detailRows : summaryRows);
+  }
+
+  const scopeLabel = isSuperAdmin
+    ? selectedCompanyName || 'Vista global'
+    : user?.empresa?.nombre || 'Empresa actual';
+
   return (
-    <section className="commercial-dashboard enterprise-dashboard reports-page" aria-label="Reportes">
-      <div className="dashboard-hero enterprise-hero">
-        <div>
-          <p className="eyebrow">Reportes</p>
-          <h2>{isSuperAdmin ? 'Reportes globales' : 'Reportes de empresa'}</h2>
-          <p>Conversaciones, atencion, productos, clientes y consumo IA filtrados por tenant.</p>
-        </div>
-      </div>
+    <section className="reports-page" aria-label="Reportes">
+      <ReportsHero
+        isLoading={isLoading}
+        onExport={handleExportCsv}
+        onRefresh={() => loadReports(filters)}
+        rangeLabel={getRangeLabel(filters)}
+        scopeLabel={scopeLabel}
+      />
 
-      {error ? <ErrorState message={error} onRetry={() => loadReports(filters)} /> : null}
+      <ReportsToolbar
+        companies={companies}
+        filters={filters}
+        isLoading={isLoading}
+        isSuperAdmin={isSuperAdmin}
+        onChange={handleFilterChange}
+        onClear={handleClear}
+        onPreset={handlePreset}
+        onSubmit={handleSubmit}
+        selectedPreset={selectedPreset}
+      />
 
-      <form className="dashboard-filters enterprise-filters" onSubmit={handleSubmit}>
-        <label className="field-group" htmlFor="reports-start-date">
-          <span>Fecha inicio</span>
-          <div className="report-date-input">
-            <CalendarDays size={17} aria-hidden="true" />
-            <input id="reports-start-date" name="fecha_inicio" onChange={handleFilterChange} type="date" value={filters.fecha_inicio} />
-          </div>
-        </label>
-        <label className="field-group" htmlFor="reports-end-date">
-          <span>Fecha fin</span>
-          <div className="report-date-input">
-            <CalendarDays size={17} aria-hidden="true" />
-            <input id="reports-end-date" name="fecha_fin" onChange={handleFilterChange} type="date" value={filters.fecha_fin} />
-          </div>
-        </label>
-        {isSuperAdmin ? (
-          <label className="field-group" htmlFor="reports-company">
-            <span>Empresa</span>
-            <select id="reports-company" name="empresa_id" onChange={handleFilterChange} value={filters.empresa_id}>
-              <option value="">Global</option>
-              {companies.map((company) => (
-                <option key={company.id} value={company.id}>
-                  {company.nombre}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
-        <button className="primary-button" disabled={isLoading} type="submit">
-          {isLoading ? 'Actualizando...' : 'Aplicar filtros'}
-        </button>
-      </form>
+      {error ? <ReportsError message={error} onRetry={() => loadReports(filters)} /> : null}
+      {isLoading ? <ReportsSkeleton /> : null}
+      {!isLoading && !error && !hasAnyData ? <ReportsEmpty /> : null}
 
-      {isLoading ? <LoadingState message="Cargando reportes..." /> : null}
+      {!isLoading ? (
+        <>
+          <ExecutiveKPIs aiUsage={aiUsage} metrics={metrics} />
+          <ExecutiveSummary metrics={metrics} topProducts={topProducts} />
 
-      <div className="enterprise-metrics-grid">
-        <ReportMetric icon={MessageCircle} label="Conversaciones" value={metrics.total_conversaciones} detail="Total del periodo" />
-        <ReportMetric icon={Bot} label="Atendidas por bot" value={metrics.conversaciones_atendidas_bot} detail="Respuesta automatica registrada" tone="green" />
-        <ReportMetric icon={Users} label="Pidieron humano" value={metrics.conversaciones_pidieron_humano} detail="Handoff o atencion humana" tone="amber" />
-        <ReportMetric icon={ShoppingBag} label="Pedidos" value={metrics.pedidos_generados} detail={metrics.orders_source === 'pending_orders_module' ? 'Modulo pendiente' : 'Generados'} tone="purple" />
-        <ReportMetric icon={TrendingUp} label="Ventas estimadas" value={formatCurrency(metrics.ventas_estimadas)} detail="Segun pedidos registrados" />
-        <ReportMetric icon={UserPlus} label="Clientes nuevos" value={metrics.clientes_nuevos} detail="Primer mensaje en el periodo" tone="green" />
-        <ReportMetric icon={Bot} label="Consumo IA" value={aiUsage.total_requests ?? 0} detail={`${Number(aiUsage.total_tokens ?? 0).toLocaleString('es-MX')} tokens`} tone="amber" />
-        <ReportMetric icon={TrendingUp} label="Conversion" value={`${metrics.tasa_conversion_conversacion_pedido}%`} detail="Conversacion a pedido" />
-      </div>
+          <section className="reports-grid-main">
+            <ReportChartCard
+              description="Esta grafica muestra la evolucion diaria de conversaciones atendidas."
+              icon={MessageCircle}
+              title="Conversaciones por dia"
+            >
+              {chartHasData(dailyMessages, 'mensajes') ? (
+                <BarChart
+                  colors={['#00abe4']}
+                  height={300}
+                  series={[{ data: dailyMessages.map((item) => Number(item.mensajes ?? 0)), label: 'Conversaciones' }]}
+                  xAxis={[{ data: dailyMessages.map((item) => item.label), scaleType: 'band' }]}
+                />
+              ) : (
+                <EmptyState title="Sin conversaciones" description="Aun no hay datos para el periodo seleccionado." />
+              )}
+            </ReportChartCard>
 
-      <div className="enterprise-dashboard-grid">
-        <ReportChartCard icon={TrendingUp} title="Ventas en el tiempo" description="Evolucion de ventas reportadas para el periodo.">
-          {chartHasData(salesOverTime, 'ventas') ? (
-            <LineChart
-              height={260}
-              series={[{ area: true, curve: 'monotoneX', data: salesOverTime.map((item) => item.ventas), label: 'Ventas' }]}
-              xAxis={[{ data: salesOverTime.map((item) => item.label), scaleType: 'point' }]}
-            />
-          ) : (
-            <EmptyState title="Sin ventas" description="Aun no hay ventas para graficar en el periodo seleccionado." />
-          )}
-        </ReportChartCard>
+            <ReportChartCard
+              description="Esta grafica resume los ingresos disponibles cuando el modulo de pedidos entrega ventas."
+              icon={TrendingUp}
+              title="Ventas"
+            >
+              {chartHasData(salesOverTime, 'ventas') ? (
+                <LineChart
+                  colors={['#2272ff']}
+                  height={300}
+                  series={[{ area: true, curve: 'monotoneX', data: salesOverTime.map((item) => item.ventas), label: 'Ventas' }]}
+                  xAxis={[{ data: salesOverTime.map((item) => item.label), scaleType: 'point' }]}
+                />
+              ) : (
+                <div className="reports-metric-spotlight">
+                  <span>{formatCurrency(metrics.ventas_estimadas)}</span>
+                  <p>Ventas estimadas del periodo. No hay serie diaria disponible para graficar.</p>
+                </div>
+              )}
+            </ReportChartCard>
+          </section>
 
-        <ReportChartCard icon={ShoppingBag} title="Pedidos por periodo" description="Volumen de pedidos agrupado por fecha o periodo.">
-          {chartHasData(ordersByPeriod, 'pedidos') ? (
-            <BarChart
-              height={260}
-              series={[{ data: ordersByPeriod.map((item) => item.pedidos), label: 'Pedidos' }]}
-              xAxis={[{ data: ordersByPeriod.map((item) => item.label), scaleType: 'band' }]}
-            />
-          ) : (
-            <EmptyState title="Sin pedidos" description="Aun no hay pedidos para el periodo seleccionado." />
-          )}
-        </ReportChartCard>
-      </div>
+          <section className="reports-grid-main">
+            <ReportChartCard
+              description="Esta grafica muestra el volumen de pedidos cuando existen datos por periodo."
+              icon={ShoppingBag}
+              title="Pedidos por periodo"
+            >
+              {chartHasData(ordersByPeriod, 'pedidos') ? (
+                <BarChart
+                  colors={['#1f8a62']}
+                  height={280}
+                  series={[{ data: ordersByPeriod.map((item) => item.pedidos), label: 'Pedidos' }]}
+                  xAxis={[{ data: ordersByPeriod.map((item) => item.label), scaleType: 'band' }]}
+                />
+              ) : (
+                <div className="reports-metric-spotlight">
+                  <span>{formatNumber(metrics.pedidos_generados)}</span>
+                  <p>Pedidos generados del periodo. No hay serie diaria disponible para graficar.</p>
+                </div>
+              )}
+            </ReportChartCard>
 
-      <div className="enterprise-dashboard-grid">
-        <ReportChartCard icon={MessageCircle} title="Mensajes por dia" description="Volumen diario de conversaciones.">
-          {chartHasData(dailyMessages, 'mensajes') ? (
-            <BarChart
-              height={260}
-              series={[{ data: dailyMessages.map((item) => Number(item.mensajes ?? 0)), label: 'Mensajes' }]}
-              xAxis={[{ data: dailyMessages.map((item) => item.label), scaleType: 'band' }]}
-            />
-          ) : (
-            <EmptyState title="Sin mensajes" description="Aun no hay datos para el periodo seleccionado." />
-          )}
-        </ReportChartCard>
+            <ReportChartCard
+              description="Esta grafica muestra la distribucion operativa de pedidos si el backend entrega estados."
+              icon={ShoppingBag}
+              title="Estado de pedidos"
+            >
+              {ordersByStatus.length && ordersByStatus.some((item) => item.value > 0) ? (
+                <PieChart
+                  colors={['#00abe4', '#2272ff', '#75dca7', '#ffd166']}
+                  height={280}
+                  series={[{ data: ordersByStatus, innerRadius: 58, outerRadius: 98, paddingAngle: 3 }]}
+                  slotProps={{ legend: { direction: 'row', position: { horizontal: 'middle', vertical: 'bottom' } } }}
+                />
+              ) : (
+                <EmptyState title="Sin estados" description="Aun no hay distribucion de pedidos por estado." />
+              )}
+            </ReportChartCard>
+          </section>
 
-        <ReportChartCard icon={ShoppingBag} title="Pedidos por estado" description="Distribucion operativa de pedidos.">
-          {ordersByStatus.length && ordersByStatus.some((item) => item.value > 0) ? (
-            <PieChart
-              height={260}
-              series={[{ data: ordersByStatus, innerRadius: 58, outerRadius: 98, paddingAngle: 3 }]}
-              slotProps={{ legend: { direction: 'row', position: { horizontal: 'middle', vertical: 'bottom' } } }}
-            />
-          ) : (
-            <EmptyState title="Sin estados" description="Aun no hay distribucion de pedidos por estado." />
-          )}
-        </ReportChartCard>
-      </div>
+          <section className="reports-grid-side">
+            <ReportChartCard
+              description="Ranking de productos con mayor interes detectado en conversaciones y leads."
+              icon={PackageSearch}
+              title="Top productos"
+            >
+              <RankingList emptyTitle="Sin productos consultados" items={topProducts} />
+            </ReportChartCard>
 
-      <div className="enterprise-dashboard-grid">
-        <ReportChartCard icon={UserPlus} title="Leads por origen" description="Canales que generan nuevos clientes.">
-          {chartHasData(leadsByOrigin, 'leads') ? (
-            <BarChart
-              height={260}
-              series={[{ data: leadsByOrigin.map((item) => item.leads), label: 'Leads' }]}
-              xAxis={[{ data: leadsByOrigin.map((item) => item.origen), scaleType: 'band' }]}
-            />
-          ) : (
-            <EmptyState title="Sin leads por origen" description="Aun no hay datos de origen para este periodo." />
-          )}
-        </ReportChartCard>
+            <ActivityTimeline metrics={metrics} />
+          </section>
 
-        <ReportChartCard icon={Boxes} title="Productos mas consultados" description="Consultas detectadas en conversaciones y leads.">
-          {chartHasData(topProducts, 'consultas') ? (
-            <BarChart
-              height={260}
-              layout="horizontal"
-              series={[{ data: topProducts.map((item) => Number(item.consultas ?? 0)), label: 'Consultas' }]}
-              yAxis={[{ data: topProducts.map((item) => item.nombre), scaleType: 'band' }]}
-            />
-          ) : (
-            <EmptyState title="Sin productos consultados" description="Aun no hay datos para el periodo seleccionado." />
-          )}
-        </ReportChartCard>
-      </div>
-
-      {isSuperAdmin ? (
-        <article className="panel-section chart-panel reports-table-card">
-          <div className="section-header dashboard-section-header">
-            <div>
-              <h2>Desglose por empresa</h2>
-              <p>Vista global para Super Admin.</p>
-            </div>
-            <Building2 size={22} aria-hidden="true" />
-          </div>
-          <BarList emptyTitle="Sin actividad por empresa" items={reports.desglose_empresas ?? []} labelKey="empresa_nombre" valueKey="total_conversaciones" />
-        </article>
+          <ReportsDataTable isSuperAdmin={isSuperAdmin} reports={reports} topProducts={topProducts} />
+        </>
       ) : null}
     </section>
   );

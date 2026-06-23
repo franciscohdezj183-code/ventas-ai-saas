@@ -62,7 +62,8 @@ function isLikelyProductQuestion(message) {
 }
 
 function isLikelyServiceQuestion(message) {
-  return /\b(servicio|servicios|cita|agenda|agendar|reservar|cotizar|cotizaci[oó]n|instalaci[oó]n|instalacion|mantenimiento|reparaci[oó]n|reparacion|consulta|asesor[ií]a|asesoria|atenci[oó]n|atencion|dise[nñ]o|diseno|limpieza|soporte|diagn[oó]stico|diagnostico|lona|lonas|vinil|tarjeta|tarjetas|logotipo|logotipos|marketing|se[nñ]aletica|senaletica|textil|promocionales|banner)\b/i.test(message);
+  return /\b(servicio|servicios|cita|agenda|agendar|reservar|cotizar|cotizaci[oó]n|instalaci[oó]n|instalacion|mantenimiento|reparaci[oó]n|reparacion|consulta|asesor[ií]a|asesoria|atenci[oó]n|atencion|dise[nñ]o|diseno|limpieza|soporte|diagn[oó]stico|diagnostico|lona|lonas|vinil|tarjeta|tarjetas|logotipo|logotipos|marketing|se[nñ]aletica|senaletica|textil|promocionales|banner|web)\b/i.test(message)
+    || /\b(p[aá]gina|pagina|sitio)\s+web\b/i.test(message);
 }
 
 function withParams(intent, overrides = {}) {
@@ -160,7 +161,7 @@ export const mixedBusinessStrategy = {
       };
     }
 
-    if (isPurchaseQuestion(normalizedMessage) || intent.intencion === 'INTENCION_COMPRA') {
+    if ((isPurchaseQuestion(normalizedMessage) || intent.intencion === 'INTENCION_COMPRA') && contextType) {
       return buildInterestIntent(intent, normalizedMessage, conversationContext);
     }
 
@@ -180,7 +181,7 @@ export const mixedBusinessStrategy = {
       }
     }
 
-    if (serviceLike && !productLike) {
+    if (serviceLike) {
       return asServiceSearchIntent(intent);
     }
 

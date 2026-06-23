@@ -5,9 +5,10 @@
   "type": "module",
   "main": "src/server.js",
   "scripts": {
-    "dev": "nodemon --delay 1.5 --ignore storage/ --ignore uploads/ --ignore logs/ --ignore src/**/*.test.js src/server.js",
+    "dev": "nodemon --delay 1.5 --ignore storage/ --ignore .wwebjs_auth/ --ignore .wwebjs_cache/ --ignore uploads/ --ignore logs/ --ignore src/**/*.test.js src/server.js",
     "migrate": "node src/database/migrate.js",
     "db:check": "node src/database/check-connection.js",
+    "db:seed:mok": "node src/database/seed-mok-demo.js",
     "db:seed:super-admin": "node src/database/seed-super-admin.js",
     "worker:whatsapp": "node src/workers/whatsapp.worker.js",
     "test": "set NODE_ENV=test&& node --test src/ai/intentInterpreter.test.js src/database/schema.test.js src/middlewares/company-scope.middleware.test.js src/middlewares/roles.middleware.test.js src/middlewares/security-hardening.test.js src/mcp/mcpClient.test.js src/bot/business-types/business-strategy.factory.test.js src/bot/business-types/service-business.strategy.test.js src/bot/business-types/mixed-business.strategy.test.js src/bot/messageOrchestrator.test.js src/whatsapp/whatsapp-number.helper.test.js src/whatsapp/whatsapp-session.manager.test.js src/modules/whatsapp/whatsapp.routes.test.js src/test/integration.test.js",

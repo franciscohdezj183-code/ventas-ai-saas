@@ -74,7 +74,15 @@ function formatServicePrice(service) {
   }
 
   if (type === 'POR_M2') {
-    return `${formatCurrency(service?.precio)} / m2`;
+    return `${formatCurrency(service?.precio)} / m²`;
+  }
+
+  if (type === 'POR_HORA') {
+    return `${formatCurrency(service?.precio)} / hora`;
+  }
+
+  if (type === 'POR_UNIDAD') {
+    return `${formatCurrency(service?.precio)} / unidad`;
   }
 
   return formatCurrency(service?.precio);
@@ -84,14 +92,46 @@ function getPriceTypeLabel(type) {
   return {
     FIJO: 'Precio fijo',
     DESDE: 'Desde',
+    POR_UNIDAD: 'Por unidad',
     POR_M2: 'Por m2',
+    POR_HORA: 'Por hora',
     COTIZACION: 'Cotizacion'
   }[String(type ?? 'FIJO').toUpperCase()] ?? 'Precio fijo';
 }
 
 function formatDuration(duration) {
   const value = Number(duration);
-  return value > 0 ? `${value} min` : 'Sin duracion';
+  return value > 0 ? `${value} min` : 'No aplica';
+}
+
+function formatUnit(unit) {
+  return {
+    servicio: 'Servicio',
+    pieza: 'Pieza',
+    paquete: 'Paquete',
+    m2: 'm²',
+    hora: 'Hora',
+    asesor: 'Asesor'
+  }[String(unit ?? '')] ?? 'No aplica';
+}
+
+function RequiredDataBadges({ service }) {
+  const badges = [
+    service.requiere_medidas ? 'Medidas' : null,
+    service.requiere_cantidad ? 'Cantidad' : null
+  ].filter(Boolean);
+
+  if (!badges.length) {
+    return <span className="service-muted-value">No aplica</span>;
+  }
+
+  return (
+    <span className="service-required-badges">
+      {badges.map((badge) => (
+        <span key={badge}>{badge}</span>
+      ))}
+    </span>
+  );
 }
 
 function hasFilters(filters) {
@@ -317,7 +357,7 @@ function ServicesTable({ onDelete, onEdit, onToggle, onView, pageSize, pageSizeO
     },
     {
       key: 'precio',
-      label: 'Precio',
+      label: 'Precio/Modalidad',
       headerClassName: 'service-col-price',
       cellClassName: 'service-col-price',
       render: (service) => (
@@ -327,6 +367,22 @@ function ServicesTable({ onDelete, onEdit, onToggle, onView, pageSize, pageSizeO
         </span>
       ),
       sortValue: (service) => Number(service.precio ?? 0)
+    },
+    {
+      key: 'unidad',
+      label: 'Unidad',
+      headerClassName: 'service-col-unit',
+      cellClassName: 'service-col-unit',
+      render: (service) => formatUnit(service.unidad_medida),
+      sortValue: (service) => service.unidad_medida || ''
+    },
+    {
+      key: 'requiere_datos',
+      label: 'Requiere datos',
+      headerClassName: 'service-col-required',
+      cellClassName: 'service-col-required',
+      render: (service) => <RequiredDataBadges service={service} />,
+      sortValue: (service) => `${service.requiere_medidas ? '1' : '0'}${service.requiere_cantidad ? '1' : '0'}`
     },
     {
       key: 'duracion',
@@ -441,6 +497,14 @@ function ServiceDetailDrawer({ onClose, onEdit, service }) {
             <dd><PriceTypeBadge type={service.tipo_precio} /></dd>
           </div>
           <div>
+            <dt>Unidad</dt>
+            <dd>{formatUnit(service.unidad_medida)}</dd>
+          </div>
+          <div>
+            <dt>Requiere datos</dt>
+            <dd><RequiredDataBadges service={service} /></dd>
+          </div>
+          <div>
             <dt>Duracion</dt>
             <dd>{formatDuration(service.duracion)}</dd>
           </div>
@@ -461,6 +525,21 @@ function ServiceDetailDrawer({ onClose, onEdit, service }) {
         <section className="service-detail-description">
           <h3>Descripcion</h3>
           <p>{service.descripcion || 'Este servicio aun no tiene descripcion.'}</p>
+        </section>
+
+        <section className="service-detail-description">
+          <h3>Incluye</h3>
+          <p>{service.incluye || 'No especificado.'}</p>
+        </section>
+
+        <section className="service-detail-description">
+          <h3>No incluye</h3>
+          <p>{service.no_incluye || 'No especificado.'}</p>
+        </section>
+
+        <section className="service-detail-description">
+          <h3>Notas de cotizacion</h3>
+          <p>{service.notas_cotizacion || 'No especificado.'}</p>
         </section>
 
         <div className="modal-actions">
@@ -601,7 +680,14 @@ export function ServicesManager() {
         descripcion: service.descripcion,
         precio: service.precio,
         tipo_precio: service.tipo_precio ?? 'FIJO',
-        duracion: service.duracion,
+        unidad_medida: service.unidad_medida || undefined,
+        duracion_minutos: service.duracion_minutos ?? service.duracion ?? undefined,
+        requiere_medidas: Boolean(service.requiere_medidas),
+        requiere_cantidad: Boolean(service.requiere_cantidad),
+        incluye: service.incluye,
+        no_incluye: service.no_incluye,
+        notas_cotizacion: service.notas_cotizacion,
+        precio_minimo: service.precio_minimo,
         categoria_id: service.categoria_id || undefined,
         estado: service.estado === 'ACTIVO' ? 'INACTIVO' : 'ACTIVO',
         empresa_id: service.empresa_id

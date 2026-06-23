@@ -6,6 +6,7 @@ import { createAuditLog } from '../audit/audit.service.js';
 import { isPlanLimitAvailable } from '../plans/plan-limits.service.js';
 import { registerAIUsage } from '../ai-usage/ai-usage.service.js';
 import { normalizeMexicanPhoneNumber } from '../../whatsapp/whatsapp-number.helper.js';
+import { logger } from '../../utils/logger.js';
 
 function normalizePhone(value) {
   return normalizeMexicanPhoneNumber(value);
@@ -156,13 +157,45 @@ export async function processIncomingCustomerMessage({ empresaId, userId = null,
     };
   }
 
-  return generateCompanyReply({
-    empresaId,
-    userId,
-    phone: cleanPhone,
-    message,
-    whatsappChatId,
-    contactName
-  });
+  try {
+    return await generateCompanyReply({
+      empresaId,
+      userId,
+      phone: cleanPhone,
+      message,
+      whatsappChatId,
+      contactName
+    });
+  } catch (error) {
+    logger.error('[WA][ERROR] Bot/IA fallo despues de recibir mensaje; guardando entrada sin respuesta', {
+      empresaId,
+      telefonoCliente: cleanPhone,
+      whatsappChatId,
+      error
+    });
+
+    const conversationId = await saveConversationWithoutReply({
+      empresaId,
+      phone: cleanPhone,
+      message,
+      whatsappChatId,
+      contactName
+    });
+
+    logger.info('[WA][MESSAGE_SAVED] messageId', {
+      empresaId,
+      messageId: conversationId,
+      telefonoCliente: cleanPhone,
+      reason: 'ai_or_bot_error_fallback'
+    });
+
+    return {
+      respuesta: null,
+      intencion: 'BOT_ERROR',
+      herramienta_mcp: null,
+      lead_id: null,
+      conversacion_id: conversationId
+    };
+  }
 }
 

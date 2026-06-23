@@ -21,6 +21,8 @@ function createBaseSession(companyId) {
     startedAt: null,
     connectedAt: null,
     disconnectedAt: null,
+    lastInboundAt: null,
+    lastProcessedAt: null,
     phoneNumber: null,
     isInitializing: false
   };
@@ -38,6 +40,8 @@ function toPublicSession(session) {
     startedAt: session.startedAt,
     connectedAt: session.connectedAt,
     disconnectedAt: session.disconnectedAt,
+    lastInboundAt: session.lastInboundAt,
+    lastProcessedAt: session.lastProcessedAt,
     phoneNumber: session.phoneNumber,
     phone: session.phoneNumber,
     number: session.phoneNumber,

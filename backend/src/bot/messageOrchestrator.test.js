@@ -833,11 +833,33 @@ describe('messageOrchestrator', () => {
     assert.match(result.respuesta, /asesor/);
   });
 
-  it('uses service strategy direct quote flow for service businesses', async () => {
+  it('uses real services for service-business quote responses', async () => {
     const calls = [];
     const mcpClient = {
       async callTool(toolName, args) {
         calls.push({ toolName, args });
+
+        if (toolName === 'buscar_servicios') {
+          return {
+            servicios: [
+              {
+                id: 51,
+                nombre: 'Instalacion electrica',
+                descripcion: 'Instalacion en sitio',
+                precio: null,
+                tipo_precio: 'COTIZACION',
+                unidad_medida: 'asesor',
+                requiere_medidas: false,
+                requiere_cantidad: false,
+                incluye: null,
+                no_incluye: null,
+                notas_cotizacion: 'Pedir ubicacion y alcance',
+                precio_minimo: null,
+                categoria: 'Instalaciones'
+              }
+            ]
+          };
+        }
 
         if (toolName === 'guardar_conversacion') {
           return { conversacion_id: 111 };
@@ -868,11 +890,672 @@ describe('messageOrchestrator', () => {
       }
     });
 
-    assert.equal(result.herramienta_mcp, '');
+    assert.equal(result.herramienta_mcp, 'buscar_servicios');
     assert.equal(calls.some((call) => call.toolName === 'buscar_productos'), false);
-    assert.equal(calls.some((call) => call.toolName === 'buscar_servicios'), false);
-    assert.match(result.respuesta, /instalacion/);
+    assert.equal(calls.some((call) => call.toolName === 'buscar_servicios'), true);
+    assert.match(result.respuesta, /Instalacion electrica/);
     assert.match(result.respuesta, /asesor/);
+    assert.doesNotMatch(result.respuesta, /\$/);
+  });
+
+  it('calculates POR_M2 services from meter measurements', async () => {
+    const mcpClient = {
+      async callTool(toolName) {
+        if (toolName === 'buscar_servicios') {
+          return {
+            servicios: [
+              {
+                id: 61,
+                nombre: 'Impresion de lona',
+                precio: 390,
+                tipo_precio: 'POR_M2',
+                unidad_medida: 'm2',
+                requiere_medidas: true,
+                requiere_cantidad: false,
+                incluye: 'diseno',
+                no_incluye: 'instalacion',
+                notas_cotizacion: null,
+                precio_minimo: null,
+                categoria: 'Impresion'
+              }
+            ]
+          };
+        }
+
+        if (toolName === 'guardar_conversacion') {
+          return { conversacion_id: 112 };
+        }
+
+        throw new Error(`Unexpected tool: ${toolName}`);
+      }
+    };
+
+    const result = await orchestrateIncomingMessage({
+      empresaId: 1,
+      phone: '5215550000000@c.us',
+      message: 'cuanto cuesta una lona de 2x1',
+      contexto: { nombre: 'Demo', tipo_negocio: 'SERVICIOS' },
+      interpreter: async () => ({
+        intencion: 'BUSCAR_SERVICIO',
+        herramienta_mcp: 'buscar_servicios',
+        parametros: { texto: 'lona' },
+        confianza: 0.8,
+        requiere_respuesta_ia: false
+      }),
+      mcpClient,
+      contextStore: {
+        async find() {
+          return null;
+        },
+        async save() {}
+      }
+    });
+
+    assert.match(result.respuesta, /2 m2/);
+    assert.match(result.respuesta, /\$780/);
+    assert.match(result.respuesta, /Incluye diseno/);
+    assert.match(result.respuesta, /No incluye instalacion/);
+  });
+
+  it('calculates POR_M2 services from centimeter measurements', async () => {
+    const mcpClient = {
+      async callTool(toolName) {
+        if (toolName === 'buscar_servicios') {
+          return {
+            servicios: [
+              {
+                id: 62,
+                nombre: 'Vinil impreso',
+                precio: 390,
+                tipo_precio: 'POR_M2',
+                unidad_medida: 'm2',
+                requiere_medidas: true,
+                requiere_cantidad: false,
+                incluye: null,
+                no_incluye: null,
+                notas_cotizacion: null,
+                precio_minimo: null,
+                categoria: 'Vinil'
+              }
+            ]
+          };
+        }
+
+        if (toolName === 'guardar_conversacion') {
+          return { conversacion_id: 113 };
+        }
+
+        throw new Error(`Unexpected tool: ${toolName}`);
+      }
+    };
+
+    const result = await orchestrateIncomingMessage({
+      empresaId: 1,
+      phone: '5215550000000@c.us',
+      message: 'vinil impreso de 200cm x 100cm',
+      contexto: { nombre: 'Demo', tipo_negocio: 'SERVICIOS' },
+      interpreter: async () => ({
+        intencion: 'BUSCAR_SERVICIO',
+        herramienta_mcp: 'buscar_servicios',
+        parametros: { texto: 'vinil impreso' },
+        confianza: 0.8,
+        requiere_respuesta_ia: false
+      }),
+      mcpClient,
+      contextStore: {
+        async find() {
+          return null;
+        },
+        async save() {}
+      }
+    });
+
+    assert.match(result.respuesta, /2 x 1 m/);
+    assert.match(result.respuesta, /2 m2/);
+    assert.match(result.respuesta, /\$780/);
+  });
+
+  it('lists active services for generic service catalog questions', async () => {
+    const calls = [];
+    const mcpClient = {
+      async callTool(toolName, args) {
+        calls.push({ toolName, args });
+
+        if (toolName === 'buscar_servicios') {
+          return {
+            servicios: [
+              {
+                id: 70,
+                nombre: 'Marketing digital',
+                precio: null,
+                tipo_precio: 'COTIZACION',
+                unidad_medida: null,
+                requiere_medidas: false,
+                requiere_cantidad: false,
+                incluye: null,
+                no_incluye: null,
+                notas_cotizacion: 'Cotizacion segun objetivos.',
+                precio_minimo: null,
+                categoria: 'Marketing'
+              },
+              {
+                id: 71,
+                nombre: 'Impresion de lona',
+                precio: 390,
+                tipo_precio: 'POR_M2',
+                unidad_medida: 'm2',
+                requiere_medidas: true,
+                requiere_cantidad: false,
+                incluye: 'diseno',
+                no_incluye: 'instalacion',
+                notas_cotizacion: null,
+                precio_minimo: null,
+                categoria: 'Impresion'
+              }
+            ]
+          };
+        }
+
+        if (toolName === 'guardar_conversacion') {
+          return { conversacion_id: 121 };
+        }
+
+        throw new Error(`Unexpected tool: ${toolName}`);
+      }
+    };
+
+    const result = await orchestrateIncomingMessage({
+      empresaId: 1,
+      phone: '5215550000000@c.us',
+      message: 'Hola, que servicios tienen?',
+      contexto: { nombre: 'Demo', tipo_negocio: 'SERVICIOS' },
+      interpreter: async () => ({
+        intencion: 'BUSCAR_SERVICIO',
+        herramienta_mcp: 'buscar_servicios',
+        parametros: { texto: 'servicios' },
+        confianza: 0.8,
+        requiere_respuesta_ia: false
+      }),
+      mcpClient,
+      contextStore: {
+        async find() {
+          return null;
+        },
+        async save() {}
+      }
+    });
+
+    const serviceCall = calls.find((call) => call.toolName === 'buscar_servicios');
+
+    assert.equal(serviceCall.args.texto, '');
+    assert.match(result.respuesta, /Marketing digital/);
+    assert.match(result.respuesta, /Impresion de lona/);
+    assert.doesNotMatch(result.respuesta, /Quieres que te contacte un asesor/);
+  });
+
+  it('selects the matching service and preserves decimal measurements', async () => {
+    const savedContexts = [];
+    const mcpClient = {
+      async callTool(toolName) {
+        if (toolName === 'buscar_servicios') {
+          return {
+            servicios: [
+              {
+                id: 72,
+                nombre: 'Impresion de lona',
+                precio: 390,
+                tipo_precio: 'POR_M2',
+                unidad_medida: 'm2',
+                requiere_medidas: true,
+                requiere_cantidad: false,
+                incluye: 'diseno',
+                no_incluye: 'instalacion',
+                notas_cotizacion: null,
+                precio_minimo: null,
+                categoria: 'Impresion'
+              },
+              {
+                id: 73,
+                nombre: 'Coroplast con vinil impreso',
+                precio: null,
+                tipo_precio: 'COTIZACION',
+                unidad_medida: null,
+                requiere_medidas: true,
+                requiere_cantidad: false,
+                incluye: null,
+                no_incluye: null,
+                notas_cotizacion: null,
+                precio_minimo: null,
+                categoria: 'Rigidos'
+              },
+              {
+                id: 74,
+                nombre: 'Vinil impreso',
+                precio: 420,
+                tipo_precio: 'POR_M2',
+                unidad_medida: 'm2',
+                requiere_medidas: true,
+                requiere_cantidad: false,
+                incluye: 'impresion',
+                no_incluye: 'instalacion',
+                notas_cotizacion: null,
+                precio_minimo: null,
+                categoria: 'Vinil'
+              }
+            ]
+          };
+        }
+
+        if (toolName === 'guardar_conversacion') {
+          return { conversacion_id: 122 };
+        }
+
+        throw new Error(`Unexpected tool: ${toolName}`);
+      }
+    };
+
+    const result = await orchestrateIncomingMessage({
+      empresaId: 1,
+      phone: '5215550000000@c.us',
+      message: 'Quiero vinil impreso de 1.5 x 2',
+      contexto: { nombre: 'Demo', tipo_negocio: 'SERVICIOS' },
+      interpreter: async () => ({
+        intencion: 'BUSCAR_SERVICIO',
+        herramienta_mcp: 'buscar_servicios',
+        parametros: { texto: 'vinil impreso' },
+        confianza: 0.8,
+        requiere_respuesta_ia: false
+      }),
+      mcpClient,
+      contextStore: {
+        async find() {
+          return null;
+        },
+        async save(context) {
+          savedContexts.push(context);
+        }
+      }
+    });
+
+    assert.match(result.respuesta, /1\.5 x 2 m/);
+    assert.match(result.respuesta, /3 m2/);
+    assert.match(result.respuesta, /\$1,260/);
+    assert.equal(savedContexts[0].ultimoServicioId, 74);
+    assert.equal(savedContexts[0].datos.servicio.nombre, 'Vinil impreso');
+  });
+
+  it('answers installation follow-ups from the last selected service', async () => {
+    const calls = [];
+    const mcpClient = {
+      async callTool(toolName, args) {
+        calls.push({ toolName, args });
+
+        if (toolName === 'obtener_servicio') {
+          return {
+            servicio: {
+              id: 75,
+              nombre: 'Vinil de rotulacion de color',
+              precio: 400,
+              tipo_precio: 'POR_M2',
+              unidad_medida: 'm2',
+              requiere_medidas: true,
+              requiere_cantidad: false,
+              incluye: 'depilado y transfer',
+              no_incluye: 'instalacion',
+              notas_cotizacion: null,
+              precio_minimo: null,
+              categoria: 'Vinil'
+            }
+          };
+        }
+
+        if (toolName === 'guardar_conversacion') {
+          return { conversacion_id: 123 };
+        }
+
+        throw new Error(`Unexpected tool: ${toolName}`);
+      }
+    };
+
+    const result = await orchestrateIncomingMessage({
+      empresaId: 1,
+      phone: '5215550000000@c.us',
+      message: 'El precio incluye instalacion?',
+      contexto: { nombre: 'Demo', tipo_negocio: 'SERVICIOS' },
+      interpreter: async () => ({
+        intencion: 'MENSAJE_GENERAL',
+        herramienta_mcp: '',
+        parametros: {},
+        confianza: 0.5,
+        requiere_respuesta_ia: false
+      }),
+      mcpClient,
+      contextStore: {
+        async find() {
+          return {
+            ultima_intencion: 'BUSCAR_SERVICIO',
+            ultimo_producto_id: null,
+            ultimo_servicio_id: 75,
+            ultimo_texto_busqueda: 'vinil de rotulacion de color',
+            datos_json: {
+              servicio: {
+                id: 75,
+                nombre: 'Vinil de rotulacion de color',
+                no_incluye: 'instalacion'
+              }
+            }
+          };
+        },
+        async save() {}
+      }
+    });
+
+    const serviceCall = calls.find((call) => call.toolName === 'obtener_servicio');
+
+    assert.equal(serviceCall.args.servicio_id, 75);
+    assert.match(result.respuesta, /no incluye instalacion/i);
+    assert.match(result.respuesta, /Vinil de rotulacion de color/);
+  });
+
+  it('asks for measurements when POR_M2 service has no measurements', async () => {
+    const mcpClient = {
+      async callTool(toolName) {
+        if (toolName === 'buscar_servicios') {
+          return {
+            servicios: [
+              {
+                id: 63,
+                nombre: 'Impresion de lona',
+                precio: 390,
+                tipo_precio: 'POR_M2',
+                unidad_medida: 'm2',
+                requiere_medidas: true,
+                requiere_cantidad: false,
+                incluye: null,
+                no_incluye: null,
+                notas_cotizacion: null,
+                precio_minimo: null,
+                categoria: 'Impresion'
+              }
+            ]
+          };
+        }
+
+        if (toolName === 'guardar_conversacion') {
+          return { conversacion_id: 114 };
+        }
+
+        throw new Error(`Unexpected tool: ${toolName}`);
+      }
+    };
+
+    const result = await orchestrateIncomingMessage({
+      empresaId: 1,
+      phone: '5215550000000@c.us',
+      message: 'tienen lona?',
+      contexto: { nombre: 'Demo', tipo_negocio: 'SERVICIOS' },
+      interpreter: async () => ({
+        intencion: 'BUSCAR_SERVICIO',
+        herramienta_mcp: 'buscar_servicios',
+        parametros: { texto: 'lona' },
+        confianza: 0.8,
+        requiere_respuesta_ia: false
+      }),
+      mcpClient,
+      contextStore: {
+        async find() {
+          return null;
+        },
+        async save() {}
+      }
+    });
+
+    assert.match(result.respuesta, /ancho y alto/);
+  });
+
+  it('answers FIJO services with price and quantity from customer text', async () => {
+    const mcpClient = {
+      async callTool(toolName) {
+        if (toolName === 'buscar_servicios') {
+          return {
+            servicios: [
+              {
+                id: 64,
+                nombre: 'Tarjetas digitales laminado mate',
+                precio: 297,
+                tipo_precio: 'FIJO',
+                unidad_medida: 'paquete',
+                requiere_medidas: false,
+                requiere_cantidad: true,
+                incluye: null,
+                no_incluye: null,
+                notas_cotizacion: null,
+                precio_minimo: null,
+                categoria: 'Tarjetas'
+              }
+            ]
+          };
+        }
+
+        if (toolName === 'guardar_conversacion') {
+          return { conversacion_id: 115 };
+        }
+
+        throw new Error(`Unexpected tool: ${toolName}`);
+      }
+    };
+
+    const result = await orchestrateIncomingMessage({
+      empresaId: 1,
+      phone: '5215550000000@c.us',
+      message: 'quiero tarjetas 100 piezas',
+      contexto: { nombre: 'Demo', tipo_negocio: 'SERVICIOS' },
+      interpreter: async () => ({
+        intencion: 'BUSCAR_SERVICIO',
+        herramienta_mcp: 'buscar_servicios',
+        parametros: { texto: 'tarjetas' },
+        confianza: 0.8,
+        requiere_respuesta_ia: false
+      }),
+      mcpClient,
+      contextStore: {
+        async find() {
+          return null;
+        },
+        async save() {}
+      }
+    });
+
+    assert.match(result.respuesta, /Tarjetas digitales laminado mate de 100 piezas cuesta \$297/);
+  });
+
+  it('creates a service lead with real customer phone after advisor intent', async () => {
+    const calls = [];
+    const mcpClient = {
+      async callTool(toolName, args) {
+        calls.push({ toolName, args });
+
+        if (toolName === 'crear_lead') {
+          return {
+            lead_id: 91,
+            telefono: args.telefono,
+            interes: args.interes,
+            servicio_id: args.servicio_id
+          };
+        }
+
+        if (toolName === 'guardar_conversacion') {
+          return { conversacion_id: 116 };
+        }
+
+        throw new Error(`Unexpected tool: ${toolName}`);
+      }
+    };
+
+    const result = await orchestrateIncomingMessage({
+      empresaId: 1,
+      phone: '5215550000000@c.us',
+      message: 'me interesa, pasame con asesor',
+      contexto: { nombre: 'Demo', tipo_negocio: 'SERVICIOS' },
+      interpreter: async () => ({
+        intencion: 'MENSAJE_GENERAL',
+        herramienta_mcp: '',
+        parametros: {},
+        confianza: 0.8,
+        requiere_respuesta_ia: false
+      }),
+      mcpClient,
+      handoffManager: noopHandoffManager,
+      contextStore: {
+        async find() {
+          return {
+            ultima_intencion: 'BUSCAR_SERVICIO',
+            ultimo_producto_id: null,
+            ultimo_servicio_id: 61,
+            ultimo_texto_busqueda: 'Impresion de lona',
+            datos_json: {
+              servicio: { id: 61, nombre: 'Impresion de lona', tipo_precio: 'POR_M2' }
+            }
+          };
+        },
+        async save() {}
+      }
+    });
+
+    const leadCall = calls.find((call) => call.toolName === 'crear_lead');
+
+    assert.equal(result.lead_id, 91);
+    assert.equal(leadCall.args.telefono, '525550000000');
+    assert.doesNotMatch(leadCall.args.telefono, /@c\.us$/);
+    assert.equal(leadCall.args.servicio_id, 61);
+    assert.match(leadCall.args.interes, /Impresion de lona/);
+  });
+
+  it('searches services before products for mixed businesses without crossing company scope', async () => {
+    const calls = [];
+    const mcpClient = {
+      async callTool(toolName, args) {
+        calls.push({ toolName, args });
+
+        if (toolName === 'buscar_servicios') {
+          return {
+            servicios: [
+              {
+                id: 65,
+                nombre: 'Tarjetas de presentacion',
+                precio: 297,
+                tipo_precio: 'FIJO',
+                unidad_medida: 'paquete',
+                requiere_medidas: false,
+                requiere_cantidad: true,
+                incluye: null,
+                no_incluye: null,
+                notas_cotizacion: null,
+                precio_minimo: null,
+                categoria: 'Tarjetas'
+              }
+            ]
+          };
+        }
+
+        if (toolName === 'guardar_conversacion') {
+          return { conversacion_id: 117 };
+        }
+
+        throw new Error(`Unexpected tool: ${toolName}`);
+      }
+    };
+
+    const result = await orchestrateIncomingMessage({
+      empresaId: 77,
+      phone: '5215550000000@c.us',
+      message: 'quiero 600 tarjetas',
+      contexto: { nombre: 'Demo mixto', tipo_negocio: 'MIXTO' },
+      interpreter: async () => ({
+        intencion: 'BUSCAR_PRODUCTO',
+        herramienta_mcp: 'buscar_productos',
+        parametros: { texto: 'tarjetas' },
+        confianza: 0.8,
+        requiere_respuesta_ia: false
+      }),
+      mcpClient,
+      contextStore: {
+        async find() {
+          return null;
+        },
+        async save() {}
+      }
+    });
+
+    const serviceCall = calls.find((call) => call.toolName === 'buscar_servicios');
+
+    assert.equal(result.herramienta_mcp, 'buscar_servicios');
+    assert.equal(serviceCall.args.empresa_id, 77);
+    assert.equal(calls.some((call) => call.toolName === 'buscar_productos'), false);
+  });
+
+  it('routes quantities above a configured package threshold to an advisor quote', async () => {
+    const mcpClient = {
+      async callTool(toolName) {
+        if (toolName === 'buscar_servicios') {
+          return {
+            servicios: [
+              {
+                id: 65,
+                nombre: 'Tarjetas digitales laminado mate 100 pzs',
+                precio: 297,
+                tipo_precio: 'FIJO',
+                unidad_medida: 'paquete',
+                requiere_medidas: false,
+                requiere_cantidad: true,
+                incluye: null,
+                no_incluye: null,
+                notas_cotizacion: '100 piezas laminado mate. Para mas de 500 piezas consultar con asesor.',
+                precio_minimo: null,
+                categoria: 'Impresion'
+              }
+            ]
+          };
+        }
+
+        if (toolName === 'guardar_conversacion') {
+          return { conversacion_id: 118 };
+        }
+
+        throw new Error(`Unexpected tool: ${toolName}`);
+      }
+    };
+
+    const result = await orchestrateIncomingMessage({
+      empresaId: 77,
+      phone: '5215550000000@c.us',
+      message: 'quiero 600 tarjetas',
+      contexto: { nombre: 'Demo', tipo_negocio: 'SERVICIOS' },
+      interpreter: async () => ({
+        intencion: 'CONSULTAR_PRECIO',
+        herramienta_mcp: 'obtener_servicio',
+        parametros: { servicio_id: 99 },
+        confianza: 0.8,
+        requiere_respuesta_ia: false
+      }),
+      mcpClient,
+      contextStore: {
+        async find() {
+          return {
+            ultimo_servicio_id: 99,
+            datos_json: {
+              servicio: { id: 99, nombre: 'Otro servicio', tipo_precio: 'FIJO' }
+            }
+          };
+        },
+        async save() {}
+      }
+    });
+
+    assert.equal(result.herramienta_mcp, 'buscar_servicios');
+    assert.match(result.respuesta, /600 piezas/);
+    assert.match(result.respuesta, /cotizacion con asesor/);
+    assert.doesNotMatch(result.respuesta, /cuesta \$297/);
   });
 
   it('normalizes customer text for intent and MCP search without changing saved message', async () => {

@@ -10,7 +10,15 @@ const SERVICE_COLUMNS = `
   s.categoria_id,
   s.precio,
   s.tipo_precio,
+  s.unidad_medida,
   s.duracion_minutos AS duracion,
+  s.duracion_minutos,
+  s.requiere_medidas,
+  s.requiere_cantidad,
+  s.incluye,
+  s.no_incluye,
+  s.notas_cotizacion,
+  s.precio_minimo,
   s.estado,
   s.fecha_creacion,
   s.fecha_actualizacion,
@@ -18,29 +26,67 @@ const SERVICE_COLUMNS = `
   c.nombre AS categoria_nombre
 `;
 
+const PRICE_TYPES = new Set(['FIJO', 'DESDE', 'POR_UNIDAD', 'POR_M2', 'POR_HORA', 'COTIZACION']);
+const MEASUREMENT_UNITS = new Set(['servicio', 'pieza', 'paquete', 'm2', 'hora', 'asesor']);
+
+function nullableText(value) {
+  const text = String(value ?? '').trim();
+  return text || null;
+}
+
+function nullablePositiveInteger(value, fieldName) {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+
+  const number = Number(value);
+
+  if (!Number.isInteger(number) || number <= 0) {
+    throw createHttpError(400, `${fieldName} debe ser un entero mayor a 0`);
+  }
+
+  return number;
+}
+
+function nullableMoney(value, fieldName, { required = false } = {}) {
+  if (value === undefined || value === null || value === '') {
+    if (required) {
+      throw createHttpError(400, `${fieldName} es requerido`);
+    }
+
+    return null;
+  }
+
+  const number = Number(value);
+
+  if (!Number.isFinite(number) || number < 0) {
+    throw createHttpError(400, `${fieldName} debe ser mayor o igual a 0`);
+  }
+
+  return number;
+}
+
+function normalizeBoolean(value) {
+  return value === true || value === 1 || value === '1' || String(value).toLowerCase() === 'true';
+}
+
 function normalizeServicePayload(payload, auth) {
   const nombre = String(payload.nombre ?? '').trim();
-  const precio = Number(payload.precio);
-  const duracion = Number(payload.duracion);
   const categoriaId = payload.categoria_id ? Number(payload.categoria_id) : null;
   const estado = String(payload.estado ?? 'ACTIVO').trim().toUpperCase();
   const tipoPrecio = String(payload.tipo_precio ?? 'FIJO').trim().toUpperCase();
+  const durationValue = payload.duracion_minutos ?? payload.duracion;
+  const duracion = nullablePositiveInteger(durationValue, 'La duracion');
 
   if (!nombre) {
     throw createHttpError(400, 'El nombre del servicio es requerido');
   }
 
-  if (!Number.isFinite(precio) || precio < 0) {
-    throw createHttpError(400, 'El precio debe ser mayor o igual a 0');
-  }
-
-  if (!['FIJO', 'DESDE', 'POR_M2', 'COTIZACION'].includes(tipoPrecio)) {
+  if (!PRICE_TYPES.has(tipoPrecio)) {
     throw createHttpError(400, 'El tipo de precio no es valido');
   }
 
-  if (!Number.isInteger(duracion) || duracion <= 0) {
-    throw createHttpError(400, 'La duracion debe ser un entero mayor a 0');
-  }
+  const precio = nullableMoney(payload.precio, 'El precio', { required: tipoPrecio !== 'COTIZACION' });
 
   if (categoriaId !== null && (!Number.isInteger(categoriaId) || categoriaId <= 0)) {
     throw createHttpError(400, 'La categoria no es valida');
@@ -50,14 +96,28 @@ function normalizeServicePayload(payload, auth) {
     throw createHttpError(400, 'El estado debe ser ACTIVO o INACTIVO');
   }
 
+  const requestedUnit = nullableText(payload.unidad_medida);
+  const unidadMedida = requestedUnit ?? (tipoPrecio === 'POR_M2' ? 'm2' : null);
+
+  if (unidadMedida !== null && !MEASUREMENT_UNITS.has(unidadMedida)) {
+    throw createHttpError(400, 'La unidad de medida no es valida');
+  }
+
   return {
     empresaId: resolveScopedEmpresaId(auth, payload.empresa_id),
     categoriaId,
     nombre,
-    descripcion: String(payload.descripcion ?? '').trim() || null,
+    descripcion: nullableText(payload.descripcion),
     precio,
     tipoPrecio,
+    unidadMedida,
     duracion,
+    requiereMedidas: tipoPrecio === 'POR_M2' || normalizeBoolean(payload.requiere_medidas),
+    requiereCantidad: normalizeBoolean(payload.requiere_cantidad),
+    incluye: nullableText(payload.incluye),
+    noIncluye: nullableText(payload.no_incluye),
+    notasCotizacion: nullableText(payload.notas_cotizacion),
+    precioMinimo: nullableMoney(payload.precio_minimo, 'El precio minimo'),
     estado
   };
 }
@@ -114,8 +174,9 @@ export async function createService(payload, auth) {
   try {
     const [result] = await query(
       `INSERT INTO servicios
-        (empresa_id, categoria_id, nombre, descripcion, precio, tipo_precio, duracion_minutos, estado)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        (empresa_id, categoria_id, nombre, descripcion, precio, tipo_precio, unidad_medida, duracion_minutos,
+         requiere_medidas, requiere_cantidad, incluye, no_incluye, notas_cotizacion, precio_minimo, estado)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         service.empresaId,
         service.categoriaId,
@@ -123,7 +184,14 @@ export async function createService(payload, auth) {
         service.descripcion,
         service.precio,
         service.tipoPrecio,
+        service.unidadMedida,
         service.duracion,
+        service.requiereMedidas ? 1 : 0,
+        service.requiereCantidad ? 1 : 0,
+        service.incluye,
+        service.noIncluye,
+        service.notasCotizacion,
+        service.precioMinimo,
         service.estado
       ]
     );
@@ -153,7 +221,14 @@ export async function updateService(serviceId, payload, auth) {
            descripcion = ?,
            precio = ?,
            tipo_precio = ?,
+           unidad_medida = ?,
            duracion_minutos = ?,
+           requiere_medidas = ?,
+           requiere_cantidad = ?,
+           incluye = ?,
+           no_incluye = ?,
+           notas_cotizacion = ?,
+           precio_minimo = ?,
            estado = ?
        WHERE id = ?
        ${scope.clause}`,
@@ -164,7 +239,14 @@ export async function updateService(serviceId, payload, auth) {
         service.descripcion,
         service.precio,
         service.tipoPrecio,
+        service.unidadMedida,
         service.duracion,
+        service.requiereMedidas ? 1 : 0,
+        service.requiereCantidad ? 1 : 0,
+        service.incluye,
+        service.noIncluye,
+        service.notasCotizacion,
+        service.precioMinimo,
         service.estado,
         ...scope.params
       ]

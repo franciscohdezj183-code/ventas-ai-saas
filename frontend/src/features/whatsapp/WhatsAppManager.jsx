@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   CircleOff,
   Clock3,
+  LoaderCircle,
   MessageCircle,
   MessageSquareText,
   Phone,
@@ -13,7 +14,6 @@ import {
   QrCode,
   RefreshCcw,
   RotateCcw,
-  ShieldCheck,
   Smartphone,
   Sparkles
 } from 'lucide-react';
@@ -60,7 +60,7 @@ const statusCopy = {
   authenticated: {
     label: 'Autenticando',
     tone: 'scanning',
-    icon: ShieldCheck,
+    icon: LoaderCircle,
     description: 'WhatsApp valido la sesion. Esperando conexion final.'
   },
   disconnected: {
@@ -108,31 +108,31 @@ const statusCopy = {
   INITIALIZING: {
     label: 'Iniciando',
     tone: 'scanning',
-    icon: Clock3,
+    icon: LoaderCircle,
     description: 'Estamos preparando la vinculacion.'
   },
   WAITING_QR: {
     label: 'Esperando QR',
     tone: 'scanning',
-    icon: Clock3,
+    icon: LoaderCircle,
     description: 'Estamos generando el codigo QR. Normalmente tarda unos segundos.'
   },
   AUTHENTICATED: {
     label: 'Autenticando',
     tone: 'scanning',
-    icon: ShieldCheck,
+    icon: LoaderCircle,
     description: 'WhatsApp valido la sesion. Esperando conexion final.'
   },
   RECONNECTING: {
     label: 'Reconectando',
     tone: 'scanning',
-    icon: RefreshCcw,
+    icon: LoaderCircle,
     description: 'Estamos intentando recuperar la sesion.'
   },
   LOADING_SCREEN: {
     label: 'Cargando sesion',
     tone: 'scanning',
-    icon: RefreshCcw,
+    icon: LoaderCircle,
     description: 'WhatsApp esta cargando la sesion del navegador.'
   },
   AUTH_FAILED: {
@@ -192,6 +192,22 @@ function mergeWhatsappStatus(currentStatus, payload) {
 
 function getStatusInfo(status) {
   return statusCopy[getStatusValue(status)] ?? statusCopy.DISCONNECTED;
+}
+
+function isConnectedStatus(statusValue) {
+  return ['ready', 'CONNECTED'].includes(statusValue);
+}
+
+function isAuthenticatingStatus(statusValue) {
+  return [
+    'initializing',
+    'authenticated',
+    'INITIALIZING',
+    'WAITING_QR',
+    'AUTHENTICATED',
+    'RECONNECTING',
+    'LOADING_SCREEN'
+  ].includes(statusValue);
 }
 
 function shouldFetchQrForStatus(statusValue) {
@@ -322,11 +338,13 @@ function StatusOverview({ hasQr, showTechnicalDetails, status }) {
   const info = getStatusInfo(status);
   const Icon = info.icon;
   const message = friendlyStatusMessage(status, info);
+  const isConnected = isConnectedStatus(getStatusValue(status));
+  const isAuthenticating = isAuthenticatingStatus(getStatusValue(status));
 
   return (
     <section className={`whatsapp-status-overview ${info.tone}`}>
       <div className="whatsapp-status-copy">
-        <span className="whatsapp-status-icon">
+        <span className={`whatsapp-status-icon ${isConnected ? 'connected' : ''} ${isAuthenticating ? 'loading' : ''}`}>
           <Icon size={28} aria-hidden="true" />
         </span>
         <div>
@@ -416,9 +434,17 @@ function WhatsAppMetrics({ hasQr, status }) {
 }
 
 function QRPanel({ hasQr, isQrFlow, qrTimeRemaining, status, statusInfo }) {
+  const statusValue = getStatusValue(status);
+  const isConnected = isConnectedStatus(statusValue);
+  const isAuthenticating = isAuthenticatingStatus(statusValue);
   const waitMessage = status?.qr_wait_warning
     ? 'WhatsApp esta tardando mas de lo normal. Puedes esperar un momento o usar Reconectar.'
     : statusInfo.description;
+  const placeholderMessage = isConnected
+    ? 'Sesion conectada'
+    : isAuthenticating || isQrFlow
+      ? waitMessage
+      : statusInfo.description;
 
   return (
     <article className="whatsapp-qr-console">
@@ -452,9 +478,15 @@ function QRPanel({ hasQr, isQrFlow, qrTimeRemaining, status, statusInfo }) {
             {qrTimeRemaining ? <small className="whatsapp-qr-expiration">Expira en {qrTimeRemaining}</small> : null}
           </>
         ) : (
-          <div className={isQrFlow ? 'qr-placeholder large waiting' : 'qr-placeholder large'}>
-            <QrCode size={42} aria-hidden="true" />
-            <span>{isQrFlow ? waitMessage : statusInfo.description}</span>
+          <div className={`qr-placeholder large ${isConnected ? 'connected' : isAuthenticating || isQrFlow ? 'waiting' : ''}`}>
+            {isConnected ? (
+              <CheckCircle2 className="qr-status-icon" size={56} aria-hidden="true" />
+            ) : isAuthenticating || isQrFlow ? (
+              <LoaderCircle className="qr-status-spinner" size={56} aria-hidden="true" />
+            ) : (
+              <QrCode size={42} aria-hidden="true" />
+            )}
+            <span>{placeholderMessage}</span>
           </div>
         )}
       </div>

@@ -1,94 +1,387 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
-  BarChart3,
+  AlertTriangle,
   Bot,
-  Building2,
+  CheckCircle2,
+  CreditCard,
+  Crown,
+  FileText,
   MessageCircle,
-  MessageSquareText,
-  PackageCheck,
-  Save,
-  ShoppingBag,
-  Upload,
-  Users
+  Package,
+  RefreshCcw,
+  ShieldCheck,
+  Sparkles,
+  TrendingUp,
+  Users,
+  Zap
 } from 'lucide-react';
 import { ErrorState, LoadingState, StatusBadge } from '../../components/ui/index.js';
-import { fetchCompanies, updateCompany } from '../companies/companiesApi.js';
-import { fetchCompanySettings, saveCompanySetting } from '../companySettings/companySettingsApi.js';
+import { fetchCompanies } from '../companies/companiesApi.js';
+import { fetchPlans, fetchPlanUsage } from '../plans/plansApi.js';
 
-const emptyBusinessForm = {
-  nombre: '',
-  telefono: '',
-  direccion: '',
-  tipo_negocio: '',
-  logo: null
+const featureLabels = {
+  advanced_reports: 'Reportes avanzados',
+  ai_config: 'Configuracion IA',
+  api: 'API e integraciones',
+  basic_conversations: 'Conversaciones basicas',
+  basic_orders: 'Pedidos basicos',
+  crm: 'CRM comercial',
+  custom_ai: 'IA personalizada',
+  leads: 'Leads y seguimiento',
+  multi_branch: 'Multi-sucursal',
+  orders: 'Pedidos',
+  priority_support: 'Soporte prioritario',
+  reports: 'Reportes'
 };
 
-const emptyAiForm = {
-  nombre_bot: '',
-  tono_respuesta: '',
-  mensaje_bienvenida: ''
+const limitLabels = {
+  aiMessagesMonthly: 'Conversaciones IA',
+  products: 'Productos',
+  users: 'Usuarios',
+  whatsapp: 'WhatsApp conectados'
+};
+
+const limitHelp = {
+  aiMessagesMonthly: 'Mensajes automatizados disponibles durante el mes actual.',
+  products: 'Catalogo activo disponible para ventas y respuestas del asistente.',
+  users: 'Cuentas activas del equipo dentro de la empresa.',
+  whatsapp: 'Canales de WhatsApp que puede conectar tu empresa.'
+};
+
+const limitIcons = {
+  aiMessagesMonthly: Bot,
+  products: Package,
+  users: Users,
+  whatsapp: MessageCircle
+};
+
+const featureIcons = {
+  advanced_reports: TrendingUp,
+  ai_config: Bot,
+  api: Zap,
+  basic_conversations: MessageCircle,
+  basic_orders: FileText,
+  crm: Users,
+  custom_ai: Bot,
+  leads: Users,
+  multi_branch: ShieldCheck,
+  orders: FileText,
+  priority_support: ShieldCheck,
+  reports: TrendingUp
 };
 
 function getApiError(error) {
-  return error?.response?.data?.message ?? 'No se pudo completar la operacion.';
+  return error?.response?.data?.message ?? 'No se pudo cargar la suscripcion.';
 }
 
-function OwnerAction({ description, icon: Icon, label, to }) {
+function formatCurrency(value) {
+  if (value === null || value === undefined || value === '') return 'No disponible';
+
+  return Number(value).toLocaleString('es-MX', {
+    currency: 'MXN',
+    maximumFractionDigits: 0,
+    style: 'currency'
+  });
+}
+
+function formatLimit(value) {
+  if (value === null || value === undefined) return 'Ilimitado';
+  return Number(value).toLocaleString('es-MX');
+}
+
+function getStatusLabel(status, company) {
+  const normalized = String(status ?? '').toLowerCase();
+  if (normalized === 'trial') return 'Trial';
+  if (['expired', 'vencido'].includes(normalized)) return 'Vencido';
+  if (['suspended', 'suspendido'].includes(normalized)) return 'Suspendido';
+  if (['cancelled', 'cancelada'].includes(normalized)) return 'Cancelado';
+  if (company && !company.activo) return 'Suspendido';
+  return 'Activo';
+}
+
+function getStatusTone(status, company) {
+  const label = getStatusLabel(status, company).toLowerCase();
+  if (label === 'activo') return 'ACTIVO';
+  if (label === 'trial') return 'PENDIENTE';
+  return 'INACTIVO';
+}
+
+function getPlanIcon(planKey) {
+  if (planKey === 'enterprise') return Crown;
+  if (planKey === 'business') return Zap;
+  return Sparkles;
+}
+
+function getFeatureLabel(feature) {
+  return featureLabels[feature] ?? feature;
+}
+
+function getUsageRows(currentPlan, usage) {
+  const limits = currentPlan?.limits ?? usage?.limits ?? {};
+  const usageValues = usage?.usage ?? {};
+
+  return Object.entries(limits).map(([key, limit]) => {
+    const used = Number(usageValues[key] ?? 0);
+    const hasLimit = limit !== null && limit !== undefined;
+    const limitNumber = Number(limit || 0);
+    const percent = hasLimit && limitNumber > 0 ? Math.min((used / limitNumber) * 100, 100) : 100;
+
+    return {
+      key,
+      label: limitLabels[key] ?? key,
+      help: limitHelp[key] ?? 'Uso registrado para este recurso.',
+      limit,
+      percent,
+      used
+    };
+  });
+}
+
+function getHighUsageAlerts(rows) {
+  return rows
+    .filter((row) => row.limit !== null && row.limit !== undefined && Number(row.limit) > 0 && row.used / Number(row.limit) >= 0.85)
+    .map((row) => ({
+      key: row.key,
+      text: `Has utilizado ${row.used.toLocaleString('es-MX')} de ${Number(row.limit).toLocaleString('es-MX')} en ${row.label.toLowerCase()}.`
+    }));
+}
+
+function SubscriptionHero({ company, currentPlan, onRefresh, status }) {
   return (
-    <Link className="saas-company-card" to={to}>
-      <div>
-        <strong>{label}</strong>
-        <span>{description}</span>
+    <header className="owner-subscription-hero">
+      <div className="owner-subscription-hero-copy">
+        <span><CreditCard size={24} aria-hidden="true" /></span>
+        <div>
+          <p className="eyebrow">Mi suscripcion</p>
+          <h1>Mi Suscripcion</h1>
+          <p>Consulta tu plan activo, beneficios, limites y uso mensual de la plataforma.</p>
+        </div>
       </div>
-      <Icon size={20} aria-hidden="true" />
-    </Link>
+      <div className="owner-subscription-hero-side">
+        <div className="owner-subscription-badges">
+          <span>{currentPlan?.label ?? company?.plan ?? 'Sin plan'}</span>
+          <StatusBadge status={getStatusTone(status, company)}>{getStatusLabel(status, company)}</StatusBadge>
+        </div>
+        <button className="secondary-button" onClick={onRefresh} type="button">
+          <RefreshCcw size={17} aria-hidden="true" />
+          Actualizar datos
+        </button>
+      </div>
+    </header>
+  );
+}
+
+function CurrentPlanCard({ company, currentPlan, status, usage }) {
+  const Icon = getPlanIcon(currentPlan?.key);
+  const details = [
+    ['Estado', getStatusLabel(status, company)],
+    ['Empresa actual', company?.nombre ?? usage?.empresa_nombre ?? 'No disponible'],
+    ['Precio mensual', formatCurrency(currentPlan?.estimatedMonthlyPrice)],
+    ['Precio anual', usage?.annual_price ? formatCurrency(usage.annual_price) : 'No disponible'],
+    ['Fecha de inicio', usage?.started_at ?? usage?.created_at ?? 'No disponible'],
+    ['Proxima renovacion', usage?.next_renewal_date ?? usage?.renovacion ?? 'No disponible'],
+    ['Vencimiento', usage?.expires_at ?? usage?.expiration_date ?? 'No disponible']
+  ];
+
+  return (
+    <section className="owner-plan-card">
+      <div className="owner-plan-card-main">
+        <span><Icon size={26} aria-hidden="true" /></span>
+        <div>
+          <p className="eyebrow">Plan actual</p>
+          <h2>Plan {currentPlan?.label ?? usage?.plan_label ?? company?.plan ?? 'No disponible'}</h2>
+          <p>Tu empresa tiene acceso a las funciones incluidas en este plan y a los limites configurados para operar este mes.</p>
+        </div>
+      </div>
+      <dl>
+        {details.map(([label, value]) => (
+          <div key={label}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+function BenefitsSection({ currentPlan }) {
+  const features = currentPlan?.features ?? [];
+
+  return (
+    <section className="owner-subscription-section">
+      <header>
+        <span><CheckCircle2 size={19} aria-hidden="true" /></span>
+        <div>
+          <h2>Beneficios incluidos</h2>
+          <p>Funciones disponibles segun el plan activo configurado en la plataforma.</p>
+        </div>
+      </header>
+      {features.length ? (
+        <div className="owner-benefits-grid">
+          {features.map((feature) => {
+            const Icon = featureIcons[feature] ?? CheckCircle2;
+            return (
+              <article key={feature}>
+                <span><Icon size={18} aria-hidden="true" /></span>
+                <strong>{getFeatureLabel(feature)}</strong>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="owner-subscription-muted">No hay beneficios configurados para este plan.</p>
+      )}
+    </section>
+  );
+}
+
+function UsageSection({ rows }) {
+  return (
+    <section className="owner-subscription-section">
+      <header>
+        <span><BarIcon aria-hidden="true" /></span>
+        <div>
+          <h2>Uso y limites</h2>
+          <p>Metricas reales disponibles para tu plan actual.</p>
+        </div>
+      </header>
+      {rows.length ? (
+        <div className="owner-usage-grid">
+          {rows.map((row) => {
+            const Icon = limitIcons[row.key] ?? CheckCircle2;
+            return (
+              <article className="owner-usage-card" key={row.key}>
+                <header>
+                  <span><Icon size={18} aria-hidden="true" /></span>
+                  <div>
+                    <strong>{row.label}</strong>
+                    <p>{row.used.toLocaleString('es-MX')} de {formatLimit(row.limit)} utilizadas</p>
+                  </div>
+                </header>
+                <div className="owner-usage-track" role="progressbar" aria-label={row.label} aria-valuemin="0" aria-valuemax={(row.limit ?? row.used) || 1} aria-valuenow={row.used}>
+                  <i style={{ width: `${row.percent}%` }} />
+                </div>
+                <small>{row.help}</small>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="owner-subscription-muted">No hay limites disponibles para mostrar.</p>
+      )}
+    </section>
+  );
+}
+
+function BarIcon(props) {
+  return <TrendingUp size={19} {...props} />;
+}
+
+function RecommendationsSection({ alerts }) {
+  return (
+    <section className={`owner-recommendation-card ${alerts.length ? 'warning' : 'ok'}`}>
+      <span>{alerts.length ? <AlertTriangle size={20} aria-hidden="true" /> : <ShieldCheck size={20} aria-hidden="true" />}</span>
+      <div>
+        <h2>{alerts.length ? 'Estas cerca del limite' : 'Tu plan tiene capacidad suficiente'}</h2>
+        {alerts.length ? (
+          <ul>
+            {alerts.map((alert) => <li key={alert.key}>{alert.text}</li>)}
+          </ul>
+        ) : (
+          <p>No hay alertas de consumo alto con los datos disponibles este mes.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function PlansComparison({ currentPlanKey, plans }) {
+  if (!plans.length) return null;
+
+  return (
+    <section className="owner-subscription-section">
+      <header>
+        <span><Crown size={19} aria-hidden="true" /></span>
+        <div>
+          <h2>Comparacion de planes</h2>
+          <p>Opciones disponibles en la logica actual de planes.</p>
+        </div>
+      </header>
+      <div className="owner-plan-comparison-grid">
+        {plans.map((plan) => {
+          const isCurrent = plan.key === currentPlanKey;
+          const Icon = getPlanIcon(plan.key);
+          return (
+            <article className={isCurrent ? 'current' : ''} key={plan.key}>
+              <header>
+                <span><Icon size={19} aria-hidden="true" /></span>
+                <div>
+                  <strong>{plan.label}</strong>
+                  <small>{formatCurrency(plan.estimatedMonthlyPrice)} / mes</small>
+                </div>
+              </header>
+              <dl>
+                {Object.entries(plan.limits ?? {}).slice(0, 4).map(([key, limit]) => (
+                  <div key={key}>
+                    <dt>{limitLabels[key] ?? key}</dt>
+                    <dd>{formatLimit(limit)}</dd>
+                  </div>
+                ))}
+              </dl>
+              <div className="owner-plan-feature-list">
+                {(plan.features ?? []).slice(0, 4).map((feature) => <span key={feature}>{getFeatureLabel(feature)}</span>)}
+              </div>
+              {isCurrent ? <StatusBadge status="ACTIVO">Actual</StatusBadge> : null}
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function BillingSection() {
+  return (
+    <section className="owner-subscription-section owner-billing-empty">
+      <header>
+        <span><FileText size={19} aria-hidden="true" /></span>
+        <div>
+          <h2>Historial y facturacion</h2>
+          <p>Aun no hay historial de facturacion disponible.</p>
+        </div>
+      </header>
+    </section>
   );
 }
 
 export function OwnerCompanyPanel() {
   const [company, setCompany] = useState(null);
-  const [settings, setSettings] = useState(null);
-  const [businessForm, setBusinessForm] = useState(emptyBusinessForm);
-  const [aiForm, setAiForm] = useState(emptyAiForm);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
-  const [isSavingBusiness, setIsSavingBusiness] = useState(false);
-  const [isSavingAi, setIsSavingAi] = useState(false);
+  const [plans, setPlans] = useState([]);
+  const [usage, setUsage] = useState(null);
 
-  const logoPreview = useMemo(() => {
-    if (businessForm.logo) {
-      return URL.createObjectURL(businessForm.logo);
-    }
-
-    return company?.logo ?? settings?.empresa_logo ?? null;
-  }, [businessForm.logo, company?.logo, settings?.empresa_logo]);
+  const currentPlan = useMemo(
+    () => plans.find((plan) => plan.key === usage?.plan) ?? plans.find((plan) => plan.legacyPlan === company?.plan),
+    [company?.plan, plans, usage?.plan]
+  );
+  const usageRows = useMemo(() => getUsageRows(currentPlan, usage), [currentPlan, usage]);
+  const alerts = useMemo(() => getHighUsageAlerts(usageRows), [usageRows]);
+  const status = usage?.subscription_status ?? usage?.status;
 
   async function loadData() {
     try {
       setIsLoading(true);
       setError('');
-      const [companies, settingsRows] = await Promise.all([
+      const [companies, nextPlans, nextUsage] = await Promise.all([
         fetchCompanies(),
-        fetchCompanySettings()
+        fetchPlans(),
+        fetchPlanUsage()
       ]);
-      const nextCompany = companies[0] ?? null;
-      const nextSettings = settingsRows[0] ?? null;
-
-      setCompany(nextCompany);
-      setSettings(nextSettings);
-      setBusinessForm({
-        nombre: nextCompany?.nombre ?? '',
-        telefono: nextCompany?.telefono ?? '',
-        direccion: nextCompany?.direccion ?? nextSettings?.empresa_direccion ?? '',
-        tipo_negocio: nextCompany?.tipo_negocio ?? '',
-        logo: null
-      });
-      setAiForm({
-        nombre_bot: nextSettings?.nombre_bot ?? '',
-        tono_respuesta: nextSettings?.tono_respuesta ?? '',
-        mensaje_bienvenida: nextSettings?.mensaje_bienvenida ?? ''
-      });
+      setCompany(companies[0] ?? null);
+      setPlans(nextPlans);
+      setUsage(nextUsage);
     } catch (requestError) {
       setError(getApiError(requestError));
     } finally {
@@ -100,211 +393,20 @@ export function OwnerCompanyPanel() {
     loadData();
   }, []);
 
-  function handleBusinessChange(event) {
-    const { files, name, type, value } = event.target;
-
-    setBusinessForm((currentForm) => ({
-      ...currentForm,
-      [name]: type === 'file' ? files?.[0] ?? null : value
-    }));
-  }
-
-  function handleAiChange(event) {
-    const { name, value } = event.target;
-
-    setAiForm((currentForm) => ({
-      ...currentForm,
-      [name]: value
-    }));
-  }
-
-  async function handleBusinessSubmit(event) {
-    event.preventDefault();
-
-    if (!company?.id) {
-      return;
-    }
-
-    try {
-      setIsSavingBusiness(true);
-      setError('');
-      const payload = new FormData();
-      payload.append('nombre', businessForm.nombre);
-      payload.append('telefono', businessForm.telefono);
-      payload.append('direccion', businessForm.direccion);
-      payload.append('tipo_negocio', businessForm.tipo_negocio);
-      payload.append('plan', company.plan);
-      payload.append('activo', String(company.activo));
-
-      if (businessForm.logo) {
-        payload.append('logo', businessForm.logo);
-      }
-
-      setCompany(await updateCompany(company.id, payload));
-      setBusinessForm((currentForm) => ({ ...currentForm, logo: null }));
-    } catch (requestError) {
-      setError(getApiError(requestError));
-    } finally {
-      setIsSavingBusiness(false);
-    }
-  }
-
-  async function handleAiSubmit(event) {
-    event.preventDefault();
-
-    try {
-      setIsSavingAi(true);
-      setError('');
-      const savedSettings = await saveCompanySetting({
-        ...settings,
-        ...aiForm,
-        empresa_id: settings?.empresa_id ?? company?.id
-      });
-      setSettings(savedSettings);
-    } catch (requestError) {
-      setError(getApiError(requestError));
-    } finally {
-      setIsSavingAi(false);
-    }
-  }
-
   if (isLoading) {
-    return <LoadingState message="Cargando panel de empresa..." />;
+    return <LoadingState message="Cargando suscripcion..." />;
   }
 
   return (
-    <div className="resource-page settings-page">
-      <div className="settings-unified-header">
-        <div>
-          <span className="settings-header-icon">
-            <Building2 size={22} aria-hidden="true" />
-          </span>
-          <div>
-            <p className="eyebrow">Mi empresa</p>
-            <h1>{company?.nombre ?? 'Panel de empresa'}</h1>
-            <p>Administra tu negocio, asistente IA, usuarios, WhatsApp y operacion comercial.</p>
-          </div>
-        </div>
-        <div className="settings-header-summary">
-          <div>
-            <PackageCheck size={18} aria-hidden="true" />
-            <span>Plan {company?.plan ?? settings?.empresa_plan ?? '-'}</span>
-          </div>
-          <div className={company?.activo ? 'active' : ''}>
-            <Building2 size={18} aria-hidden="true" />
-            <span>{company?.activo ? 'Empresa activa' : 'Empresa suspendida'}</span>
-          </div>
-        </div>
-      </div>
-
+    <div className="resource-page owner-subscription-page">
+      <SubscriptionHero company={company} currentPlan={currentPlan} onRefresh={loadData} status={status} />
       {error ? <ErrorState message={error} onRetry={loadData} /> : null}
-
-      <section className="saas-command-grid" aria-label="Accesos del owner">
-        <OwnerAction description="Administrar accesos del equipo" icon={Users} label="Usuarios" to="/usuarios" />
-        <OwnerAction description="Conectar o revisar el canal" icon={MessageCircle} label="WhatsApp" to="/whatsapp" />
-        <OwnerAction description="Ver catalogo del negocio" icon={PackageCheck} label="Productos" to="/productos" />
-        <OwnerAction description="Leads y clientes capturados" icon={Users} label="Clientes" to="/leads" />
-        <OwnerAction description="Historial e inbox de atencion" icon={MessageSquareText} label="Conversaciones" to="/conversaciones" />
-        <OwnerAction description="Vista lista para conectar pedidos" icon={ShoppingBag} label="Pedidos" to="/pedidos" />
-        <OwnerAction description="Indicadores y reportes" icon={BarChart3} label="Reportes" to="/" />
-      </section>
-
-      <section className="enterprise-dashboard-grid">
-        <form className="settings-section" onSubmit={handleBusinessSubmit}>
-          <header>
-            <span><Building2 size={19} aria-hidden="true" /></span>
-            <div>
-              <h2>Datos del negocio</h2>
-              <p>Edita informacion publica, logo y datos comerciales.</p>
-            </div>
-          </header>
-          <div className="settings-section-body">
-            <div className="form-grid">
-              <label className="field-group" htmlFor="owner-company-name">
-                <span>Nombre</span>
-                <input id="owner-company-name" name="nombre" onChange={handleBusinessChange} value={businessForm.nombre} />
-              </label>
-              <label className="field-group" htmlFor="owner-company-phone">
-                <span>Telefono</span>
-                <input id="owner-company-phone" name="telefono" onChange={handleBusinessChange} value={businessForm.telefono} />
-              </label>
-              <label className="field-group" htmlFor="owner-company-type">
-                <span>Tipo de negocio</span>
-                <input id="owner-company-type" name="tipo_negocio" onChange={handleBusinessChange} value={businessForm.tipo_negocio} />
-              </label>
-              <label className="field-group" htmlFor="owner-company-logo">
-                <span>Logo</span>
-                <input accept="image/*" id="owner-company-logo" name="logo" onChange={handleBusinessChange} type="file" />
-              </label>
-              <label className="field-group full-field" htmlFor="owner-company-address">
-                <span>Direccion</span>
-                <input id="owner-company-address" name="direccion" onChange={handleBusinessChange} value={businessForm.direccion} />
-              </label>
-            </div>
-            {logoPreview ? (
-              <div className="settings-preview-meta">
-                <img alt="Logo de la empresa" className="product-image sm" src={logoPreview} />
-                <span>Logo actual del negocio</span>
-              </div>
-            ) : null}
-            <div className="form-actions">
-              <button className="primary-button" disabled={isSavingBusiness} type="submit">
-                <Upload size={18} aria-hidden="true" />
-                {isSavingBusiness ? 'Guardando...' : 'Guardar negocio'}
-              </button>
-            </div>
-          </div>
-        </form>
-
-        <form className="settings-section" onSubmit={handleAiSubmit}>
-          <header>
-            <span><Bot size={19} aria-hidden="true" /></span>
-            <div>
-              <h2>IA y bienvenida</h2>
-              <p>Configura la personalidad y el primer mensaje del asistente.</p>
-            </div>
-          </header>
-          <div className="settings-section-body">
-            <div className="form-grid">
-              <label className="field-group" htmlFor="owner-ai-name">
-                <span>Nombre/persona IA</span>
-                <input id="owner-ai-name" name="nombre_bot" onChange={handleAiChange} value={aiForm.nombre_bot} />
-              </label>
-              <label className="field-group" htmlFor="owner-ai-tone">
-                <span>Tono</span>
-                <input id="owner-ai-tone" name="tono_respuesta" onChange={handleAiChange} value={aiForm.tono_respuesta} />
-              </label>
-              <label className="field-group full-field" htmlFor="owner-ai-welcome">
-                <span>Mensaje de bienvenida</span>
-                <textarea id="owner-ai-welcome" name="mensaje_bienvenida" onChange={handleAiChange} value={aiForm.mensaje_bienvenida} />
-              </label>
-            </div>
-            <div className="settings-preview-card">
-              <div className="settings-chat-preview">
-                <small>{aiForm.nombre_bot || 'Asistente'}</small>
-                <p>{aiForm.mensaje_bienvenida || 'Hola, gracias por escribirnos. Como podemos ayudarte?'}</p>
-              </div>
-            </div>
-            <div className="form-actions">
-              <button className="primary-button" disabled={isSavingAi} type="submit">
-                <Save size={18} aria-hidden="true" />
-                {isSavingAi ? 'Guardando...' : 'Guardar IA'}
-              </button>
-            </div>
-          </div>
-        </form>
-      </section>
-
-      <section className="panel-section">
-        <div className="section-header dashboard-section-header">
-          <div>
-            <h2>Pedidos</h2>
-            <p>La vista queda preparada para conectarse al modulo de pedidos cuando exista endpoint.</p>
-          </div>
-          <ShoppingBag size={22} aria-hidden="true" />
-        </div>
-        <StatusBadge status="PENDIENTE">Modulo pendiente</StatusBadge>
-      </section>
+      <CurrentPlanCard company={company} currentPlan={currentPlan} status={status} usage={usage} />
+      <BenefitsSection currentPlan={currentPlan} />
+      <UsageSection rows={usageRows} />
+      <RecommendationsSection alerts={alerts} />
+      <PlansComparison currentPlanKey={currentPlan?.key ?? usage?.plan} plans={plans} />
+      <BillingSection />
     </div>
   );
 }

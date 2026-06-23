@@ -65,7 +65,14 @@ async function executeBuscarServicios(args, auth) {
        s.descripcion,
        s.precio,
        s.tipo_precio,
+       s.unidad_medida,
        s.duracion_minutos AS duracion,
+       s.requiere_medidas,
+       s.requiere_cantidad,
+       s.incluye,
+       s.no_incluye,
+       s.notas_cotizacion,
+       s.precio_minimo,
        c.nombre AS categoria,
        CASE
          WHEN ? = '' THEN 0
@@ -94,7 +101,21 @@ function validateObtenerServicio(args, auth) {
 async function executeObtenerServicio(args, auth) {
   const input = validateObtenerServicio(args, auth);
   const [rows] = await query(
-    `SELECT s.id, s.nombre, s.descripcion, s.precio, s.tipo_precio, s.duracion_minutos AS duracion, c.nombre AS categoria
+    `SELECT
+       s.id,
+       s.nombre,
+       s.descripcion,
+       s.precio,
+       s.tipo_precio,
+       s.unidad_medida,
+       s.duracion_minutos AS duracion,
+       s.requiere_medidas,
+       s.requiere_cantidad,
+       s.incluye,
+       s.no_incluye,
+       s.notas_cotizacion,
+       s.precio_minimo,
+       c.nombre AS categoria
      FROM servicios s
      LEFT JOIN categorias c ON c.empresa_id = s.empresa_id AND c.id = s.categoria_id
      WHERE s.empresa_id = ? AND s.id = ? AND s.estado = 'ACTIVO'

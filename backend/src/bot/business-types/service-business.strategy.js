@@ -1,12 +1,6 @@
 import { asServiceSearchIntent } from './shared-response-helpers.js';
+import { extractMeasurement } from './service-pricing.helper.js';
 import {
-  buildServiceResponse,
-  detectServiceRule,
-  extractMeasurement,
-  getServiceRuleByKey
-} from './service-pricing.helper.js';
-import {
-  isInstallationFollowUp,
   isPriceQuestion,
   isServiceInterest,
   isShortAffirmation
@@ -29,7 +23,31 @@ function isLikelyProductQuestion(message) {
 }
 
 function isLikelyServiceQuestion(message) {
-  return /\b(servicio|servicios|cita|agenda|agendar|reservar|cotizar|cotizacion|instalacion|mantenimiento|reparacion|consulta|asesoria|atencion|diseno|limpieza|soporte|diagnostico|lona|lonas|vinil|tarjeta|tarjetas|logotipo|logotipos|marketing|senaletica|textil|promocionales|banner)\b/i.test(message);
+  return /\b(servicio|servicios|cita|agenda|agendar|reservar|cotizar|cotizacion|instalacion|mantenimiento|reparacion|consulta|asesoria|atencion|diseno|limpieza|soporte|diagnostico|lona|lonas|vinil|tarjeta|tarjetas|logotipo|logotipos|marketing|senaletica|textil|promocionales|banner|web)\b/i.test(message)
+    || /\b(pagina|sitio)\s+web\b/i.test(message);
+}
+
+function hasExplicitServiceSubject(message) {
+  return /\b(lona|lonas|vinil|tarjeta|tarjetas|logotipo|logotipos|marketing|senaletica|textil|promocionales|banner|coroplast|trovicel|dtf|serigrafia|web)\b/i.test(message)
+    || /\b(pagina|sitio)\s+web\b/i.test(message);
+}
+
+function buildExplicitServiceSearchIntent(intent, message) {
+  const {
+    servicio_id: _serviceId,
+    id: _id,
+    ...params
+  } = intent.parametros ?? {};
+
+  return {
+    ...intent,
+    intencion: 'BUSCAR_SERVICIO',
+    herramienta_mcp: 'buscar_servicios',
+    parametros: {
+      ...params,
+      texto: message
+    }
+  };
 }
 
 function isAppointmentOrInterest(message) {
@@ -90,29 +108,16 @@ function buildAdvisorIntent(intent, message) {
 }
 
 function getLastServiceContext(conversationContext) {
-  return conversationContext?.datos_json?.parametros?.service_context
+  return conversationContext?.datos_json?.servicio
+    ?? conversationContext?.datos_json?.parametros?.service_context
     ?? conversationContext?.datos_json?.service_context
     ?? null;
 }
 
-function buildDirectServiceIntent(intent, serviceResponse) {
-  return withParams(
-    {
-      ...intent,
-      intencion: 'BUSCAR_SERVICIO',
-      herramienta_mcp: ''
-    },
-    {
-      respuesta_sugerida: serviceResponse.response,
-      service_context: serviceResponse.serviceContext
-    }
-  );
-}
-
 function buildContextLeadIntent(intent, message, conversationContext) {
   const lastService = getLastServiceContext(conversationContext);
-  const interest = lastService?.label
-    ? `${lastService.label}: ${message}`
+  const interest = lastService?.nombre
+    ? `${lastService.nombre}: ${message}`
     : message;
 
   return buildServiceLeadIntent(
@@ -122,47 +127,29 @@ function buildContextLeadIntent(intent, message, conversationContext) {
   );
 }
 
-function shouldUseCatalogServiceResponse(message, detectedRule) {
-  if (!detectedRule) {
-    return false;
-  }
-
-  return isPriceQuestion(message)
-    || detectedRule.pricingType !== 'M2'
-    || Boolean(extractMeasurement(message))
-    || isLikelyServiceQuestion(message);
-}
-
 export const serviceBusinessStrategy = {
   type: 'SERVICIOS',
 
   prepareIntent(intent, { conversationContext = null, normalizedMessage = '' } = {}) {
-    const lastServiceContext = getLastServiceContext(conversationContext);
-    const lastServiceRule = getServiceRuleByKey(lastServiceContext?.key);
-    const detectedRule = detectServiceRule(normalizedMessage, lastServiceContext?.key);
-    const directServiceResponse = detectedRule
-      ? buildServiceResponse({ rule: detectedRule, message: normalizedMessage })
-      : null;
-    const contextMeasurementResponse = lastServiceRule && extractMeasurement(normalizedMessage)
-      ? buildServiceResponse({ rule: lastServiceRule, message: normalizedMessage })
-      : null;
-
-    if (isInstallationFollowUp(normalizedMessage)) {
-      return buildDirectServiceIntent(
-        intent,
-        buildServiceResponse({ rule: getServiceRuleByKey('instalacion'), message: normalizedMessage })
-      );
+    if (hasExplicitServiceSubject(normalizedMessage)) {
+      return buildExplicitServiceSearchIntent(intent, normalizedMessage);
     }
 
-    if (contextMeasurementResponse) {
-      return buildDirectServiceIntent(intent, contextMeasurementResponse);
+    if (
+      intent.herramienta_mcp === 'obtener_servicio'
+      && Number(intent.parametros?.servicio_id) > 0
+    ) {
+      return intent;
     }
 
-    if (shouldUseCatalogServiceResponse(normalizedMessage, detectedRule) && directServiceResponse) {
-      return buildDirectServiceIntent(intent, directServiceResponse);
+    if (hasLastService(conversationContext) && extractMeasurement(normalizedMessage)) {
+      return buildServiceDetailIntent(intent, conversationContext);
     }
 
-    if (isServiceInterest(normalizedMessage) || isShortAffirmation(normalizedMessage) || isAppointmentOrInterest(normalizedMessage) || intent.intencion === 'AGENDAR_CITA') {
+    if (
+      hasLastService(conversationContext)
+      && (isServiceInterest(normalizedMessage) || isShortAffirmation(normalizedMessage) || isAppointmentOrInterest(normalizedMessage) || intent.intencion === 'AGENDAR_CITA')
+    ) {
       return buildContextLeadIntent(intent, normalizedMessage, conversationContext);
     }
 
@@ -178,7 +165,13 @@ export const serviceBusinessStrategy = {
       return buildAdvisorIntent(intent, normalizedMessage);
     }
 
-    if (isProductIntent(intent) || intent.intencion === 'BUSCAR_SERVICIO' || intent.herramienta_mcp === 'buscar_servicios' || isLikelyServiceQuestion(normalizedMessage)) {
+    if (
+      isProductIntent(intent)
+      || intent.intencion === 'BUSCAR_SERVICIO'
+      || intent.herramienta_mcp === 'buscar_servicios'
+      || isLikelyServiceQuestion(normalizedMessage)
+      || isAppointmentOrInterest(normalizedMessage)
+    ) {
       return asServiceSearchIntent(intent);
     }
 
