@@ -1,3 +1,4 @@
+import whatsappWeb from 'whatsapp-web.js';
 import { logger } from '../utils/logger.js';
 import { processIncomingCustomerMessage } from '../modules/ai/ai.service.js';
 import {
@@ -14,6 +15,8 @@ import {
   normalizeWhatsappId
 } from './whatsapp-number.helper.js';
 
+const { MessageMedia } = whatsappWeb;
+
 async function getContactName(message) {
   try {
     const contact = await Promise.race([
@@ -25,6 +28,54 @@ async function getContactName(message) {
   } catch {
     return null;
   }
+}
+
+function mediaCaption(media, fallback) {
+  const caption = String(media?.caption ?? '').trim();
+  return caption || fallback;
+}
+
+async function sendMediaResult({ chat, result, mediaFactory = MessageMedia }) {
+  const response = String(result?.respuesta ?? '').trim();
+  const mediaItems = Array.isArray(result?.medios) ? result.medios : [];
+  const imageItems = mediaItems.filter((media) => media?.type === 'image' && media?.url);
+
+  if (imageItems.length === 0) {
+    if (response) {
+      await chat.sendMessage(response);
+    }
+
+    return { mediaSent: 0, textSent: Boolean(response) };
+  }
+
+  let mediaSent = 0;
+
+  for (const [index, media] of imageItems.entries()) {
+    try {
+      const messageMedia = await mediaFactory.fromUrl(media.url, { unsafeMime: true });
+      const caption = index === 0 ? mediaCaption(media, response) : mediaCaption(media, '');
+      const options = caption ? { caption } : undefined;
+
+      await chat.sendMessage(messageMedia, options);
+      mediaSent += 1;
+    } catch (error) {
+      logger.error('whatsapp_bot_media_send_error', {
+        mediaUrl: media.url,
+        error
+      });
+    }
+  }
+
+  if (mediaSent === 0 && response) {
+    await chat.sendMessage(response);
+    return { mediaSent, textSent: true };
+  }
+
+  return { mediaSent, textSent: false };
+}
+
+export async function sendBotResultToChat({ chat, result, mediaFactory = MessageMedia }) {
+  return sendMediaResult({ chat, result, mediaFactory });
 }
 
 export async function handleIncomingWhatsappMessage({ companyId, client, message }) {
@@ -115,6 +166,11 @@ export async function handleIncomingWhatsappMessage({ companyId, client, message
       reason: 'mensaje manejado como respuesta de dueno',
       action: ownerResponse.action ?? null
     });
+
+    if (ownerResponse.mensaje_dueno) {
+      await client.sendMessage(whatsappId, ownerResponse.mensaje_dueno);
+    }
+
     if (ownerResponse.mensaje_cliente && ownerResponse.telefono_cliente) {
       const to = ownerResponse.whatsapp_chat_id || normalizePhoneForWhatsapp(ownerResponse.telefono_cliente);
       logger.info('whatsapp_owner_response_send_attempt', {
@@ -206,10 +262,11 @@ export async function handleIncomingWhatsappMessage({ companyId, client, message
       empresaId,
       telefonoCliente: customerPhone,
       whatsappId,
-      conversacionId: result.conversacion_id ?? null
+      conversacionId: result.conversacion_id ?? null,
+      mediaCount: Array.isArray(result.medios) ? result.medios.length : 0
     });
 
-    await chat.sendMessage(result.respuesta);
+    const sendResult = await sendBotResultToChat({ chat, result });
 
     logger.info('[WA][BOT_REPLY_SENT]', {
       empresaId,
@@ -221,7 +278,9 @@ export async function handleIncomingWhatsappMessage({ companyId, client, message
       empresaId,
       telefonoCliente: customerPhone,
       whatsappId,
-      conversacionId: result.conversacion_id ?? null
+      conversacionId: result.conversacion_id ?? null,
+      mediaSent: sendResult.mediaSent,
+      textSent: sendResult.textSent
     });
   }
 

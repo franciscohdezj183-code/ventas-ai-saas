@@ -75,6 +75,43 @@ function mapDatabaseError(error) {
   throw error;
 }
 
+async function categoryBelongsToCompany(categoryId, empresaId) {
+  if (!categoryId) {
+    return true;
+  }
+
+  const [rows] = await query(
+    `SELECT id
+     FROM categorias
+     WHERE id = ?
+       AND empresa_id = ?
+       AND tipo = 'PRODUCTO'
+     LIMIT 1`,
+    [categoryId, empresaId]
+  );
+
+  return Boolean(rows[0]);
+}
+
+async function resolveProductCategoryForUpdate(product, currentProduct) {
+  if (!product.categoriaId) {
+    return null;
+  }
+
+  if (await categoryBelongsToCompany(product.categoriaId, product.empresaId)) {
+    return product.categoriaId;
+  }
+
+  const companyChanged = Number(product.empresaId) !== Number(currentProduct.empresa_id);
+  const keptPreviousCategory = Number(product.categoriaId) === Number(currentProduct.categoria_id);
+
+  if (companyChanged && keptPreviousCategory) {
+    return null;
+  }
+
+  throw createHttpError(400, 'La categoria seleccionada no pertenece a la empresa del producto');
+}
+
 export async function findProducts(auth, listOptions = {}) {
   return findProductsPage(auth, listOptions);
 }
@@ -410,6 +447,7 @@ export async function updateProduct(productId, payload, auth, file) {
   }
 
   const product = normalizeProductPayload(payload, auth);
+  product.categoriaId = await resolveProductCategoryForUpdate(product, currentProduct);
   const imagen = imageUrlFromFile(file) ?? currentProduct.imagen;
   const scope = appendCompanyScope(auth, [productId], 'productos');
 

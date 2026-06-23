@@ -93,7 +93,8 @@ export function ProductForm({
 
     setForm((currentForm) => ({
       ...currentForm,
-      [name]: type === 'file' ? files[0] ?? null : value
+      [name]: type === 'file' ? files[0] ?? null : value,
+      ...(name === 'empresa_id' ? { categoria_id: '' } : {})
     }));
 
     setErrors((currentErrors) => ({

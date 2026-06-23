@@ -345,6 +345,76 @@ describe('messageOrchestrator', () => {
     });
   });
 
+  it('searches products for a short product name even when the interpreter is generic', async () => {
+    const calls = [];
+    const mcpClient = {
+      async callTool(toolName, args) {
+        calls.push({ toolName, args });
+
+        if (toolName === 'obtener_configuracion_empresa') {
+          return { empresa: { nombre: 'Demo', tipo_negocio: 'Mixto' } };
+        }
+
+        if (toolName === 'buscar_productos') {
+          return {
+            productos: [
+              {
+                id: 71,
+                nombre: 'Silla de madera',
+                precio: 800,
+                stock: 5,
+                imagen: null,
+                categoria: 'Sillas'
+              }
+            ],
+            paginacion: {
+              offset: 0,
+              limit: 5,
+              next_offset: 1,
+              has_more: false
+            }
+          };
+        }
+
+        if (toolName === 'guardar_conversacion') {
+          return { conversacion_id: 112 };
+        }
+
+        throw new Error(`Unexpected tool: ${toolName}`);
+      }
+    };
+
+    const result = await orchestrateIncomingMessage({
+      empresaId: 1,
+      phone: '5215550000000@c.us',
+      message: 'Silla',
+      interpreter: async () => ({
+        intencion: 'MENSAJE_GENERAL',
+        herramienta_mcp: '',
+        parametros: {},
+        confianza: 0.4,
+        requiere_respuesta_ia: false
+      }),
+      mcpClient,
+      contextStore: {
+        async find() {
+          return null;
+        },
+        async save() {}
+      }
+    });
+    const productSearchCall = calls.find((call) => call.toolName === 'buscar_productos');
+
+    assert.equal(result.intencion, 'BUSCAR_PRODUCTO');
+    assert.equal(productSearchCall.args.texto, 'silla');
+    assert.match(result.respuesta, /1\. Silla de madera/);
+    assert.match(result.respuesta, /Precio: \$800\.00/);
+    assert.match(result.respuesta, /mas opciones/);
+    assert.match(result.respuesta, /apartalo/);
+    assert.match(result.respuesta, /categorias/);
+    assert.match(result.respuesta, /asesor/);
+  });
+
   it('uses the last product search for more options follow-up messages', async () => {
     const calls = [];
     const savedContexts = [];
@@ -458,7 +528,7 @@ describe('messageOrchestrator', () => {
     assert.equal(savedContexts[0].datos.ultima_busqueda_productos.has_more, false);
   });
 
-  it('uses the last product context for short purchase follow-up messages', async () => {
+  it('creates an order from the last product context for short purchase follow-up messages', async () => {
     const calls = [];
     const mcpClient = {
       async callTool(toolName, args) {
@@ -468,13 +538,13 @@ describe('messageOrchestrator', () => {
           return { empresa: { nombre: 'Demo', tipo_negocio: 'Tienda' } };
         }
 
-        if (toolName === 'registrar_intencion_compra') {
+        if (toolName === 'crear_pedido') {
           return {
-            lead_id: 55,
-            nombre_cliente: 'Cliente WhatsApp',
-            telefono: args.telefono,
-            interes: args.interes,
-            producto_id: args.producto_id
+            pedido_id: 55,
+            cliente_nombre: args.cliente_nombre,
+            telefono_cliente: args.telefono,
+            total: args.total,
+            estado: 'NUEVO'
           };
         }
 
@@ -524,12 +594,16 @@ describe('messageOrchestrator', () => {
       handoffManager: noopHandoffManager,
       contextStore
     });
-    const leadCall = calls.find((call) => call.toolName === 'registrar_intencion_compra');
+    const orderCall = calls.find((call) => call.toolName === 'crear_pedido');
 
     assert.equal(result.intencion, 'INTENCION_COMPRA');
-    assert.equal(leadCall.args.producto_id, 22);
-    assert.equal(leadCall.args.interes, 'Silla Plastico');
-    assert.equal(result.notificacion.estado, 'PENDING_OWNER');
+    assert.equal(result.herramienta_mcp, 'crear_pedido');
+    assert.equal(orderCall.args.total, 10000);
+    assert.match(orderCall.args.notas, /Silla Plastico/);
+    assert.match(orderCall.args.notas, /Producto ID: 22/);
+    assert.equal(result.notificacion, null);
+    assert.match(result.respuesta, /apartado/);
+    assert.match(result.respuesta, /#55/);
   });
 
   it('creates a lead for purchase phrases even without prior context', async () => {
@@ -584,6 +658,208 @@ describe('messageOrchestrator', () => {
 
     assert.equal(result.intencion, 'INTENCION_COMPRA');
     assert.equal(leadCall.args.interes, 'quiero informacion');
+    assert.equal(result.notificacion.estado, 'PENDING_OWNER');
+  });
+
+  it('keeps advisor requests in bot mode outside business hours', async () => {
+    const calls = [];
+    const handoffCalls = [];
+    const mcpClient = {
+      async callTool(toolName, args) {
+        calls.push({ toolName, args });
+
+        if (toolName === 'guardar_conversacion') {
+          return { conversacion_id: 113 };
+        }
+
+        throw new Error(`Unexpected tool: ${toolName}`);
+      }
+    };
+    const handoffManager = {
+      async hasActive() {
+        handoffCalls.push({ toolName: 'hasActive' });
+        return false;
+      },
+      async request() {
+        handoffCalls.push({ toolName: 'request' });
+        return { estado: 'PENDING_OWNER' };
+      }
+    };
+
+    const result = await orchestrateIncomingMessage({
+      empresaId: 1,
+      phone: '5215550000000@c.us',
+      message: 'asesor',
+      contexto: {
+        nombre: 'Demo',
+        tipo_negocio: 'Mixto',
+        horario_atencion: 'Lunes a viernes 9:00 a 18:00'
+      },
+      currentDate: new Date('2026-06-24T02:00:00.000Z'),
+      interpreter: async () => ({
+        intencion: 'HABLAR_ASESOR',
+        herramienta_mcp: 'crear_lead',
+        parametros: { interes: 'asesor' },
+        confianza: 0.9,
+        requiere_respuesta_ia: false
+      }),
+      mcpClient,
+      handoffManager,
+      contextStore: {
+        async find() {
+          return null;
+        },
+        async save() {}
+      }
+    });
+
+    assert.equal(result.fuera_horario, true);
+    assert.equal(result.herramienta_mcp, null);
+    assert.equal(result.notificacion, null);
+    assert.equal(calls.some((call) => call.toolName === 'crear_lead'), false);
+    assert.equal(calls.some((call) => call.toolName === 'registrar_intencion_compra'), false);
+    assert.deepEqual(handoffCalls, []);
+    assert.match(result.respuesta, /fuera de horario/);
+    assert.match(result.respuesta, /manana a las 09:00/);
+    assert.match(result.respuesta, /Lunes a viernes 9:00 a 18:00/);
+  });
+
+  it('creates product orders outside business hours without notifying an advisor', async () => {
+    const calls = [];
+    const handoffCalls = [];
+    const savedContexts = [];
+    const mcpClient = {
+      async callTool(toolName, args) {
+        calls.push({ toolName, args });
+
+        if (toolName === 'guardar_conversacion') {
+          return { conversacion_id: 115 };
+        }
+
+        if (toolName === 'crear_pedido') {
+          return {
+            pedido_id: 115,
+            cliente_nombre: args.cliente_nombre,
+            telefono_cliente: args.telefono,
+            total: args.total,
+            estado: 'NUEVO'
+          };
+        }
+
+        throw new Error(`Unexpected tool: ${toolName}`);
+      }
+    };
+    const handoffManager = {
+      async hasActive() {
+        handoffCalls.push({ toolName: 'hasActive' });
+        return false;
+      },
+      async request() {
+        handoffCalls.push({ toolName: 'request' });
+        return { estado: 'PENDING_OWNER' };
+      }
+    };
+
+    const result = await orchestrateIncomingMessage({
+      empresaId: 1,
+      phone: '5215550000000@c.us',
+      message: 'apartalo',
+      contexto: {
+        nombre: 'Demo',
+        tipo_negocio: 'Mixto',
+        horario_atencion: 'Lunes a viernes 9:00 a 18:00'
+      },
+      currentDate: new Date('2026-06-24T02:00:00.000Z'),
+      interpreter: async () => ({
+        intencion: 'INTENCION_COMPRA',
+        herramienta_mcp: 'registrar_intencion_compra',
+        parametros: { interes: 'apartalo', producto_id: 7 },
+        confianza: 0.9,
+        requiere_respuesta_ia: false
+      }),
+      mcpClient,
+      handoffManager,
+      contextStore: {
+        async find() {
+          return {
+            ultima_intencion: 'CONSULTAR_PRECIO',
+            ultimo_producto_id: 7,
+            ultimo_servicio_id: null,
+            ultimo_texto_busqueda: 'Silla',
+            datos_json: {}
+          };
+        },
+        async save(context) {
+          savedContexts.push(context);
+        }
+      }
+    });
+
+    const orderCall = calls.find((call) => call.toolName === 'crear_pedido');
+
+    assert.equal(result.fuera_horario, undefined);
+    assert.equal(result.herramienta_mcp, 'crear_pedido');
+    assert.equal(calls.some((call) => call.toolName === 'registrar_intencion_compra'), false);
+    assert.deepEqual(handoffCalls, []);
+    assert.equal(calls.find((call) => call.toolName === 'guardar_conversacion').args.estado, 'bot_active');
+    assert.equal(orderCall.args.total, 0);
+    assert.match(orderCall.args.notas, /Producto ID: 7/);
+    assert.match(result.respuesta, /apartado/);
+    assert.equal(savedContexts[0].ultimoProductoId, 7);
+  });
+
+  it('allows advisor requests during business hours', async () => {
+    const calls = [];
+    const mcpClient = {
+      async callTool(toolName, args) {
+        calls.push({ toolName, args });
+
+        if (toolName === 'crear_lead') {
+          return {
+            lead_id: 57,
+            telefono: args.telefono,
+            interes: args.interes
+          };
+        }
+
+        if (toolName === 'guardar_conversacion') {
+          return { conversacion_id: 114 };
+        }
+
+        throw new Error(`Unexpected tool: ${toolName}`);
+      }
+    };
+
+    const result = await orchestrateIncomingMessage({
+      empresaId: 1,
+      phone: '5215550000000@c.us',
+      message: 'asesor',
+      contexto: {
+        nombre: 'Demo',
+        tipo_negocio: 'Mixto',
+        horario_atencion: 'Lunes a viernes 9:00 a 18:00'
+      },
+      currentDate: new Date('2026-06-23T18:00:00.000Z'),
+      interpreter: async () => ({
+        intencion: 'HABLAR_ASESOR',
+        herramienta_mcp: 'crear_lead',
+        parametros: { interes: 'asesor' },
+        confianza: 0.9,
+        requiere_respuesta_ia: false
+      }),
+      mcpClient,
+      handoffManager: noopHandoffManager,
+      contextStore: {
+        async find() {
+          return null;
+        },
+        async save() {}
+      }
+    });
+
+    assert.equal(result.fuera_horario, undefined);
+    assert.equal(result.herramienta_mcp, 'crear_lead');
+    assert.equal(calls.some((call) => call.toolName === 'crear_lead'), true);
     assert.equal(result.notificacion.estado, 'PENDING_OWNER');
   });
 
