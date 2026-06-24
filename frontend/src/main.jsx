@@ -27,6 +27,7 @@ import './styles/modules/OnboardingPage.css';
 import './styles/modules/admin.css';
 import './styles/modules/ReportesPage.css';
 import './styles/modules/PlansPage.css';
+import './styles/modules/ModalStyles.css';
 
 function applyInitialTheme() {
   const savedTheme = window.localStorage.getItem('nexus-theme');

@@ -989,6 +989,34 @@
   border-radius: 8px;
 }
 
+.inbox-page .catalog-modal {
+  border-color: var(--wa-border-strong);
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-lg);
+}
+
+.inbox-page .catalog-modal-header {
+  border-bottom-color: var(--wa-border);
+}
+
+.inbox-page .catalog-modal-header h2 {
+  color: var(--color-heading);
+}
+
+.inbox-page .company-form .field-group > span,
+.inbox-page .company-form .field-group > strong {
+  color: var(--color-heading);
+}
+
+.inbox-page .company-form input,
+.inbox-page .company-form select,
+.inbox-page .company-form textarea {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
 :root[data-theme='dark'] .inbox-page {
   --wa-shell: #161717;
   --wa-sidebar: #161717;

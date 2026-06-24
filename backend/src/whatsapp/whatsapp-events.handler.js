@@ -17,6 +17,9 @@ import {
 } from './whatsapp-socket.gateway.js';
 import { WHATSAPP_SESSION_STATUSES, normalizeCompanyId } from './whatsapp.types.js';
 
+const UNREAD_POLL_INTERVAL_MS = Number(process.env.WHATSAPP_UNREAD_POLL_INTERVAL_MS ?? 3000);
+const UNREAD_POLL_MESSAGE_LIMIT = Number(process.env.WHATSAPP_UNREAD_POLL_MESSAGE_LIMIT ?? 5);
+
 function getConnectedPhoneNumber(client) {
   const wid = client.info?.wid ?? client.info?.me;
   const phone = wid?.user ?? String(wid?._serialized ?? '').replace('@c.us', '');
@@ -124,6 +127,7 @@ export function registerWhatsappClientEvents({ companyId, client }) {
   async function handleWhatsappMessageEvent(message, source) {
     const messageKey = getMessageKey(message);
     const receivedAt = new Date().toISOString();
+    const hasBody = Boolean(message?.body?.trim());
 
     upsertSession(empresaId, { lastInboundAt: receivedAt });
 
@@ -134,11 +138,11 @@ export function registerWhatsappClientEvents({ companyId, client }) {
       to: message?.to ?? null,
       id: message?.id?._serialized ?? message?.id?.id ?? null,
       fromMe: Boolean(message?.fromMe),
-      hasBody: Boolean(message?.body?.trim()),
+      hasBody,
       type: message?.type ?? null
     });
 
-    if (messageKey && handledMessageKeys.has(messageKey)) {
+    if (messageKey && hasBody && handledMessageKeys.has(messageKey)) {
       logger.info('whatsapp_message_event_duplicate_ignored', {
         empresaId,
         source,
@@ -147,7 +151,7 @@ export function registerWhatsappClientEvents({ companyId, client }) {
       return;
     }
 
-    if (messageKey) {
+    if (messageKey && hasBody) {
       handledMessageKeys.add(messageKey);
 
       if (handledMessageKeys.size > 500) {
@@ -164,6 +168,73 @@ export function registerWhatsappClientEvents({ companyId, client }) {
       messageKey,
       lastProcessedAt: processedAt
     });
+  }
+
+  function scheduleUnreadMessagePoll() {
+    if (!UNREAD_POLL_INTERVAL_MS || UNREAD_POLL_INTERVAL_MS < 1000) {
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const currentSession = getSession(empresaId);
+
+        if (currentSession?.client !== client) {
+          return;
+        }
+
+        if (currentSession?.status !== WHATSAPP_SESSION_STATUSES.READY) {
+          scheduleUnreadMessagePoll();
+          return;
+        }
+
+        if (!client.getChats) {
+          scheduleUnreadMessagePoll();
+          return;
+        }
+
+        const chats = await client.getChats();
+        const unreadChats = chats.filter((chat) => Number(chat?.unreadCount ?? 0) > 0);
+
+        if (unreadChats.length > 0) {
+          logger.info('whatsapp_unread_poll_found_chats', {
+            empresaId,
+            chats: unreadChats.length
+          });
+        }
+
+        for (const chat of unreadChats) {
+          if (!chat?.fetchMessages) {
+            continue;
+          }
+
+          const limit = Math.max(1, Math.min(Number(chat.unreadCount ?? 1), UNREAD_POLL_MESSAGE_LIMIT));
+          const messages = await chat.fetchMessages({ limit });
+          const orderedMessages = [...messages].sort((left, right) => Number(left?.timestamp ?? 0) - Number(right?.timestamp ?? 0));
+
+          for (const message of orderedMessages) {
+            if (message?.fromMe || !message?.body?.trim()) {
+              continue;
+            }
+
+            await handleWhatsappMessageEvent(message, 'unread_poll');
+          }
+        }
+      } catch (error) {
+        logger.error('whatsapp_unread_poll_error', {
+          empresaId,
+          error
+        });
+      } finally {
+        const currentSession = getSession(empresaId);
+
+        if (currentSession?.client === client && currentSession?.status === WHATSAPP_SESSION_STATUSES.READY) {
+          scheduleUnreadMessagePoll();
+        }
+      }
+    }, UNREAD_POLL_INTERVAL_MS);
+
+    timer.unref?.();
   }
 
   client.on('qr', async (qr) => {
@@ -251,4 +322,6 @@ export function registerWhatsappClientEvents({ companyId, client }) {
       });
     }
   });
+
+  scheduleUnreadMessagePoll();
 }

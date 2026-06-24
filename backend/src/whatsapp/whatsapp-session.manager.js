@@ -106,6 +106,12 @@ function todayRange() {
   };
 }
 
+function wait(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
 async function destroyClientQuietly(client) {
   if (!client) {
     return;
@@ -369,6 +375,8 @@ export async function restoreSessionsOnBoot() {
     try {
       logger.info('whatsapp_restore_session_start', { empresaId: company.id });
       restored.push(await startSession(company.id));
+
+      await wait(Number(process.env.WHATSAPP_RESTORE_SESSION_DELAY_MS ?? 5000));
     } catch (error) {
       logger.error('whatsapp_restore_session_error', {
         empresaId: company.id,
