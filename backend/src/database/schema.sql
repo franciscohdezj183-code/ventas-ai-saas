@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS empresas (
   UNIQUE KEY empresas_slug_unique (slug),
   KEY empresas_activo_index (activo),
   KEY empresas_plan_index (plan),
-  KEY empresas_estado_index (estado)
+  KEY empresas_estado_index (estado),
+  KEY empresas_activo_estado_id_index (activo, estado, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS usuarios (
@@ -205,6 +206,9 @@ CREATE TABLE IF NOT EXISTS leads (
   KEY leads_estado_index (estado),
   KEY leads_prioridad_index (prioridad),
   KEY leads_score_index (score),
+  KEY leads_empresa_fecha_index (empresa_id, fecha_creacion),
+  KEY leads_empresa_estado_fecha_index (empresa_id, estado, fecha_creacion),
+  KEY leads_empresa_score_fecha_index (empresa_id, score, fecha_creacion),
   CONSTRAINT leads_empresa_id_foreign
     FOREIGN KEY (empresa_id) REFERENCES empresas (id)
     ON DELETE CASCADE
@@ -216,6 +220,7 @@ CREATE TABLE IF NOT EXISTS conversaciones (
   empresa_id BIGINT UNSIGNED NOT NULL,
   telefono_cliente VARCHAR(40) NOT NULL,
   whatsapp_id VARCHAR(80) NULL,
+  whatsapp_message_id VARCHAR(120) NULL,
   contact_name VARCHAR(150) NULL,
   mensaje TEXT NOT NULL,
   respuesta TEXT NULL,
@@ -226,12 +231,15 @@ CREATE TABLE IF NOT EXISTS conversaciones (
   fecha_creacion TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   fecha_actualizacion TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
+  UNIQUE KEY conversaciones_empresa_whatsapp_message_unique (empresa_id, whatsapp_message_id),
   KEY conversaciones_empresa_id_index (empresa_id),
+  KEY conversaciones_empresa_id_id_index (empresa_id, id),
   KEY conversaciones_telefono_cliente_index (telefono_cliente),
   KEY conversaciones_whatsapp_id_index (whatsapp_id),
   KEY conversaciones_estado_index (estado),
   KEY conversaciones_empresa_cliente_estado_index (empresa_id, telefono_cliente, estado),
   KEY conversaciones_empresa_cliente_fecha_index (empresa_id, telefono_cliente, fecha),
+  KEY conversaciones_empresa_fecha_id_index (empresa_id, fecha, id),
   KEY conversaciones_agente_usuario_index (agente_usuario_id),
   KEY conversaciones_fecha_index (fecha),
   CONSTRAINT conversaciones_empresa_id_foreign
@@ -262,6 +270,8 @@ CREATE TABLE IF NOT EXISTS pedidos (
   KEY pedidos_conversation_id_index (conversation_id),
   KEY pedidos_estado_index (estado),
   KEY pedidos_fecha_index (fecha),
+  KEY pedidos_empresa_fecha_index (empresa_id, fecha),
+  KEY pedidos_empresa_estado_fecha_index (empresa_id, estado, fecha),
   CONSTRAINT pedidos_empresa_id_foreign
     FOREIGN KEY (empresa_id) REFERENCES empresas (id)
     ON DELETE CASCADE
@@ -286,6 +296,7 @@ CREATE TABLE IF NOT EXISTS ai_usage_logs (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY ai_usage_logs_tenant_fecha_index (tenant_id, fecha),
+  KEY ai_usage_logs_fecha_index (fecha),
   KEY ai_usage_logs_user_id_index (user_id),
   KEY ai_usage_logs_conversation_id_index (conversation_id),
   KEY ai_usage_logs_modelo_index (modelo_usado),
@@ -435,7 +446,8 @@ CREATE TABLE IF NOT EXISTS bot_prompt_templates (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY bot_prompt_templates_tipo_index (tipo_negocio),
-  KEY bot_prompt_templates_activo_index (activo)
+  KEY bot_prompt_templates_activo_index (activo),
+  KEY bot_prompt_templates_activo_tipo_nombre_index (activo, tipo_negocio, nombre)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS bot_response_settings (
@@ -493,6 +505,7 @@ CREATE TABLE IF NOT EXISTS notificaciones (
   KEY notificaciones_empresa_id_index (empresa_id),
   KEY notificaciones_lead_id_index (lead_id),
   KEY notificaciones_estado_index (estado),
+  KEY notificaciones_empresa_estado_fecha_index (empresa_id, estado, fecha_creacion),
   CONSTRAINT notificaciones_empresa_id_foreign
     FOREIGN KEY (empresa_id) REFERENCES empresas (id)
     ON DELETE CASCADE
@@ -526,6 +539,10 @@ CREATE TABLE IF NOT EXISTS human_handoffs (
   KEY human_handoffs_empresa_dueno_estado_index (empresa_id, telefono_dueno, estado),
   KEY human_handoffs_expires_at_index (expires_at),
   KEY human_handoffs_last_activity_at_index (last_activity_at),
+  KEY human_handoffs_estado_expires_index (estado, expires_at),
+  KEY human_handoffs_estado_activity_index (estado, last_activity_at),
+  KEY human_handoffs_empresa_cliente_estado_updated_index (empresa_id, telefono_cliente, estado, updated_at),
+  KEY human_handoffs_empresa_dueno_estado_created_index (empresa_id, telefono_dueno, estado, created_at),
   CONSTRAINT human_handoffs_empresa_id_foreign
     FOREIGN KEY (empresa_id) REFERENCES empresas (id)
     ON DELETE CASCADE
@@ -551,6 +568,7 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   KEY audit_logs_empresa_id_index (empresa_id),
   KEY audit_logs_accion_index (accion),
   KEY audit_logs_modulo_index (modulo),
+  KEY audit_logs_empresa_fecha_index (empresa_id, fecha),
   KEY audit_logs_fecha_index (fecha),
   CONSTRAINT audit_logs_usuario_id_foreign
     FOREIGN KEY (usuario_id) REFERENCES usuarios (id)

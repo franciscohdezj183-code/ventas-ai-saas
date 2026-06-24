@@ -139,7 +139,9 @@ async function notifyOwnerForHandoff({
   customerPhone,
   companyName,
   productOrService,
-  customerMessage
+  customerMessage,
+  botResponse = null,
+  attendedByBot = false
 }) {
   if (!ownerPhone) {
     logger.info('human_handoff_owner_notification_omitted', {
@@ -155,7 +157,9 @@ async function notifyOwnerForHandoff({
     customerPhone,
     companyName,
     productOrService,
-    customerMessage
+    customerMessage,
+    botResponse,
+    attendedByBot
   });
 
   try {
@@ -202,22 +206,26 @@ function buildOwnerNotification({
   customerPhone,
   companyName,
   productOrService,
-  customerMessage
+  customerMessage,
+  botResponse = null,
+  attendedByBot = false
 }) {
   return [
-    'Nuevo cliente interesado',
+    'Nuevo cliente requiere seguimiento',
     '',
     `Cliente: ${customerPhone}`,
     `Empresa: ${companyName || '-'}`,
-    `Producto/servicio: ${productOrService || '-'}`,
+    `Solicitud: ${productOrService || customerMessage || '-'}`,
     `Mensaje: ${customerMessage || '-'}`,
+    `Atencion del bot: ${attendedByBot ? 'Respondio con informacion util' : 'Requiere apoyo del asesor'}`,
+    botResponse ? `Respuesta del bot: ${botResponse}` : null,
     '',
     'Puedes atenderlo ahora?',
     '',
     'Responde:',
     '1 = Si, yo lo atiendo',
     '2 = No puedo, que siga el bot'
-  ].join('\n');
+  ].filter((line) => line !== null).join('\n');
 }
 
 async function findActiveHandoff({ empresaId, phone }) {
@@ -247,6 +255,9 @@ export async function requestHandoff({
   telefono_cliente: telefonoCliente,
   whatsapp_chat_id: whatsappChatId = null,
   mensaje_cliente: mensajeCliente,
+  resumen_solicitud: resumenSolicitud = null,
+  respuesta_bot: respuestaBot = null,
+  atendido_por_bot: atendidoPorBot = false,
   producto_id: productoId = null,
   servicio_id: servicioId = null,
   motivo = 'INTENCION_COMPRA',
@@ -277,8 +288,10 @@ export async function requestHandoff({
       ownerPhone,
       customerPhone,
       companyName: company.nombre,
-      productOrService: mensajeCliente,
-      customerMessage: mensajeCliente
+      productOrService: resumenSolicitud ?? mensajeCliente,
+      customerMessage: mensajeCliente,
+      botResponse: respuestaBot,
+      attendedByBot: atendidoPorBot
     });
 
     if (ownerNotification.estado !== 'ENVIADA') {
@@ -310,7 +323,7 @@ export async function requestHandoff({
 
   const company = await getCompanyConfig(empresaId, mcpClientInstance);
   const ownerPhone = normalizePhone(company.telefono_dueno ?? company.telefono);
-  const productOrService = mensajeCliente;
+  const productOrService = resumenSolicitud ?? mensajeCliente;
   const [result] = await query(
     `INSERT INTO human_handoffs
       (empresa_id, conversation_id, telefono_cliente, telefono_dueno, estado, motivo,
@@ -342,7 +355,9 @@ export async function requestHandoff({
     customerPhone,
     companyName: company.nombre,
     productOrService,
-    customerMessage: mensajeCliente
+    customerMessage: mensajeCliente,
+    botResponse: respuestaBot,
+    attendedByBot: atendidoPorBot
   });
 
   if (ownerNotification.estado !== 'ENVIADA') {

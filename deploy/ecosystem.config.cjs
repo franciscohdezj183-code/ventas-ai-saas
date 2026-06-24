@@ -17,21 +17,6 @@ module.exports = {
       env: {
         NODE_ENV: 'production'
       }
-    },
-    {
-      name: 'ventas-ai-whatsapp-worker',
-      cwd: backendDir,
-      script: 'src/workers/whatsapp.worker.js',
-      instances: 1,
-      exec_mode: 'fork',
-      autorestart: true,
-      watch: false,
-      max_memory_restart: '768M',
-      env: {
-        NODE_ENV: 'production',
-        HANDOFF_JOB_ENABLED: 'true',
-        WHATSAPP_WORKER_COMMAND_INTERVAL_MS: '5000'
-      }
     }
   ]
 };

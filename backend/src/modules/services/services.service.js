@@ -134,6 +134,26 @@ function mapDatabaseError(error) {
   throw error;
 }
 
+export async function assertServiceCategoryBelongsToCompany(categoryId, empresaId, runQuery = query) {
+  if (!categoryId) {
+    return;
+  }
+
+  const [rows] = await runQuery(
+    `SELECT id
+     FROM categorias
+     WHERE id = ?
+       AND empresa_id = ?
+       AND tipo = 'SERVICIO'
+     LIMIT 1`,
+    [categoryId, empresaId]
+  );
+
+  if (!rows[0]) {
+    throw createHttpError(400, 'La categoria seleccionada no pertenece a la empresa del servicio');
+  }
+}
+
 export async function findServices(auth) {
   const scope = companyScopeCondition(auth, 's');
   const whereClause = scope.clause ? `WHERE ${scope.clause}` : '';
@@ -172,6 +192,8 @@ export async function createService(payload, auth) {
   const service = normalizeServicePayload(payload, auth);
 
   try {
+    await assertServiceCategoryBelongsToCompany(service.categoriaId, service.empresaId);
+
     const [result] = await query(
       `INSERT INTO servicios
         (empresa_id, categoria_id, nombre, descripcion, precio, tipo_precio, unidad_medida, duracion_minutos,
@@ -213,6 +235,8 @@ export async function updateService(serviceId, payload, auth) {
   const scope = appendCompanyScope(auth, [serviceId], 'servicios');
 
   try {
+    await assertServiceCategoryBelongsToCompany(service.categoriaId, service.empresaId);
+
     await query(
       `UPDATE servicios
        SET empresa_id = ?,

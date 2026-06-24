@@ -5,6 +5,7 @@ import {
   upsertCompanySettings
 } from './company-settings.service.js';
 import { auditFromRequest } from '../audit/audit.service.js';
+import { resolveScopedEmpresaId } from '../../middlewares/company-scope.middleware.js';
 
 export async function listCompanySettings(req, res, next) {
   try {
@@ -54,7 +55,8 @@ export async function saveCompanySettings(req, res, next) {
 
 export async function removeCompanySettings(req, res, next) {
   try {
-    const empresaId = req.params.empresaId ?? req.body.empresa_id;
+    const requestedEmpresaId = req.params.empresaId ?? req.body.empresa_id;
+    const empresaId = resolveScopedEmpresaId(req.auth, requestedEmpresaId);
     await deleteCompanySettings(empresaId, req.auth);
     await auditFromRequest(req, {
       accion: 'ELIMINAR',

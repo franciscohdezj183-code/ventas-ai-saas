@@ -67,6 +67,28 @@ describe('serviceBusinessStrategy catalog routing', () => {
     assert.equal(result.herramienta_mcp, 'buscar_servicios');
   });
 
+  it('recognizes branding, social media and presentation card requests as new service searches', () => {
+    for (const message of [
+      'hacen branding para negocios',
+      'necesito diseno para redes sociales',
+      'manejan diseno de tarjetas de presentacion',
+      'hacen flyers o publicidad digital',
+      'necesito una identidad visual'
+    ]) {
+      const result = run(message, {
+        ultimo_servicio_id: 99,
+        datos_json: {
+          servicio: { id: 99, nombre: 'Diseno web', tipo_precio: 'COTIZACION' }
+        }
+      });
+
+      assert.equal(result.intencion, 'BUSCAR_SERVICIO', message);
+      assert.equal(result.herramienta_mcp, 'buscar_servicios', message);
+      assert.equal(result.parametros.servicio_id, undefined, message);
+      assert.equal(result.parametros.texto, message, message);
+    }
+  });
+
   it('creates lead intent for interest after a service response', () => {
     const result = run('me interesa, pasame con asesor', {
       ultimo_servicio_id: 42,

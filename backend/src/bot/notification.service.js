@@ -10,22 +10,24 @@ function normalizePhone(value) {
 
 function buildOwnerNotificationMessage({
   telefono,
-  producto,
+  solicitud,
   mensajeOriginal,
   empresa,
-  fecha
+  fecha,
+  estadoBot = null
 }) {
   return [
     '🛎️ Nuevo cliente interesado',
     '',
     `Cliente: ${telefono || '-'}`,
-    `Producto: ${producto || '-'}`,
-    `Mensaje: ${mensajeOriginal || '-'}`,
     `Empresa: ${empresa || '-'}`,
+    `Solicitud: ${solicitud || '-'}`,
+    `Mensaje: ${mensajeOriginal || '-'}`,
+    estadoBot ? `Atencion del bot: ${estadoBot}` : null,
     `Fecha: ${fecha}`,
     '',
     'Dale seguimiento lo antes posible.'
-  ].join('\n');
+  ].filter((line) => line !== null).join('\n');
 }
 
 async function resolveProductName({ empresaId, productoId, fallback, mcpClientInstance }) {
@@ -117,10 +119,11 @@ export async function notifyOwnerForLead({
   });
   const notificationMessage = buildOwnerNotificationMessage({
     telefono: normalizePhone(toolResult?.telefono ?? phone),
-    producto,
+    solicitud: producto,
     mensajeOriginal: message,
     empresa: empresa?.nombre,
-    fecha: new Date().toISOString()
+    fecha: new Date().toISOString(),
+    estadoBot: toolResult?.handoff_duplicate ? 'Ya habia solicitud activa' : 'Requiere seguimiento'
   });
   const notificationId = await createNotification({
     empresaId,

@@ -5,6 +5,19 @@ import { fetchAIStatus } from './aiApi.js';
 
 export function AIStatusCard() {
   const [status, setStatus] = useState(null);
+  const isHealthy = status?.status === 'ok' && status?.validated;
+  const badgeStatus = isHealthy ? 'ACTIVO' : status?.configured ? 'PENDIENTE' : 'INACTIVO';
+  const statusLabels = {
+    ok: 'Conexión validada',
+    unknown: 'Pendiente de validación',
+    missing_key: 'Sin API Key',
+    invalid_api_key: 'API Key inválida',
+    forbidden: 'Acceso rechazado',
+    rate_limited: 'Límite temporal',
+    timeout: 'Tiempo de espera agotado',
+    server_error: 'Error temporal de OpenAI',
+    unknown_error: 'Error de conexión'
+  };
 
   useEffect(() => {
     fetchAIStatus()
@@ -12,6 +25,8 @@ export function AIStatusCard() {
       .catch(() => {
         setStatus({
           configured: false,
+          validated: false,
+          status: 'unknown_error',
           model: 'No disponible',
           auto_reply: false
         });
@@ -24,13 +39,14 @@ export function AIStatusCard() {
       <div>
         <span>IA comercial</span>
         <strong>
-          <StatusBadge status={status?.configured ? 'ACTIVO' : 'INACTIVO'}>
-            {status?.configured ? 'Configurada' : 'Sin API Key'}
+          <StatusBadge status={badgeStatus}>
+            {statusLabels[status?.status] ?? 'Comprobando'}
           </StatusBadge>
         </strong>
         <small>
           Modelo {status?.model ?? '...'} - Auto-respuesta {status?.auto_reply ? 'activa' : 'desactivada'}
         </small>
+        {status?.lastError ? <small>{status.lastError}</small> : null}
       </div>
     </article>
   );

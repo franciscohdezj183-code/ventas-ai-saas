@@ -3,20 +3,6 @@ import { attachCompanyScope, getAuthenticatedEmpresaId, isSuperAdmin } from './c
 import { authorizePermissions, authorizeRoles } from './roles.middleware.js';
 import { createHttpError } from '../utils/http-error.js';
 
-function getRequestedTenantId(req) {
-  return req.params.tenant_id
-    ?? req.params.tenantId
-    ?? req.params.empresaId
-    ?? req.body?.tenant_id
-    ?? req.body?.tenantId
-    ?? req.body?.empresa_id
-    ?? req.body?.empresaId
-    ?? req.query?.tenant_id
-    ?? req.query?.tenantId
-    ?? req.query?.empresa_id
-    ?? req.query?.empresaId;
-}
-
 function normalizeTenantId(value) {
   if (value === undefined || value === null || value === '') {
     return null;
@@ -29,6 +15,31 @@ function normalizeTenantId(value) {
   }
 
   return tenantId;
+}
+
+function getRequestedTenantIds(req) {
+  const sources = [
+    req.params?.tenant_id,
+    req.params?.tenantId,
+    req.params?.empresaId,
+    req.params?.companyId,
+    req.body?.tenant_id,
+    req.body?.tenantId,
+    req.body?.empresa_id,
+    req.body?.empresaId,
+    req.body?.company_id,
+    req.body?.companyId,
+    req.query?.tenant_id,
+    req.query?.tenantId,
+    req.query?.empresa_id,
+    req.query?.empresaId,
+    req.query?.company_id,
+    req.query?.companyId
+  ];
+
+  return sources
+    .filter((value) => value !== undefined && value !== null && value !== '')
+    .map(normalizeTenantId);
 }
 
 export const requireAuth = authenticate;
@@ -47,7 +58,14 @@ export function requireTenantScope(req, res, next) {
       throw createHttpError(401, 'Authenticated user is required');
     }
 
-    const requestedTenantId = normalizeTenantId(getRequestedTenantId(req));
+    const requestedTenantIds = getRequestedTenantIds(req);
+    const distinctTenantIds = [...new Set(requestedTenantIds)];
+
+    if (distinctTenantIds.length > 1) {
+      throw createHttpError(400, 'La solicitud contiene identificadores de empresa contradictorios');
+    }
+
+    const requestedTenantId = distinctTenantIds[0] ?? null;
 
     if (isSuperAdmin(req.auth)) {
       req.tenant = {

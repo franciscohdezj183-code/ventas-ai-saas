@@ -6,6 +6,23 @@ import { buildClientId, normalizeCompanyId } from './whatsapp.types.js';
 
 const { Client, LocalAuth } = pkg;
 
+function booleanEnv(name, fallback) {
+  const value = process.env[name];
+
+  if (value === undefined || value === '') {
+    return fallback;
+  }
+
+  return value !== 'false';
+}
+
+function listEnv(name) {
+  return String(process.env[name] ?? '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
 export function getWhatsappSessionPath() {
   return path.resolve(process.cwd(), process.env.WHATSAPP_SESSION_PATH || '.wwebjs_auth');
 }
@@ -34,6 +51,14 @@ function createLocalAuth(companyId) {
   const originalLogout = authStrategy.logout.bind(authStrategy);
 
   authStrategy.logout = async () => {
+    if (process.env.WHATSAPP_ALLOW_AUTH_DELETE !== 'true') {
+      logger.info('whatsapp_auth_delete_skipped', {
+        empresaId: companyId,
+        reason: 'WHATSAPP_ALLOW_AUTH_DELETE is not true'
+      });
+      return;
+    }
+
     try {
       await originalLogout();
     } catch (error) {
@@ -56,24 +81,25 @@ export function createWhatsappClient(companyId) {
   const id = normalizeCompanyId(companyId);
   const isProduction = process.env.NODE_ENV === 'production';
   const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || process.env.WHATSAPP_PUPPETEER_EXECUTABLE_PATH || undefined;
+  const productionArgs = [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-gpu',
+    '--no-first-run',
+    '--no-zygote'
+  ];
+  const configuredArgs = listEnv('WHATSAPP_PUPPETEER_ARGS');
+  const args = [...new Set([...(isProduction ? productionArgs : []), ...configuredArgs])];
 
   ensureWhatsappSessionPath();
 
   return new Client({
     authStrategy: createLocalAuth(id),
     puppeteer: {
-      headless: true,
+      headless: booleanEnv('WHATSAPP_HEADLESS', true),
       executablePath,
-      args: isProduction
-        ? [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--no-first-run',
-          '--no-zygote'
-        ]
-        : []
+      args
     }
   });
 }

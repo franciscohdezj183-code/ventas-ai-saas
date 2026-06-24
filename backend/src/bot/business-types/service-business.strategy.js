@@ -23,12 +23,12 @@ function isLikelyProductQuestion(message) {
 }
 
 function isLikelyServiceQuestion(message) {
-  return /\b(servicio|servicios|cita|agenda|agendar|reservar|cotizar|cotizacion|instalacion|mantenimiento|reparacion|consulta|asesoria|atencion|diseno|limpieza|soporte|diagnostico|lona|lonas|vinil|tarjeta|tarjetas|logotipo|logotipos|marketing|senaletica|textil|promocionales|banner|web)\b/i.test(message)
+  return /\b(servicio|servicios|cita|agenda|agendar|reservar|cotizar|cotizacion|instalacion|mantenimiento|reparacion|consulta|asesoria|atencion|diseno|limpieza|soporte|diagnostico|lona|lonas|vinil|tarjeta|tarjetas|logotipo|logotipos|logo|logos|branding|identidad|visual|redes|sociales|flyer|flyers|publicidad|marketing|senaletica|textil|promocionales|banner|web)\b/i.test(message)
     || /\b(pagina|sitio)\s+web\b/i.test(message);
 }
 
 function hasExplicitServiceSubject(message) {
-  return /\b(lona|lonas|vinil|tarjeta|tarjetas|logotipo|logotipos|marketing|senaletica|textil|promocionales|banner|coroplast|trovicel|dtf|serigrafia|web)\b/i.test(message)
+  return /\b(lona|lonas|vinil|tarjeta|tarjetas|logotipo|logotipos|logo|logos|branding|identidad|visual|redes|sociales|flyer|flyers|publicidad|marketing|senaletica|textil|promocionales|banner|coroplast|trovicel|dtf|serigrafia|web)\b/i.test(message)
     || /\b(pagina|sitio)\s+web\b/i.test(message);
 }
 

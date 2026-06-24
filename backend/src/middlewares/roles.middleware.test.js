@@ -66,6 +66,18 @@ describe('authorizePermissions', () => {
     assert.equal(error, null);
   });
 
+  it('allows super-admin through permission-based company configuration controls', async () => {
+    const error = await runMiddleware(authorizePermissions('ai_config.manage'), {
+      auth: {
+        user: {
+          rol: 'super_admin'
+        }
+      }
+    });
+
+    assert.equal(error, null);
+  });
+
   it('rejects roles without the required permission', async () => {
     const error = await runMiddleware(authorizePermissions('users.manage'), {
       auth: {
@@ -115,6 +127,45 @@ describe('requireTenantScope', () => {
     });
 
     assert.equal(error.statusCode, 403);
+  });
+
+  it('rejects cross-tenant access sent through companyId aliases', async () => {
+    const error = await runMiddleware(requireTenantScope, {
+      auth: {
+        user: {
+          empresaId: 10,
+          rol: 'owner'
+        }
+      },
+      body: {
+        companyId: 99
+      },
+      params: {},
+      query: {}
+    });
+
+    assert.equal(error.statusCode, 403);
+  });
+
+  it('rejects contradictory tenant identifiers before reaching controllers', async () => {
+    const error = await runMiddleware(requireTenantScope, {
+      auth: {
+        user: {
+          empresaId: 10,
+          rol: 'super_admin'
+        }
+      },
+      body: {
+        empresa_id: 10
+      },
+      params: {
+        empresaId: 99
+      },
+      query: {}
+    });
+
+    assert.equal(error.statusCode, 400);
+    assert.match(error.message, /contradictorios/);
   });
 
   it('allows super-admin users to target any tenant', async () => {

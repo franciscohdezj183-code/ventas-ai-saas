@@ -71,7 +71,7 @@ function isLikelyProductQuestion(message) {
 }
 
 function isLikelyServiceQuestion(message) {
-  return /\b(servicio|servicios|cita|agenda|agendar|reservar|cotizar|cotizaci[oó]n|instalaci[oó]n|instalacion|mantenimiento|reparaci[oó]n|reparacion|consulta|asesor[ií]a|asesoria|atenci[oó]n|atencion|dise[nñ]o|diseno|limpieza|soporte|diagn[oó]stico|diagnostico|lona|lonas|vinil|tarjeta|tarjetas|logotipo|logotipos|marketing|se[nñ]aletica|senaletica|textil|promocionales|banner|web)\b/i.test(message)
+  return /\b(servicio|servicios|cita|agenda|agendar|reservar|cotizar|cotizaci[oó]n|instalaci[oó]n|instalacion|mantenimiento|reparaci[oó]n|reparacion|consulta|asesor[ií]a|asesoria|atenci[oó]n|atencion|dise[nñ]o|diseno|limpieza|soporte|diagn[oó]stico|diagnostico|lona|lonas|vinil|tarjeta|tarjetas|logotipo|logotipos|logo|logos|branding|identidad|visual|redes|sociales|flyer|flyers|publicidad|marketing|se[nñ]aletica|senaletica|textil|promocionales|banner|web)\b/i.test(message)
     || /\b(p[aá]gina|pagina|sitio)\s+web\b/i.test(message);
 }
 

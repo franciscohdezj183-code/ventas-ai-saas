@@ -16,6 +16,7 @@ import {
   emitWhatsappStatus
 } from './whatsapp-socket.gateway.js';
 import { WHATSAPP_SESSION_STATUSES, normalizeCompanyId } from './whatsapp.types.js';
+import { isTargetClosedError } from './whatsapp-startup.coordinator.js';
 
 const UNREAD_POLL_INTERVAL_MS = Number(process.env.WHATSAPP_UNREAD_POLL_INTERVAL_MS ?? 3000);
 const UNREAD_POLL_MESSAGE_LIMIT = Number(process.env.WHATSAPP_UNREAD_POLL_MESSAGE_LIMIT ?? 5);
@@ -120,9 +121,10 @@ function getMessageKey(message) {
     ].filter(Boolean).join(':');
 }
 
-export function registerWhatsappClientEvents({ companyId, client }) {
+export function registerWhatsappClientEvents({ companyId, client, onReady = null, onDisconnected = null }) {
   const empresaId = normalizeCompanyId(companyId);
   const handledMessageKeys = new Set();
+  let consecutiveUnreadPollFailures = 0;
 
   async function handleWhatsappMessageEvent(message, source) {
     const messageKey = getMessageKey(message);
@@ -194,6 +196,7 @@ export function registerWhatsappClientEvents({ companyId, client }) {
         }
 
         const chats = await client.getChats();
+        consecutiveUnreadPollFailures = 0;
         const unreadChats = chats.filter((chat) => Number(chat?.unreadCount ?? 0) > 0);
 
         if (unreadChats.length > 0) {
@@ -211,6 +214,7 @@ export function registerWhatsappClientEvents({ companyId, client }) {
           const limit = Math.max(1, Math.min(Number(chat.unreadCount ?? 1), UNREAD_POLL_MESSAGE_LIMIT));
           const messages = await chat.fetchMessages({ limit });
           const orderedMessages = [...messages].sort((left, right) => Number(left?.timestamp ?? 0) - Number(right?.timestamp ?? 0));
+          let processedMessages = 0;
 
           for (const message of orderedMessages) {
             if (message?.fromMe || !message?.body?.trim()) {
@@ -218,13 +222,52 @@ export function registerWhatsappClientEvents({ companyId, client }) {
             }
 
             await handleWhatsappMessageEvent(message, 'unread_poll');
+            processedMessages += 1;
+          }
+
+          if (processedMessages > 0) {
+            try {
+              if (chat.sendSeen) {
+                await chat.sendSeen();
+              } else if (client.sendSeen && chat.id?._serialized) {
+                await client.sendSeen(chat.id._serialized);
+              }
+            } catch (error) {
+              logger.error('whatsapp_unread_poll_mark_seen_error', {
+                empresaId,
+                chatId: chat.id?._serialized ?? null,
+                error
+              });
+            }
           }
         }
       } catch (error) {
+        consecutiveUnreadPollFailures += 1;
         logger.error('whatsapp_unread_poll_error', {
           empresaId,
+          consecutiveFailures: consecutiveUnreadPollFailures,
           error
         });
+
+        const clientContextLost = isTargetClosedError(error);
+
+        if (clientContextLost && consecutiveUnreadPollFailures >= 3) {
+          const reason = `WhatsApp web perdio el contexto durante polling: ${error?.message ?? error}`;
+          const session = setStatus(empresaId, WHATSAPP_SESSION_STATUSES.DISCONNECTED, {
+            disconnectedAt: new Date().toISOString(),
+            phoneNumber: null,
+            lastError: reason,
+            isInitializing: false
+          });
+          emitWhatsappError(empresaId, reason);
+          emitWhatsappStatus(empresaId, session);
+          logger.error('whatsapp_unread_poll_reconnect_required', {
+            empresaId,
+            consecutiveFailures: consecutiveUnreadPollFailures,
+            reason
+          });
+          onDisconnected?.({ empresaId, client, reason });
+        }
       } finally {
         const currentSession = getSession(empresaId);
 
@@ -238,6 +281,10 @@ export function registerWhatsappClientEvents({ companyId, client }) {
   }
 
   client.on('qr', async (qr) => {
+    if (getSession(empresaId)?.client !== client) {
+      return;
+    }
+
     const qrImage = await qrcode.toDataURL(qr);
     const session = setQr(empresaId, qr, qrImage);
     emitWhatsappQr(empresaId, { qrText: qr, qrImage, status: session.status });
@@ -246,12 +293,20 @@ export function registerWhatsappClientEvents({ companyId, client }) {
   });
 
   client.on('authenticated', () => {
+    if (getSession(empresaId)?.client !== client) {
+      return;
+    }
+
     markClientAuthenticated(empresaId);
     scheduleReadyStateProbe(empresaId, client);
     logger.info('whatsapp_authenticated', { empresaId });
   });
 
   client.on('auth_failure', (message) => {
+    if (getSession(empresaId)?.client !== client) {
+      return;
+    }
+
     clearQr(empresaId);
     const session = setError(empresaId, message || 'Fallo de autenticacion');
     emitWhatsappError(empresaId, message || 'Fallo de autenticacion');
@@ -260,10 +315,19 @@ export function registerWhatsappClientEvents({ companyId, client }) {
   });
 
   client.on('ready', () => {
+    if (getSession(empresaId)?.client !== client) {
+      return;
+    }
+
     markClientReady(empresaId, client);
+    onReady?.({ empresaId, client });
   });
 
   client.on('disconnected', (reason) => {
+    if (getSession(empresaId)?.client !== client) {
+      return;
+    }
+
     clearQr(empresaId);
     const session = setStatus(empresaId, WHATSAPP_SESSION_STATUSES.DISCONNECTED, {
       disconnectedAt: new Date().toISOString(),
@@ -274,6 +338,7 @@ export function registerWhatsappClientEvents({ companyId, client }) {
     emitWhatsappError(empresaId, reason || 'WhatsApp desconectado');
     emitWhatsappStatus(empresaId, session);
     logger.info('whatsapp_disconnected', { empresaId, reason });
+    onDisconnected?.({ empresaId, client, reason });
   });
 
   client.on('loading_screen', (percent, message) => {

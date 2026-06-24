@@ -1,10 +1,11 @@
 import {
+  disconnectSession as disconnectWhatsappSession,
   destroySession as destroyWhatsappSession,
   getQr as getWhatsappQr,
   getSessionStatus,
   listSessions,
+  requestStartSession as requestWhatsappStartSession,
   restartSession as restartWhatsappSession,
-  startSession as startWhatsappSession
 } from '../../whatsapp/whatsapp-session.manager.js';
 import { resolveScopedEmpresaId } from '../../middlewares/company-scope.middleware.js';
 import { normalizeRole, ROLES } from '../../config/permissions.js';
@@ -35,7 +36,7 @@ export async function startSession(req, res, next) {
       await assertPlanLimit(empresaId, 'whatsapp');
     }
 
-    const status = await startWhatsappSession(empresaId);
+    const status = await requestWhatsappStartSession(empresaId);
     await auditFromRequest(req, {
       accion: 'INICIAR_SESION',
       modulo: 'whatsapp',
@@ -67,11 +68,11 @@ export async function restartSession(req, res, next) {
 export async function disconnectSession(req, res, next) {
   try {
     const empresaId = resolveCompanyId(req);
-    const status = await destroyWhatsappSession(empresaId);
+    const status = await disconnectWhatsappSession(empresaId);
     await auditFromRequest(req, {
-      accion: 'DESCONECTAR_Y_ELIMINAR_SESION',
+      accion: 'DESCONECTAR_SESION',
       modulo: 'whatsapp',
-      descripcion: `Desconexion y eliminacion de sesion WhatsApp para empresa #${empresaId}`,
+      descripcion: `Desconexion de sesion WhatsApp para empresa #${empresaId} conservando credenciales`,
       empresaId
     });
     res.json({ data: status });

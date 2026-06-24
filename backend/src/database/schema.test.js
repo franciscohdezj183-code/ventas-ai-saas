@@ -23,7 +23,12 @@ describe('database production schema', () => {
       'score INT UNSIGNED NOT NULL DEFAULT 0',
       "prioridad ENUM('BAJA','MEDIA','ALTA','CRITICA')",
       'CREATE TABLE IF NOT EXISTS conversaciones',
+      'whatsapp_message_id VARCHAR(120) NULL',
+      'UNIQUE KEY conversaciones_empresa_whatsapp_message_unique (empresa_id, whatsapp_message_id)',
+      'KEY conversaciones_empresa_fecha_id_index (empresa_id, fecha, id)',
       'CREATE TABLE IF NOT EXISTS pedidos',
+      'KEY leads_empresa_estado_fecha_index (empresa_id, estado, fecha_creacion)',
+      'KEY pedidos_empresa_estado_fecha_index (empresa_id, estado, fecha)',
       'CREATE TABLE IF NOT EXISTS subscriptions',
       'CREATE TABLE IF NOT EXISTS subscription_invoices',
       'CREATE TABLE IF NOT EXISTS ai_usage_logs',
@@ -31,6 +36,8 @@ describe('database production schema', () => {
       'CREATE TABLE IF NOT EXISTS whatsapp_session_status',
       'CREATE TABLE IF NOT EXISTS bot_response_settings',
       'sinonimos_json JSON NULL',
+      'KEY human_handoffs_estado_expires_index (estado, expires_at)',
+      'KEY audit_logs_empresa_fecha_index (empresa_id, fecha)',
       'CREATE TABLE IF NOT EXISTS audit_logs'
     ];
 
@@ -47,6 +54,7 @@ describe('database production schema', () => {
 
     assert.deepEqual(migrationFiles, sortedMigrationFiles);
     assert.ok(migrationFiles.includes('202606220001_unique_user_email.sql'));
+    assert.ok(migrationFiles.includes('202606240001_database_integrity_indexes.sql'));
   });
 
   it('bootstraps clean databases from schema.sql before marking historical migrations', async () => {

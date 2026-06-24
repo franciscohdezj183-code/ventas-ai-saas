@@ -78,6 +78,25 @@ function mapDatabaseError(error) {
   throw error;
 }
 
+export async function assertConversationBelongsToCompany(conversationId, empresaId, runQuery = query) {
+  if (!conversationId) {
+    return;
+  }
+
+  const [rows] = await runQuery(
+    `SELECT id
+     FROM conversaciones
+     WHERE id = ?
+       AND empresa_id = ?
+     LIMIT 1`,
+    [conversationId, empresaId]
+  );
+
+  if (!rows[0]) {
+    throw createHttpError(400, 'La conversacion seleccionada no pertenece a la empresa del pedido');
+  }
+}
+
 export async function findOrders(auth) {
   const scope = companyScopeCondition(auth, 'o');
   const whereClause = scope.clause ? `WHERE ${scope.clause}` : '';
@@ -114,6 +133,8 @@ export async function createOrder(payload, auth) {
   const order = normalizeOrderPayload(payload, auth);
 
   try {
+    await assertConversationBelongsToCompany(order.conversationId, order.empresaId);
+
     const [result] = await query(
       `INSERT INTO pedidos
         (empresa_id, cliente_nombre, telefono_cliente, conversation_id, estado, total, notas)
@@ -146,6 +167,8 @@ export async function updateOrder(orderId, payload, auth) {
   const scope = appendCompanyScope(auth, [orderId], 'pedidos');
 
   try {
+    await assertConversationBelongsToCompany(order.conversationId, order.empresaId);
+
     await query(
       `UPDATE pedidos
        SET empresa_id = ?,

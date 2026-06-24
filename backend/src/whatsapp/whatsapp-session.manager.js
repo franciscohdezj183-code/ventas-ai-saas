@@ -27,8 +27,103 @@ import {
   normalizeCompanyId,
   normalizePhoneForWhatsapp
 } from './whatsapp.types.js';
+import {
+  backoffWithJitter,
+  isLockedLocalAuthError,
+  isTargetClosedError,
+  resetWhatsappStartupCoordinatorForTests,
+  wait,
+  waitForWhatsappTerminalState,
+  withGlobalWhatsappInitLock,
+  withTimeout
+} from './whatsapp-startup.coordinator.js';
 
 let clientFactory = createWhatsappClient;
+const sessionOperations = new Map();
+const reconnectTimers = new Map();
+const reconnectAttempts = new Map();
+const operationGenerations = new Map();
+const restartRequests = new Map();
+const initializationCancellations = new Map();
+
+function numberEnv(name, fallback) {
+  const value = Number(process.env[name] ?? fallback);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function shouldAutoReconnect(reason) {
+  if (process.env.WHATSAPP_AUTO_RECONNECT === 'false') {
+    return false;
+  }
+
+  const normalizedReason = String(reason ?? '').toLowerCase();
+  return !['logout', 'logged_out', 'auth_failure', 'conflict'].some((value) => normalizedReason.includes(value));
+}
+
+function clearReconnectTimer(companyId) {
+  const id = normalizeCompanyId(companyId);
+  const timer = reconnectTimers.get(id);
+
+  if (timer) {
+    clearTimeout(timer);
+    reconnectTimers.delete(id);
+  }
+}
+
+function getOperationGeneration(companyId) {
+  return operationGenerations.get(normalizeCompanyId(companyId)) ?? 0;
+}
+
+function invalidatePendingOperations(companyId) {
+  const id = normalizeCompanyId(companyId);
+  const cancellation = initializationCancellations.get(id);
+
+  if (cancellation) {
+    const error = new Error('WhatsApp initialization cancelled');
+    error.code = 'WHATSAPP_INIT_CANCELLED';
+    cancellation.reject(error);
+    initializationCancellations.delete(id);
+  }
+
+  const generation = getOperationGeneration(id) + 1;
+  operationGenerations.set(id, generation);
+  clearReconnectTimer(id);
+  return generation;
+}
+
+function createInitializationCancellation(companyId, generation) {
+  let rejectCancellation;
+  const promise = new Promise((_, reject) => {
+    rejectCancellation = reject;
+  });
+  const cancellation = { generation, reject: rejectCancellation };
+  initializationCancellations.set(normalizeCompanyId(companyId), cancellation);
+
+  return {
+    promise,
+    clear() {
+      if (initializationCancellations.get(normalizeCompanyId(companyId)) === cancellation) {
+        initializationCancellations.delete(normalizeCompanyId(companyId));
+      }
+    }
+  };
+}
+
+async function runSessionOperation(companyId, operation) {
+  const id = normalizeCompanyId(companyId);
+  const previous = sessionOperations.get(id) ?? Promise.resolve();
+  const next = previous
+    .catch(() => null)
+    .then(operation)
+    .finally(() => {
+      if (sessionOperations.get(id) === next) {
+        sessionOperations.delete(id);
+      }
+    });
+
+  sessionOperations.set(id, next);
+  return next;
+}
 
 function buildWhatsappNumberCandidates(phone) {
   const value = String(phone ?? '').trim();
@@ -106,12 +201,6 @@ function todayRange() {
   };
 }
 
-function wait(ms) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
 async function destroyClientQuietly(client) {
   if (!client) {
     return;
@@ -124,13 +213,29 @@ async function destroyClientQuietly(client) {
   }
 
   try {
-    await client.destroy();
+    await withTimeout(
+      client.destroy(),
+      numberEnv('WHATSAPP_DESTROY_TIMEOUT_MS', 15000),
+      'WhatsApp client destroy timed out'
+    );
   } catch (error) {
-    logger.error('whatsapp_client_destroy_error', { error });
+    logger.error('whatsapp_client_destroy_error', {
+      error,
+      targetClosed: isTargetClosedError(error),
+      lockedLocalAuth: isLockedLocalAuthError(error)
+    });
   }
 }
 
 async function removeCompanyLocalAuthQuietly(companyId) {
+  if (process.env.WHATSAPP_ALLOW_AUTH_DELETE !== 'true') {
+    logger.info('whatsapp_auth_delete_skipped', {
+      empresaId: companyId,
+      reason: 'WHATSAPP_ALLOW_AUTH_DELETE is not true'
+    });
+    return false;
+  }
+
   try {
     await fs.rm(getCompanyLocalAuthPath(companyId), {
       recursive: true,
@@ -138,8 +243,15 @@ async function removeCompanyLocalAuthQuietly(companyId) {
       maxRetries: 5,
       retryDelay: 300
     });
+    logger.info('whatsapp_auth_deleted', { empresaId: companyId });
+    return true;
   } catch (error) {
-    logger.error('whatsapp_company_localauth_remove_error', { empresaId: companyId, error });
+    logger.error('whatsapp_company_localauth_remove_error', {
+      empresaId: companyId,
+      lockedLocalAuth: isLockedLocalAuthError(error),
+      error
+    });
+    return false;
   }
 }
 
@@ -208,6 +320,17 @@ export function setWhatsappClientFactoryForTests(factory) {
 }
 
 export function resetWhatsappSessionsForTests() {
+  for (const timer of reconnectTimers.values()) {
+    clearTimeout(timer);
+  }
+
+  sessionOperations.clear();
+  reconnectTimers.clear();
+  reconnectAttempts.clear();
+  operationGenerations.clear();
+  restartRequests.clear();
+  initializationCancellations.clear();
+  resetWhatsappStartupCoordinatorForTests();
   resetStoreForTests();
   clientFactory = createWhatsappClient;
 }
@@ -216,49 +339,237 @@ export async function getSessionStatus(companyId) {
   return enrichPublicSession(getPublicSession(normalizeCompanyId(companyId)));
 }
 
-export async function startSession(companyId) {
+function scheduleReconnect(companyId, client, reason) {
+  const id = normalizeCompanyId(companyId);
+  const generation = getOperationGeneration(id);
+
+  if (!shouldAutoReconnect(reason)) {
+    reconnectAttempts.delete(id);
+    logger.info('whatsapp_auto_reconnect_skipped', { empresaId: id, reason });
+    return;
+  }
+
+  const attempt = (reconnectAttempts.get(id) ?? 0) + 1;
+  const maxAttempts = Math.max(0, numberEnv('WHATSAPP_RECONNECT_MAX_ATTEMPTS', 5));
+
+  if (maxAttempts > 0 && attempt > maxAttempts) {
+    reconnectAttempts.delete(id);
+    logger.error('whatsapp_auto_reconnect_exhausted', { empresaId: id, reason, attempt: attempt - 1 });
+    return;
+  }
+
+  const delay = backoffWithJitter(attempt, {
+    baseDelayMs: Math.max(1000, numberEnv('WHATSAPP_RECONNECT_BASE_DELAY_MS', 5000)),
+    maxDelayMs: numberEnv('WHATSAPP_RECONNECT_MAX_DELAY_MS', 60000),
+    jitterRatio: numberEnv('WHATSAPP_RECONNECT_JITTER_RATIO', 0.2)
+  });
+
+  clearReconnectTimer(id);
+  reconnectAttempts.set(id, attempt);
+
+  const timer = setTimeout(async () => {
+    reconnectTimers.delete(id);
+
+    try {
+      const current = getSession(id);
+
+      if (
+        getOperationGeneration(id) !== generation
+        || (
+          current?.client
+          && current.client !== client
+        )
+        || ![
+          WHATSAPP_SESSION_STATUSES.DISCONNECTED,
+          WHATSAPP_SESSION_STATUSES.FAILED
+        ].includes(current?.status)
+      ) {
+        logger.info('whatsapp_auto_reconnect_cancelled', {
+          empresaId: id,
+          reason,
+          attempt,
+          currentStatus: current?.status ?? null
+        });
+        return;
+      }
+
+      logger.info('whatsapp_auto_reconnect_start', { empresaId: id, reason, attempt });
+      const requestedGeneration = invalidatePendingOperations(id);
+      await runSessionOperation(id, () => restartSessionNow(id, requestedGeneration));
+    } catch (error) {
+      logger.error('whatsapp_auto_reconnect_error', { empresaId: id, reason, attempt, error });
+      const current = getSession(id);
+      scheduleReconnect(id, current?.client ?? null, reason);
+    }
+  }, delay);
+
+  timer.unref?.();
+  reconnectTimers.set(id, timer);
+  logger.info('whatsapp_auto_reconnect_scheduled', { empresaId: id, reason, attempt, delayMs: delay });
+}
+
+async function startSessionNow(companyId, requestedGeneration = getOperationGeneration(companyId)) {
   const id = normalizeCompanyId(companyId);
   const existing = getSession(id);
 
-  if (existing && ACTIVE_SESSION_STATUSES.has(existing.status)) {
+  if (requestedGeneration !== getOperationGeneration(id)) {
     return getPublicSession(id);
   }
 
-  if (existing?.client) {
-    await destroyClientQuietly(existing.client);
+  if (
+    existing
+    && ACTIVE_SESSION_STATUSES.has(existing.status)
+    && !(existing.status === WHATSAPP_SESSION_STATUSES.INITIALIZING && !existing.client)
+  ) {
+    return getPublicSession(id);
   }
 
-  const client = clientFactory(id);
-  markStarted(id, client);
-  setClient(id, client);
-  registerWhatsappClientEvents({ companyId: id, client });
-  logger.info('whatsapp_session_initialize_requested', { empresaId: id });
+  return withGlobalWhatsappInitLock(async () => {
+    const generation = requestedGeneration;
+    const currentBeforeStart = getSession(id);
 
-  try {
-    const initializePromise = client.initialize();
-    if (initializePromise?.catch) {
-      initializePromise.catch((error) => {
-        setError(id, error);
-        emitWhatsappError(id, error);
-        emitWhatsappStatus(id);
-        logger.error('whatsapp_initialize_async_error', { empresaId: id, error });
-      });
+    if (generation !== getOperationGeneration(id)) {
+      return getPublicSession(id);
     }
-  } catch (error) {
-    setError(id, error);
-    emitWhatsappError(id, error);
-    emitWhatsappStatus(id);
-    throw error;
-  }
 
-  const session = getPublicSession(id);
-  emitWhatsappStatus(id, session);
-  return session;
+    if (currentBeforeStart?.client) {
+      await destroyClientQuietly(currentBeforeStart.client);
+    }
+
+    if (generation !== getOperationGeneration(id)) {
+      return getPublicSession(id);
+    }
+
+    clearReconnectTimer(id);
+    const client = clientFactory(id);
+    markStarted(id, client);
+    setClient(id, client);
+    registerWhatsappClientEvents({
+      companyId: id,
+      client,
+      onReady: () => {
+        reconnectAttempts.delete(id);
+        clearReconnectTimer(id);
+      },
+      onDisconnected: ({ reason }) => scheduleReconnect(id, client, reason)
+    });
+    logger.info('whatsapp_session_initialize_requested', { empresaId: id });
+
+    const timeoutMs = Math.max(100, numberEnv('WHATSAPP_INITIALIZE_TIMEOUT_MS', 90000));
+    const cancellation = createInitializationCancellation(id, generation);
+
+    try {
+      await withTimeout(
+        Promise.race([
+          client.initialize(),
+          cancellation.promise
+        ]),
+        timeoutMs,
+        `WhatsApp client.initialize timed out after ${timeoutMs}ms`
+      );
+      const terminalSession = await waitForWhatsappTerminalState({
+        getSession: () => getSession(id),
+        timeoutMs,
+        pollIntervalMs: Math.max(25, numberEnv('WHATSAPP_INIT_POLL_INTERVAL_MS', 100)),
+        isCancelled: () => generation !== getOperationGeneration(id)
+      });
+      const publicSession = getPublicSession(id);
+      emitWhatsappStatus(id, publicSession);
+      logger.info('whatsapp_session_initialize_completed', {
+        empresaId: id,
+        status: terminalSession.status
+      });
+      return publicSession;
+    } catch (error) {
+      if (error?.code === 'WHATSAPP_INIT_CANCELLED') {
+        logger.info('whatsapp_session_initialize_cancelled', { empresaId: id });
+        if (getSession(id)?.client === client) {
+          await destroyClientQuietly(client);
+        }
+        return getPublicSession(id);
+      }
+
+      const current = getSession(id);
+
+      if (current?.client === client) {
+        await destroyClientQuietly(client);
+        const session = setStatus(id, WHATSAPP_SESSION_STATUSES.FAILED, {
+          client: null,
+          disconnectedAt: new Date().toISOString(),
+          phoneNumber: null,
+          lastError: error instanceof Error ? error.message : String(error ?? 'Error inicializando WhatsApp'),
+          isInitializing: false
+        });
+        emitWhatsappError(id, error);
+        emitWhatsappStatus(id, session);
+      } else {
+        logger.info('whatsapp_initialize_error_ignored_for_stale_client', {
+          empresaId: id,
+          error: error instanceof Error ? error.message : String(error ?? 'unknown')
+        });
+        return getPublicSession(id);
+      }
+
+      logger.error('whatsapp_initialize_error', {
+        empresaId: id,
+        targetClosed: isTargetClosedError(error),
+        lockedLocalAuth: isLockedLocalAuthError(error),
+        error
+      });
+      scheduleReconnect(id, null, error?.message ?? String(error));
+      return getPublicSession(id);
+    } finally {
+      cancellation.clear();
+    }
+  });
 }
 
-export async function restartSession(companyId) {
+export async function startSession(companyId) {
+  const id = normalizeCompanyId(companyId);
+  const requestedGeneration = getOperationGeneration(id);
+  return runSessionOperation(id, () => startSessionNow(id, requestedGeneration));
+}
+
+export async function requestStartSession(companyId) {
   const id = normalizeCompanyId(companyId);
   const existing = getSession(id);
+
+  if (
+    existing
+    && ACTIVE_SESSION_STATUSES.has(existing.status)
+    && !(existing.status === WHATSAPP_SESSION_STATUSES.INITIALIZING && !existing.client)
+  ) {
+    return getPublicSession(id);
+  }
+
+  const session = upsertSession(id, {
+    status: WHATSAPP_SESSION_STATUSES.INITIALIZING,
+    qr: null,
+    qrText: null,
+    qrImage: null,
+    lastError: null,
+    disconnectedAt: null,
+    startedAt: existing?.startedAt ?? new Date().toISOString(),
+    isInitializing: true
+  });
+  emitWhatsappStatus(id, session);
+
+  startSession(id).catch((error) => {
+    logger.error('whatsapp_background_start_error', { empresaId: id, error });
+  });
+
+  return getPublicSession(id);
+}
+
+async function restartSessionNow(companyId, requestedGeneration = getOperationGeneration(companyId)) {
+  const id = normalizeCompanyId(companyId);
+  const existing = getSession(id);
+
+  if (requestedGeneration !== getOperationGeneration(id)) {
+    return getPublicSession(id);
+  }
+
+  clearReconnectTimer(id);
 
   if (existing?.client) {
     await destroyClientQuietly(existing.client);
@@ -275,21 +586,69 @@ export async function restartSession(companyId) {
   });
   emitWhatsappStatus(id, session);
 
-  return startSession(id);
+  return startSessionNow(id, requestedGeneration);
+}
+
+export async function restartSession(companyId) {
+  const id = normalizeCompanyId(companyId);
+
+  if (restartRequests.has(id)) {
+    return restartRequests.get(id);
+  }
+
+  const requestedGeneration = invalidatePendingOperations(id);
+  const request = runSessionOperation(id, () => restartSessionNow(id, requestedGeneration))
+    .finally(() => {
+      if (restartRequests.get(id) === request) {
+        restartRequests.delete(id);
+      }
+    });
+  restartRequests.set(id, request);
+  return request;
 }
 
 export async function disconnectSession(companyId) {
-  return destroySession(companyId);
+  const id = normalizeCompanyId(companyId);
+  invalidatePendingOperations(id);
+  return disconnectSessionNow(id, { backgroundDestroy: true });
 }
 
-export async function destroySession(companyId) {
+async function disconnectSessionNow(companyId, { backgroundDestroy = false } = {}) {
   const id = normalizeCompanyId(companyId);
   const existing = getSession(id);
 
+  clearReconnectTimer(id);
+  reconnectAttempts.delete(id);
+
+  const session = upsertSession(id, {
+    status: WHATSAPP_SESSION_STATUSES.DISCONNECTED,
+    client: null,
+    qr: null,
+    qrText: null,
+    qrImage: null,
+    lastError: null,
+    isInitializing: false,
+    disconnectedAt: new Date().toISOString()
+  });
+  emitWhatsappStatus(id, session);
+
   if (existing?.client) {
-    await destroyClientQuietly(existing.client);
+    if (backgroundDestroy) {
+      logger.info('whatsapp_disconnect_destroy_background_started', { empresaId: id });
+      destroyClientQuietly(existing.client)
+        .then(() => logger.info('whatsapp_disconnect_destroy_background_completed', { empresaId: id }))
+        .catch((error) => logger.error('whatsapp_disconnect_destroy_background_error', { empresaId: id, error }));
+    } else {
+      await destroyClientQuietly(existing.client);
+    }
   }
 
+  return getPublicSession(id);
+}
+
+async function destroySessionNow(companyId) {
+  const id = normalizeCompanyId(companyId);
+  await disconnectSessionNow(id);
   removeSession(id);
   await removeCompanyLocalAuthQuietly(id);
 
@@ -304,8 +663,13 @@ export async function destroySession(companyId) {
     disconnectedAt: new Date().toISOString()
   });
   emitWhatsappStatus(id, session);
-
   return getPublicSession(id);
+}
+
+export async function destroySession(companyId) {
+  const id = normalizeCompanyId(companyId);
+  invalidatePendingOperations(id);
+  return runSessionOperation(id, () => destroySessionNow(id));
 }
 
 export async function getQr(companyId) {
@@ -369,14 +733,22 @@ export async function restoreSessionsOnBoot() {
      ORDER BY e.id ASC`
   );
 
+  return restoreCompanySessions(companies);
+}
+
+export async function restoreCompanySessions(companies, starter = startSession) {
   const restored = [];
 
   for (const company of companies) {
     try {
       logger.info('whatsapp_restore_session_start', { empresaId: company.id });
-      restored.push(await startSession(company.id));
-
-      await wait(Number(process.env.WHATSAPP_RESTORE_SESSION_DELAY_MS ?? 5000));
+      const session = await starter(company.id);
+      restored.push(session);
+      logger.info('whatsapp_restore_session_completed', {
+        empresaId: company.id,
+        status: session.status
+      });
+      await wait(Number(process.env.WHATSAPP_RESTORE_SESSION_DELAY_MS ?? 500));
     } catch (error) {
       logger.error('whatsapp_restore_session_error', {
         empresaId: company.id,
@@ -389,6 +761,13 @@ export async function restoreSessionsOnBoot() {
 }
 
 export async function shutdownWhatsappSessions() {
+  for (const timer of reconnectTimers.values()) {
+    clearTimeout(timer);
+  }
+
+  reconnectTimers.clear();
+  reconnectAttempts.clear();
+
   const sessions = listPublicSessions();
   await Promise.allSettled(sessions.map(async (session) => {
     const current = getSession(session.companyId);

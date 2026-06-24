@@ -1,20 +1,30 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { FALLBACK_INTENT, interpretIntent, validateIntentJson } from './intentInterpreter.js';
+import { env } from '../config/env.js';
 
-function mockOpenAIResponse(payload) {
+function mockOpenAIResponse(payload, calls = []) {
   return {
     chat: {
       completions: {
-        create: async () => ({
-          choices: [
-            {
-              message: {
-                content: typeof payload === 'string' ? payload : JSON.stringify(payload)
+        create: async (request) => {
+          calls.push(request);
+          return {
+            model: 'test-model',
+            usage: {
+              prompt_tokens: 10,
+              completion_tokens: 5,
+              total_tokens: 15
+            },
+            choices: [
+              {
+                message: {
+                  content: typeof payload === 'string' ? payload : JSON.stringify(payload)
+                }
               }
-            }
-          ]
-        })
+            ]
+          };
+        }
       }
     }
   };
@@ -51,6 +61,57 @@ test('interpreta busqueda real de producto sin inventar catalogo', async () => {
   assert.equal(result.parametros.tamano, '6 personas');
   assert.equal(result.parametros.stock_requerido, true);
   assert.equal(result.confianza, 0.9);
+});
+
+test('envia OpenAI con temperatura cero, max tokens y formato JSON', async () => {
+  const calls = [];
+  const originalTemperature = env.openai.temperature;
+  const originalMaxTokens = env.openai.maxTokens;
+  env.openai.temperature = 0;
+  env.openai.maxTokens = 240;
+
+  try {
+    await interpretIntent({
+      empresa_id: 1,
+      mensaje_cliente: 'Busco lonas',
+      contexto: { nombre: 'Demo', tipo_negocio: 'Servicios' },
+      client: mockOpenAIResponse({
+        intencion: 'BUSCAR_SERVICIO',
+        herramienta_mcp: 'buscar_servicios',
+        parametros: { texto: 'lonas' },
+        confianza: 0.9,
+        requiere_respuesta_ia: false
+      }, calls)
+    });
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].temperature, 0);
+    assert.equal(calls[0].max_tokens, 240);
+    assert.deepEqual(calls[0].response_format, { type: 'json_object' });
+  } finally {
+    env.openai.temperature = originalTemperature;
+    env.openai.maxTokens = originalMaxTokens;
+  }
+});
+
+test('no falla la intencion si el callback de tokens falla', async () => {
+  const result = await interpretIntent({
+    empresa_id: 1,
+    mensaje_cliente: 'Quiero hablar con asesor',
+    client: mockOpenAIResponse({
+      intencion: 'HABLAR_ASESOR',
+      herramienta_mcp: 'crear_lead',
+      parametros: { interes: 'asesor' },
+      confianza: 0.9,
+      requiere_respuesta_ia: false
+    }),
+    onUsage: async () => {
+      throw new Error('usage storage down');
+    }
+  });
+
+  assert.equal(result.intencion, 'HABLAR_ASESOR');
+  assert.equal(result.herramienta_mcp, 'crear_lead');
 });
 
 test('interpreta solicitud de asesor como herramienta crear_lead', async () => {

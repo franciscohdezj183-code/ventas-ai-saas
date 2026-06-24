@@ -38,6 +38,38 @@ export function estimateAICost({ tokensInput = 0, tokensOutput = 0 }) {
   return Number((inputCost + outputCost).toFixed(8));
 }
 
+export async function assertUsageReferencesBelongToTenant({ tenantId, userId, conversationId }, runQuery = query) {
+  if (userId) {
+    const [userRows] = await runQuery(
+      `SELECT id
+       FROM usuarios
+       WHERE id = ?
+         AND empresa_id = ?
+       LIMIT 1`,
+      [Number(userId), tenantId]
+    );
+
+    if (!userRows[0]) {
+      throw createHttpError(400, 'El usuario de consumo IA no pertenece a la empresa');
+    }
+  }
+
+  if (conversationId) {
+    const [conversationRows] = await runQuery(
+      `SELECT id
+       FROM conversaciones
+       WHERE id = ?
+         AND empresa_id = ?
+       LIMIT 1`,
+      [Number(conversationId), tenantId]
+    );
+
+    if (!conversationRows[0]) {
+      throw createHttpError(400, 'La conversacion de consumo IA no pertenece a la empresa');
+    }
+  }
+}
+
 export async function registerAIUsage({
   tenantId,
   userId = null,
@@ -59,6 +91,14 @@ export async function registerAIUsage({
   const output = Math.max(Number(tokensOutput ?? 0), 0);
   const total = Math.max(Number(totalTokens ?? input + output), 0);
   const cost = estimatedCost ?? estimateAICost({ tokensInput: input, tokensOutput: output });
+  const normalizedUserId = userId ? Number(userId) : null;
+  const normalizedConversationId = conversationId ? Number(conversationId) : null;
+
+  await assertUsageReferencesBelongToTenant({
+    tenantId: normalizedTenantId,
+    userId: normalizedUserId,
+    conversationId: normalizedConversationId
+  });
 
   const [result] = await query(
     `INSERT INTO ai_usage_logs
@@ -66,8 +106,8 @@ export async function registerAIUsage({
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))`,
     [
       normalizedTenantId,
-      userId ? Number(userId) : null,
-      conversationId ? Number(conversationId) : null,
+      normalizedUserId,
+      normalizedConversationId,
       input,
       output,
       total,
@@ -80,8 +120,8 @@ export async function registerAIUsage({
   return {
     id: result.insertId,
     tenant_id: normalizedTenantId,
-    user_id: userId ? Number(userId) : null,
-    conversation_id: conversationId ? Number(conversationId) : null,
+    user_id: normalizedUserId,
+    conversation_id: normalizedConversationId,
     tokens_input: input,
     tokens_output: output,
     total_tokens: total,

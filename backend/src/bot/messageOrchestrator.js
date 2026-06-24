@@ -17,6 +17,7 @@ import {
   formatMoney
 } from './business-types/service-pricing.helper.js';
 import { normalizeMexicanPhoneNumber } from '../whatsapp/whatsapp-number.helper.js';
+import { logger } from '../utils/logger.js';
 
 function normalizePhone(value) {
   return normalizeMexicanPhoneNumber(value);
@@ -69,7 +70,10 @@ function normalizarTextoBusqueda(value, synonyms = null) {
     ['plastik', 'plastico'],
     ['mesaz', 'mesas'],
     ['meza', 'mesa'],
-    ['mezas', 'mesas']
+    ['mezas', 'mesas'],
+    ['logo', 'logotipo'],
+    ['logos', 'logotipo'],
+    ['flyers', 'flyer']
   ]);
 
   for (const [alias, target] of configuredSynonymEntries(synonyms)) {
@@ -110,8 +114,10 @@ const SERVICE_SEARCH_STOP_WORDS = new Set([
   'los',
   'm',
   'manejan',
+  'me',
   'metro',
   'metros',
+  'necesito',
   'ofrecen',
   'por',
   'precio',
@@ -120,6 +126,8 @@ const SERVICE_SEARCH_STOP_WORDS = new Set([
   'sale',
   'servicio',
   'servicios',
+  'si',
+  'saber',
   'tienen',
   'una',
   'un',
@@ -198,11 +206,133 @@ function rankServicesForMessage(services, message, synonyms = null) {
 
         return total;
       }, 0);
+      const matchedTokens = tokens.filter((token) => {
+        const variants = serviceTokenVariants(token);
+        return variants.some((variant) => haystack.includes(variant));
+      }).length;
+      const coverage = matchedTokens / tokens.length;
 
-      return { service, index, score, nameTokens: name.split(/\s+/).filter(Boolean).length };
+      return { service, index, score, coverage, nameTokens: name.split(/\s+/).filter(Boolean).length };
     })
     .sort((left, right) => right.score - left.score || left.nameTokens - right.nameTokens || left.index - right.index)
+    .filter((entry) => tokens.length <= 1 || entry.coverage >= 0.5)
     .map((entry) => entry.service);
+}
+
+function normalizedBusinessType(companyContext = {}) {
+  return String(companyContext.tipo_negocio ?? companyContext.tipo ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function isServiceCapableBusiness(companyContext = {}) {
+  const type = normalizedBusinessType(companyContext);
+  return !type || /servicio|mixto|mixed/.test(type);
+}
+
+function extractNamedBusinessFromMessage(message) {
+  const text = String(message ?? '').trim();
+  const match = text.match(/\b(?:llamada|llamado|se llama|nombre es)\s+([^.,;]+?)(?:\s+y\s+quiero|\s+y\s+necesito|\.|,|;|$)/i);
+  return match?.[1]?.trim() ?? null;
+}
+
+function mentionedCommercialNeeds(message) {
+  const text = normalizarTextoBusqueda(message);
+  const needs = [
+    [/\blogotipo\b/, 'logo/logotipo'],
+    [/\b(color|colores|paleta|identidad visual|imagen)\b/, 'identidad visual/colores'],
+    [/\b(instagram|redes sociales|sociales|publicaciones|posts|contenido)\b/, 'publicaciones/redes sociales'],
+    [/\b(branding|marca|renovar imagen|imagen)\b/, 'branding/imagen de marca'],
+    [/\b(web|pagina web|sitio web)\b/, 'sitio web'],
+    [/\b(lona|vinil|rotulacion|senaletica|banner|impresion)\b/, 'impresion/rotulacion'],
+    [/\b(producto|productos|catalogo|stock|comprar|apartar)\b/, 'producto/compra']
+  ];
+
+  return [...new Set(needs.filter(([pattern]) => pattern.test(text)).map(([, label]) => label))];
+}
+
+function isQuoteOrAdvisorRequest(message) {
+  const text = normalizarTextoBusqueda(message);
+  return /\b(cotizar|cotizacion|cotisacion|presupuesto|propuesta|precio|costo|costos|asesor|ayudar|ayuda|proyecto)\b/.test(text);
+}
+
+function isComplexCommercialRequest(message) {
+  const text = normalizarTextoBusqueda(message);
+  const needs = mentionedCommercialNeeds(message);
+  return (
+    isQuoteOrAdvisorRequest(message)
+    && (
+      needs.length >= 2
+      || /\b(renovar|proyecto|negocio|empresa|cafeteria|restaurante|marca|imagen)\b/.test(text)
+    )
+  );
+}
+
+function buildCommercialRequestSummary({ message, companyContext = {}, contactName = null, phone = null }) {
+  const businessName = extractNamedBusinessFromMessage(message);
+  const needs = mentionedCommercialNeeds(message);
+  const type = normalizedBusinessType(companyContext);
+  const businessLabel = type.includes('servicio')
+    ? 'servicio/proyecto'
+    : type.includes('mixto') || type.includes('mixed')
+      ? 'producto/servicio'
+      : 'producto/compra';
+  const parts = [];
+
+  if (contactName) {
+    parts.push(`Cliente: ${contactName}`);
+  }
+
+  if (phone) {
+    parts.push(`Telefono: ${phone}`);
+  }
+
+  parts.push(`Solicitud: ${businessLabel}`);
+
+  if (businessName) {
+    parts.push(`Negocio del cliente: ${businessName}`);
+  }
+
+  if (needs.length > 0) {
+    parts.push(`Necesita: ${needs.join(', ')}`);
+  }
+
+  parts.push(`Mensaje: ${String(message ?? '').trim()}`);
+  return parts.join(' | ');
+}
+
+function botHandledRequest(response) {
+  const text = normalizarTextoBusqueda(response);
+  return Boolean(text) && !/\b(no encontre|no pude|no hay|asesor|avisarle|pasarte)\b/.test(text);
+}
+
+function shouldConvertToAdvisorLead({ intent, message, companyContext }) {
+  if (!isComplexCommercialRequest(message)) {
+    return false;
+  }
+
+  if (!isServiceCapableBusiness(companyContext)) {
+    return intent?.intencion === 'INTENCION_COMPRA' || intent?.herramienta_mcp === 'registrar_intencion_compra';
+  }
+
+  return ['MENSAJE_GENERAL', 'CONSULTAR_SERVICIO', 'BUSCAR_SERVICIO', 'CONSULTAR_PRECIO', 'INTENCION_COMPRA', 'HABLAR_ASESOR']
+    .includes(intent?.intencion)
+    || ['buscar_servicios', 'obtener_servicio', 'crear_lead', 'registrar_intencion_compra', '', null, undefined]
+      .includes(intent?.herramienta_mcp);
+}
+
+function convertIntentToAdvisorLead({ intent, message, companyContext, contactName, phone }) {
+  return {
+    ...intent,
+    intencion: 'HABLAR_ASESOR',
+    herramienta_mcp: 'crear_lead',
+    parametros: {
+      ...(intent.parametros ?? {}),
+      interes: buildCommercialRequestSummary({ message, companyContext, contactName, phone }),
+      nombre_cliente: intent.parametros?.nombre_cliente ?? contactName ?? undefined
+    }
+  };
 }
 
 function prepareServiceToolResult(toolResult, { message, synonyms = null, catalogRequest = false } = {}) {
@@ -244,7 +374,13 @@ function normalizeGreetingText(value) {
 }
 
 function configuredFallback(companyContext = {}) {
-  return companyContext.fallback_message || 'Puedo ayudarte con productos, servicios y atencion comercial. Dime que estas buscando.';
+  const configured = String(companyContext.fallback_message ?? '').trim();
+  return configured || 'Puedo ayudarte con productos, servicios y atencion comercial. Dime que estas buscando.';
+}
+
+function ensureResponseText(value, companyContext = {}) {
+  const text = String(value ?? '').trim();
+  return text || configuredFallback(companyContext);
 }
 
 const BUSINESS_TIME_ZONE = 'America/Mexico_City';
@@ -1028,6 +1164,15 @@ function isPriceFollowUp(message) {
   return /\b(cu[aá]nto cuesta|cuanto cuesta|precio|costo|vale|cu[aá]nto vale)\b/i.test(message);
 }
 
+function isSubjectlessContextFollowUp(message) {
+  const normalized = normalizarTextoBusqueda(message)
+    .replace(/\b(cuanto|cuesta|precio|costo|costos|vale|cotizar|cotizacion|dame|dar|me|puedes|el|la|los|las|un|una|por|favor)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return normalized.length === 0;
+}
+
 function isPurchaseFollowUp(message) {
   return /\b(me interesa|lo quiero|la quiero|quiero comprar|comprar|apartar|ap[aá]rtamelo|apartamelo|ap[aá]rtalo|apartalo|apartarlo|ap[aá]rtarlo|aparto|ap[aá]rto|como lo aparto|c[oó]mo lo aparto|separar|separamelo|me lo llevo|quiero ese|p[aá]same con asesor|pasame con asesor|quiero informaci[oó]n|quiero informacion|hacer pedido|levantar pedido|finalizar compra|cerrar compra)\b/i.test(message);
 }
@@ -1097,7 +1242,7 @@ function applyConversationContext(intent, message, conversationContext) {
   }
 
   if (isShortContextualQuestion(message) && hasProductContext(conversationContext)) {
-    if (isPriceFollowUp(message)) {
+    if (isPriceFollowUp(message) && isSubjectlessContextFollowUp(message)) {
       return {
         ...nextIntent,
         intencion: 'CONSULTAR_PRECIO',
@@ -1138,7 +1283,7 @@ function applyConversationContext(intent, message, conversationContext) {
       };
     }
 
-    if (isPriceFollowUp(message)) {
+    if (isPriceFollowUp(message) && isSubjectlessContextFollowUp(message)) {
       return {
         ...nextIntent,
         intencion: 'CONSULTAR_PRECIO',
@@ -1189,7 +1334,11 @@ function applyConversationContext(intent, message, conversationContext) {
     }
   }
 
-  if (nextIntent.intencion === 'MENSAJE_GENERAL' && isPriceFollowUp(message)) {
+  if (
+    nextIntent.intencion === 'MENSAJE_GENERAL'
+    && isPriceFollowUp(message)
+    && isSubjectlessContextFollowUp(message)
+  ) {
     if (hasProductContext(conversationContext)) {
       return {
         ...nextIntent,
@@ -1349,7 +1498,8 @@ async function getMinimalCompanyContext(empresaId, mcpClient) {
       politica_pagos: company?.politica_pagos,
       response_profile: responseProfile
     };
-  } catch {
+  } catch (error) {
+    logger.error('ai_company_context_load_error', { empresaId, error });
     return {};
   }
 }
@@ -1360,6 +1510,7 @@ export async function orchestrateIncomingMessage({
   phone,
   message,
   whatsappChatId = null,
+  whatsappMessageId = null,
   contactName = null,
   contexto = null,
   currentDate = new Date(),
@@ -1382,11 +1533,12 @@ export async function orchestrateIncomingMessage({
   const blockedTopics = parseBlockedTopics(contextoEmpresa.temas_bloqueados);
 
   if (matchesBlockedTopic(message, blockedTopics)) {
-    const response = configuredFallback(contextoEmpresa);
-      const savedConversation = await mcpClient.callTool('guardar_conversacion', {
+    const response = ensureResponseText(configuredFallback(contextoEmpresa), contextoEmpresa);
+    const savedConversation = await mcpClient.callTool('guardar_conversacion', {
       empresa_id: empresaId,
       telefono: cleanPhone,
       whatsapp_id: whatsappChatId,
+      whatsapp_message_id: whatsappMessageId,
       contact_name: contactName,
       mensaje: message,
       respuesta: response,
@@ -1412,19 +1564,21 @@ export async function orchestrateIncomingMessage({
   const faqAnswer = findFaqAnswer(message, contextoEmpresa.faq_personalizada);
 
   if (faqAnswer) {
+    const response = ensureResponseText(faqAnswer, contextoEmpresa);
     const savedConversation = await mcpClient.callTool('guardar_conversacion', {
       empresa_id: empresaId,
       telefono: cleanPhone,
       whatsapp_id: whatsappChatId,
+      whatsapp_message_id: whatsappMessageId,
       contact_name: contactName,
       mensaje: message,
-      respuesta: faqAnswer,
+      respuesta: response,
       estado: 'bot_active',
       tipo_mensaje: 'bot'
     });
 
     return {
-      respuesta: faqAnswer,
+      respuesta: response,
       medios: [],
       intencion: 'FAQ_PERSONALIZADA',
       herramienta_mcp: null,
@@ -1463,14 +1617,19 @@ export async function orchestrateIncomingMessage({
       }
     });
   } catch (error) {
+    logger.error('ai_intent_interpreter_error', {
+      empresaId,
+      errorCode: error?.code ?? error?.name ?? 'INTERPRETER_ERROR',
+      error
+    });
     interpretedIntent = {
       ...FALLBACK_INTENT,
       parametros: {
-        ai_error: error.code ?? error.name ?? 'INTERPRETER_ERROR'
+        ai_error: error?.code ?? error?.name ?? 'INTERPRETER_ERROR'
       }
     };
   }
-  const intent = businessStrategy.prepareIntent(
+  let intent = businessStrategy.prepareIntent(
     applyConversationContext(validateIntentJson(interpretedIntent), normalizedMessage, conversationContext),
     {
       companyContext: contextoEmpresa,
@@ -1478,6 +1637,15 @@ export async function orchestrateIncomingMessage({
       normalizedMessage
     }
   );
+  if (shouldConvertToAdvisorLead({ intent, message, companyContext: contextoEmpresa })) {
+    intent = convertIntentToAdvisorLead({
+      intent,
+      message,
+      companyContext: contextoEmpresa,
+      contactName,
+      phone: cleanPhone
+    });
+  }
   intent.sinonimos = contextoEmpresa.response_profile?.sinonimos ?? null;
   let toolResult = null;
   let notificationResult = null;
@@ -1485,11 +1653,12 @@ export async function orchestrateIncomingMessage({
   const shouldRequestHuman = shouldNotifyOwner(intent.intencion) && intent.herramienta_mcp !== 'crear_pedido';
 
   if (shouldRequestHuman && !isWithinBusinessHours(contextoEmpresa.horario_atencion, currentDate)) {
-    const response = buildAfterHoursAdvisorResponse(contextoEmpresa, currentDate);
+    const response = ensureResponseText(buildAfterHoursAdvisorResponse(contextoEmpresa, currentDate), contextoEmpresa);
     const savedConversation = await mcpClient.callTool('guardar_conversacion', {
       empresa_id: empresaId,
       telefono: cleanPhone,
       whatsapp_id: whatsappChatId,
+      whatsapp_message_id: whatsappMessageId,
       contact_name: contactName,
       mensaje: message,
       respuesta: response,
@@ -1574,12 +1743,13 @@ export async function orchestrateIncomingMessage({
     toolResult.mensaje_original = message;
   }
 
-  const response = buildResponse(responseIntent, toolResult, contextoEmpresa);
+  const response = ensureResponseText(buildResponse(responseIntent, toolResult, contextoEmpresa), contextoEmpresa);
   const media = contextoEmpresa.envio_imagenes === false ? [] : buildMedia(responseIntent, toolResult, response);
   const savedConversation = await mcpClient.callTool('guardar_conversacion', {
     empresa_id: empresaId,
     telefono: cleanPhone,
     whatsapp_id: whatsappChatId,
+    whatsapp_message_id: whatsappMessageId,
     contact_name: contactName,
     mensaje: message,
     respuesta: response,
@@ -1607,6 +1777,14 @@ export async function orchestrateIncomingMessage({
         telefono_cliente: cleanPhone,
         whatsapp_chat_id: whatsappChatId,
         mensaje_cliente: message,
+        resumen_solicitud: toolResult?.interes ?? intent.parametros?.interes ?? buildCommercialRequestSummary({
+          message,
+          companyContext: contextoEmpresa,
+          contactName,
+          phone: cleanPhone
+        }),
+        respuesta_bot: response,
+        atendido_por_bot: botHandledRequest(response),
         producto_id: toolResult?.producto_id ?? intent.parametros?.producto_id ?? conversationContext?.ultimo_producto_id ?? null,
         servicio_id: toolResult?.servicio_id ?? intent.parametros?.servicio_id ?? conversationContext?.ultimo_servicio_id ?? null,
         motivo: intent.intencion,

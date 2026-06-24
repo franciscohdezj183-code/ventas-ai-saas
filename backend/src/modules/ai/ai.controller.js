@@ -1,5 +1,9 @@
 import { generateCompanyReply, getAIStatus, interpretCustomerIntent } from './ai.service.js';
 import { resolveScopedEmpresaId } from '../../middlewares/company-scope.middleware.js';
+import {
+  getOpenAIHealthSnapshot,
+  validateOpenAIKey
+} from '../../ai/openai-health.service.js';
 
 function resolveCompanyId(req) {
   return resolveScopedEmpresaId(req.auth, req.body.empresa_id);
@@ -7,6 +11,18 @@ function resolveCompanyId(req) {
 
 export function aiStatus(req, res) {
   res.json({ data: getAIStatus() });
+}
+
+export function aiHealth(req, res) {
+  res.json({ data: getOpenAIHealthSnapshot() });
+}
+
+export async function checkAIHealth(req, res, next) {
+  try {
+    res.json({ data: await validateOpenAIKey() });
+  } catch (error) {
+    next(error);
+  }
 }
 
 export async function testReply(req, res, next) {

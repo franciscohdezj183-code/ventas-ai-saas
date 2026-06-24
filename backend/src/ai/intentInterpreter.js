@@ -1,6 +1,11 @@
 import OpenAI from 'openai';
 import { env } from '../config/env.js';
 import { mcpClient } from '../mcp/mcpClient.js';
+import { logger } from '../utils/logger.js';
+import {
+  recordOpenAIError,
+  recordOpenAISuccess
+} from './openai-health.service.js';
 
 export const ALLOWED_INTENTS = [
   'SALUDO',
@@ -80,7 +85,11 @@ function getOpenAIClient() {
   }
 
   if (!openaiClient) {
-    openaiClient = new OpenAI({ apiKey: env.openai.apiKey });
+    openaiClient = new OpenAI({
+      apiKey: env.openai.apiKey,
+      timeout: env.openai.timeoutMs,
+      maxRetries: env.openai.maxRetries
+    });
   }
 
   return openaiClient;
@@ -285,29 +294,43 @@ export async function interpretIntent({
     return fallbackIntent();
   }
 
-  const completion = await client.chat.completions.create({
-    model: env.openai.model,
-    response_format: { type: 'json_object' },
-    messages: [
-      {
-        role: 'system',
-        content:
-          'Eres un clasificador JSON. Solo conviertes mensajes de clientes en JSON estructurado. No das respuestas finales, no inventas datos y no produces SQL.'
-      },
-      {
-        role: 'user',
-        content: buildPrompt({ mensajeCliente: cleanMessage, contexto })
-      }
-    ]
-  });
+  let completion;
+
+  try {
+    completion = await client.chat.completions.create({
+      model: env.openai.model,
+      temperature: env.openai.temperature,
+      max_tokens: env.openai.maxTokens,
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content:
+            'Eres un clasificador JSON. Solo conviertes mensajes de clientes en JSON estructurado. No das respuestas finales, no inventas datos y no produces SQL.'
+        },
+        {
+          role: 'user',
+          content: buildPrompt({ mensajeCliente: cleanMessage, contexto })
+        }
+      ]
+    });
+    recordOpenAISuccess();
+  } catch (error) {
+    recordOpenAIError(error);
+    throw error;
+  }
 
   if (typeof onUsage === 'function') {
-    await onUsage({
-      tokens_input: Number(completion.usage?.prompt_tokens ?? 0),
-      tokens_output: Number(completion.usage?.completion_tokens ?? 0),
-      total_tokens: Number(completion.usage?.total_tokens ?? 0),
-      modelo_usado: completion.model ?? env.openai.model
-    });
+    try {
+      await onUsage({
+        tokens_input: Number(completion.usage?.prompt_tokens ?? 0),
+        tokens_output: Number(completion.usage?.completion_tokens ?? 0),
+        total_tokens: Number(completion.usage?.total_tokens ?? 0),
+        modelo_usado: completion.model ?? env.openai.model
+      });
+    } catch (error) {
+      logger.error('openai_usage_callback_error', { empresaId, error });
+    }
   }
 
   const content = completion.choices[0]?.message?.content ?? '{}';

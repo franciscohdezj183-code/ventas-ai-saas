@@ -2231,4 +2231,262 @@ describe('messageOrchestrator', () => {
     assert.equal(productSearchCall.args.texto, 'tienes sillas de madera');
     assert.equal(saveConversationCall.args.mensaje, originalMessage);
   });
+
+  it('returns a safe non-empty fallback when configured fallback is blank', async () => {
+    let savedArgs = null;
+    const result = await orchestrateIncomingMessage({
+      empresaId: 5,
+      phone: '5215550000000',
+      message: '???',
+      contexto: {
+        nombre: 'Empresa Demo',
+        tipo_negocio: 'General',
+        fallback_message: '   '
+      },
+      interpreter: async () => ({
+        intencion: 'MENSAJE_GENERAL',
+        herramienta_mcp: '',
+        parametros: {},
+        confianza: 0.2,
+        requiere_respuesta_ia: false
+      }),
+      mcpClient: {
+        async callTool(toolName, args) {
+          assert.equal(toolName, 'guardar_conversacion');
+          savedArgs = args;
+          return { conversacion_id: 9001 };
+        }
+      },
+      contextStore: {
+        async find() {
+          return null;
+        },
+        async save() {}
+      }
+    });
+
+    assert.ok(result.respuesta.trim().length > 0);
+    assert.equal(savedArgs.respuesta, result.respuesta);
+  });
+
+  it('falls back, saves the conversation, and responds when the interpreter throws', async () => {
+    let savedArgs = null;
+    const result = await orchestrateIncomingMessage({
+      empresaId: 5,
+      phone: '5215550000000',
+      message: 'Hola',
+      contexto: {
+        nombre: 'Empresa Demo',
+        tipo_negocio: 'General'
+      },
+      interpreter: async () => {
+        throw new Error('OpenAI timeout');
+      },
+      mcpClient: {
+        async callTool(toolName, args) {
+          assert.equal(toolName, 'guardar_conversacion');
+          savedArgs = args;
+          return { conversacion_id: 9002 };
+        }
+      },
+      contextStore: {
+        async find() {
+          return null;
+        },
+        async save() {}
+      }
+    });
+
+    assert.equal(result.intencion, 'SALUDO');
+    assert.ok(result.respuesta.trim().length > 0);
+    assert.equal(savedArgs.mensaje, 'Hola');
+    assert.equal(savedArgs.respuesta, result.respuesta);
+  });
+
+  it('does not reuse the previous service when a price question names a new subject', async () => {
+    const calls = [];
+    const result = await orchestrateIncomingMessage({
+      empresaId: 5,
+      phone: '527298349854',
+      message: 'Cuanto cuesta un logo?',
+      contexto: { tipo_negocio: 'SERVICIOS' },
+      interpreter: async () => ({
+        intencion: 'MENSAJE_GENERAL',
+        herramienta_mcp: '',
+        parametros: {},
+        confianza: 0.2,
+        requiere_respuesta_ia: false
+      }),
+      mcpClient: {
+        async callTool(toolName, args) {
+          calls.push({ toolName, args });
+
+          if (toolName === 'buscar_servicios') {
+            return {
+              servicios: [{
+                id: 31,
+                nombre: 'Diseno de logotipo',
+                descripcion: 'Identidad visual y logotipo para negocios',
+                tipo_precio: 'COTIZACION',
+                notas_cotizacion: 'Precio sujeto al alcance del proyecto'
+              }]
+            };
+          }
+
+          if (toolName === 'guardar_conversacion') {
+            return { conversacion_id: 300 };
+          }
+
+          throw new Error(`Unexpected tool: ${toolName}`);
+        }
+      },
+      contextStore: {
+        async find() {
+          return {
+            ultimo_servicio_id: 77,
+            ultimo_texto_busqueda: 'Marketing digital',
+            datos_json: {
+              servicio: { id: 77, nombre: 'Marketing digital' }
+            }
+          };
+        },
+        async save() {}
+      }
+    });
+
+    assert.equal(result.herramienta_mcp, 'buscar_servicios');
+    assert.equal(calls.some((call) => call.toolName === 'obtener_servicio'), false);
+    assert.match(result.respuesta, /logotipo/i);
+  });
+
+  it('prefers social media services over a generic design web match', async () => {
+    const result = await orchestrateIncomingMessage({
+      empresaId: 5,
+      phone: '527298349854',
+      message: 'Necesito diseno para redes sociales',
+      contexto: { tipo_negocio: 'SERVICIOS' },
+      interpreter: async () => ({
+        intencion: 'MENSAJE_GENERAL',
+        herramienta_mcp: '',
+        parametros: {},
+        confianza: 0.2,
+        requiere_respuesta_ia: false
+      }),
+      mcpClient: {
+        async callTool(toolName) {
+          if (toolName === 'buscar_servicios') {
+            return {
+              servicios: [
+                {
+                  id: 40,
+                  nombre: 'Diseno web',
+                  descripcion: 'Diseno de paginas y sitios web',
+                  tipo_precio: 'COTIZACION'
+                },
+                {
+                  id: 41,
+                  nombre: 'Marketing digital',
+                  descripcion: 'Contenido y diseno para redes sociales',
+                  tipo_precio: 'COTIZACION'
+                }
+              ]
+            };
+          }
+
+          if (toolName === 'guardar_conversacion') {
+            return { conversacion_id: 301 };
+          }
+
+          throw new Error(`Unexpected tool: ${toolName}`);
+        }
+      },
+      contextStore: {
+        async find() {
+          return null;
+        },
+        async save() {}
+      }
+    });
+
+    assert.match(result.respuesta, /Marketing digital/);
+    assert.doesNotMatch(result.respuesta, /Diseno web/);
+  });
+
+  it('turns complex branding quote requests into a rich advisor lead', async () => {
+    const calls = [];
+    const handoffRequests = [];
+    const message = 'Hola, me llamo Francisco. Tengo una cafetería llamada Café Luna y quiero renovar mi imagen. Necesito logo, colores, publicaciones para Instagram y una cotización. ¿Me pueden ayudar?';
+
+    const result = await orchestrateIncomingMessage({
+      empresaId: 5,
+      phone: '5212205722560',
+      whatsappChatId: '5212205722560@c.us',
+      contactName: 'Francisco',
+      message,
+      contexto: {
+        nombre: 'MOK Estudio + Taller',
+        tipo_negocio: 'SERVICIOS',
+        response_profile: {
+          mensaje_asesor: 'Perfecto, voy a avisarle a un asesor para revisar tu proyecto.'
+        }
+      },
+      interpreter: async () => ({
+        intencion: 'MENSAJE_GENERAL',
+        herramienta_mcp: 'buscar_servicios',
+        parametros: { texto: 'logo colores publicaciones instagram cotizacion' },
+        confianza: 0.7,
+        requiere_respuesta_ia: false
+      }),
+      mcpClient: {
+        async callTool(toolName, args) {
+          calls.push({ toolName, args });
+
+          if (toolName === 'crear_lead') {
+            return {
+              lead_id: 123,
+              telefono: args.telefono,
+              whatsapp_id: args.whatsapp_id,
+              contact_name: args.contact_name,
+              interes: args.interes
+            };
+          }
+
+          if (toolName === 'guardar_conversacion') {
+            return { conversacion_id: 456 };
+          }
+
+          throw new Error(`Unexpected tool: ${toolName}`);
+        }
+      },
+      handoffManager: {
+        async hasActive() {
+          return false;
+        },
+        async request(args) {
+          handoffRequests.push(args);
+          return { handoff_id: 789, estado: 'PENDING_OWNER', duplicate: false };
+        }
+      },
+      contextStore: {
+        async find() {
+          return null;
+        },
+        async save() {}
+      }
+    });
+
+    const leadCall = calls.find((call) => call.toolName === 'crear_lead');
+    assert.equal(result.herramienta_mcp, 'crear_lead');
+    assert.equal(result.lead_id, 123);
+    assert.equal(calls.some((call) => call.toolName === 'buscar_servicios'), false);
+    assert.match(result.respuesta, /asesor/i);
+    assert.match(leadCall.args.interes, /Café Luna|Cafe Luna/i);
+    assert.match(leadCall.args.interes, /logo\/logotipo/i);
+    assert.match(leadCall.args.interes, /publicaciones\/redes sociales/i);
+    assert.equal(handoffRequests.length, 1);
+    assert.match(handoffRequests[0].resumen_solicitud, /Café Luna|Cafe Luna/i);
+    assert.match(handoffRequests[0].resumen_solicitud, /cotización|cotizacion|Instagram/i);
+    assert.equal(handoffRequests[0].telefono_cliente, '522205722560');
+    assert.equal(handoffRequests[0].atendido_por_bot, false);
+  });
 });

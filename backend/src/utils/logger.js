@@ -1,5 +1,5 @@
 const SENSITIVE_KEY_PATTERN = /(^|[_-])(authorization|cookie|password|passwd|secret|token|api[_-]?key|access[_-]?token|refresh[_-]?token|jwt|qr|code|session)($|[_-])/i;
-const SENSITIVE_VALUE_PATTERN = /(bearer\s+)[a-z0-9._~+/=-]+|((?:token|password|secret|api[_-]?key|code)=)[^&\s]+/gi;
+const SENSITIVE_VALUE_PATTERN = /(bearer\s+)[a-z0-9._~+/=-]+|((?:token|password|secret|api[_-]?key|code)=)[^&\s]+|(sk-(?:proj-)?)[a-z0-9_-]{12,}/gi;
 
 function serializeError(error) {
   if (!error) {
@@ -16,12 +16,16 @@ function serializeError(error) {
 }
 
 function redactString(value) {
-  return value.replace(SENSITIVE_VALUE_PATTERN, (match, bearerPrefix, keyPrefix) => {
+  return value.replace(SENSITIVE_VALUE_PATTERN, (match, bearerPrefix, keyPrefix, openAIPrefix) => {
     if (bearerPrefix) {
       return `${bearerPrefix}[REDACTED]`;
     }
 
-    return `${keyPrefix}[REDACTED]`;
+    if (keyPrefix) {
+      return `${keyPrefix}[REDACTED]`;
+    }
+
+    return `${openAIPrefix}[REDACTED]`;
   });
 }
 

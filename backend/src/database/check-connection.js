@@ -27,6 +27,7 @@ const REQUIRED_COLUMNS = [
   ['leads', 'prioridad'],
   ['leads', 'score_detalle_json'],
   ['leads', 'score_actualizado_at'],
+  ['conversaciones', 'whatsapp_message_id'],
   ['bot_response_settings', 'sinonimos_json'],
   ['bot_response_settings', 'handoff_timeout_minutos'],
   ['configuracion_empresas', 'instrucciones_negocio'],
@@ -38,7 +39,13 @@ const REQUIRED_INDEXES = [
   ['productos', 'productos_fulltext_search'],
   ['servicios', 'servicios_fulltext_search'],
   ['categorias', 'categorias_fulltext_search'],
-  ['conversaciones', 'conversaciones_empresa_cliente_fecha_index']
+  ['conversaciones', 'conversaciones_empresa_cliente_fecha_index'],
+  ['conversaciones', 'conversaciones_empresa_whatsapp_message_unique'],
+  ['conversaciones', 'conversaciones_empresa_fecha_id_index'],
+  ['leads', 'leads_empresa_estado_fecha_index'],
+  ['pedidos', 'pedidos_empresa_estado_fecha_index'],
+  ['human_handoffs', 'human_handoffs_estado_expires_index'],
+  ['audit_logs', 'audit_logs_empresa_fecha_index']
 ];
 
 function placeholders(values) {

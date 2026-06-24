@@ -21,6 +21,8 @@ function validateGuardarConversacion(args, auth) {
     'telefono_cliente',
     'whatsapp_id',
     'external_id',
+    'whatsapp_message_id',
+    'message_id',
     'contact_name',
     'nombre_contacto',
     'mensaje',
@@ -34,6 +36,7 @@ function validateGuardarConversacion(args, auth) {
     empresaId: normalizeEmpresaId(args.empresa_id, auth),
     telefonoCliente: normalizePhone(args.telefono_cliente ?? args.telefono),
     whatsappId: normalizeText(args.whatsapp_id ?? args.external_id, 'whatsapp_id'),
+    whatsappMessageId: normalizeText(args.whatsapp_message_id ?? args.message_id, 'whatsapp_message_id'),
     contactName: normalizeText(args.contact_name ?? args.nombre_contacto, 'contact_name'),
     mensaje: normalizeText(args.mensaje ?? args.texto, 'mensaje', { required: true }),
     respuesta: normalizeText(args.respuesta, 'respuesta'),
@@ -46,12 +49,18 @@ async function executeGuardarConversacion(args, auth) {
   const input = validateGuardarConversacion(args, auth);
   const [result] = await query(
     `INSERT INTO conversaciones
-      (empresa_id, telefono_cliente, whatsapp_id, contact_name, mensaje, respuesta, estado, tipo_mensaje, fecha)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+      (empresa_id, telefono_cliente, whatsapp_id, whatsapp_message_id, contact_name, mensaje, respuesta, estado, tipo_mensaje, fecha)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+     ON DUPLICATE KEY UPDATE
+       id = LAST_INSERT_ID(id),
+       telefono_cliente = VALUES(telefono_cliente),
+       whatsapp_id = COALESCE(VALUES(whatsapp_id), whatsapp_id),
+       contact_name = COALESCE(VALUES(contact_name), contact_name)`,
     [
       input.empresaId,
       input.telefonoCliente,
       input.whatsappId,
+      input.whatsappMessageId,
       input.contactName,
       input.mensaje,
       input.respuesta,
@@ -64,6 +73,7 @@ async function executeGuardarConversacion(args, auth) {
     conversacion_id: result.insertId,
     telefono_cliente: input.telefonoCliente,
     whatsapp_id: input.whatsappId,
+    whatsapp_message_id: input.whatsappMessageId,
     contact_name: input.contactName
   };
 }
@@ -80,6 +90,8 @@ export const conversationTools = [
         telefono_cliente: { type: 'string' },
         whatsapp_id: { type: 'string' },
         external_id: { type: 'string' },
+        whatsapp_message_id: { type: 'string' },
+        message_id: { type: 'string' },
         contact_name: { type: 'string' },
         nombre_contacto: { type: 'string' },
         mensaje: { type: 'string' },

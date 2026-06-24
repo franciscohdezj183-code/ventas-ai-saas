@@ -12,10 +12,36 @@ import { normalizeCompanyId, normalizePhoneForWhatsapp } from './whatsapp.types.
 import {
   extractPhoneFromWhatsappId,
   getRealCustomerPhone,
+  normalizeMexicanPhoneNumber,
   normalizeWhatsappId
 } from './whatsapp-number.helper.js';
 
 const { MessageMedia } = whatsappWeb;
+const customerMessageOperations = new Map();
+
+function customerOperationKey(empresaId, phone) {
+  return `${empresaId}:${normalizeMexicanPhoneNumber(phone).replace(/\D/g, '')}`;
+}
+
+export async function runCustomerMessageOperation({ empresaId, phone, operation }) {
+  const key = customerOperationKey(empresaId, phone);
+  const previous = customerMessageOperations.get(key) ?? Promise.resolve();
+  const next = previous
+    .catch(() => null)
+    .then(operation)
+    .finally(() => {
+      if (customerMessageOperations.get(key) === next) {
+        customerMessageOperations.delete(key);
+      }
+    });
+
+  customerMessageOperations.set(key, next);
+  return next;
+}
+
+export function resetWhatsappMessageOperationsForTests() {
+  customerMessageOperations.clear();
+}
 
 async function getContactName(message) {
   try {
@@ -28,6 +54,12 @@ async function getContactName(message) {
   } catch {
     return null;
   }
+}
+
+function getWhatsappMessageId(message) {
+  const rawId = message?.id?._serialized ?? message?.id?.id ?? message?.id;
+  const id = String(rawId ?? '').trim();
+  return id || null;
 }
 
 function mediaCaption(media, fallback) {
@@ -78,6 +110,31 @@ export async function sendBotResultToChat({ chat, result, mediaFactory = Message
   return sendMediaResult({ chat, result, mediaFactory });
 }
 
+export async function resolveOutgoingChat({ message, client, whatsappId }) {
+  try {
+    const chat = await message?.getChat?.();
+
+    if (chat?.sendMessage) {
+      return chat;
+    }
+  } catch (error) {
+    logger.error('whatsapp_get_chat_for_reply_error', {
+      whatsappId,
+      error
+    });
+  }
+
+  if (!client?.sendMessage || !whatsappId) {
+    throw new Error('No fue posible resolver el chat de WhatsApp para responder');
+  }
+
+  return {
+    sendMessage(content, options) {
+      return client.sendMessage(whatsappId, content, options);
+    }
+  };
+}
+
 export async function handleIncomingWhatsappMessage({ companyId, client, message }) {
   const empresaId = normalizeCompanyId(companyId);
   const whatsappId = normalizeWhatsappId(message?.from);
@@ -121,6 +178,7 @@ export async function handleIncomingWhatsappMessage({ companyId, client, message
   const fallbackPhone = extractPhoneFromWhatsappId(whatsappId);
   const incomingPhoneCandidates = Array.from(new Set([customerPhone, fallbackPhone].filter(Boolean)));
   const contactName = await getContactName(message);
+  const whatsappMessageId = getWhatsappMessageId(message);
 
   logger.info('[WA][NORMALIZE] from original / numero normalizado', {
     empresaId,
@@ -206,93 +264,100 @@ export async function handleIncomingWhatsappMessage({ companyId, client, message
     }
   }
 
-  await markCustomerActivity({
-    empresa_id: empresaId,
-    telefono_cliente: customerPhone
-  });
-
-  if (await isBotPausedForCustomer({ empresa_id: empresaId, telefono_cliente: customerPhone })) {
-    logger.info('[WA][CONVERSATION] bot pausado; se notificara al dueno', {
-      empresaId,
-      telefonoCliente: customerPhone
-    });
-    logger.info('whatsapp_bot_paused_for_customer', {
-      empresaId,
-      telefonoCliente: customerPhone
-    });
-
-    await notifyOwnerOfCustomerMessage({
-      empresa_id: empresaId,
-      telefono_cliente: customerPhone,
-      mensaje: message.body
-    });
-    logger.info('[WA][MESSAGE_SAVED] mensaje registrado en modo humano', {
-      empresaId,
-      telefonoCliente: customerPhone
-    });
-    return;
-  }
-
-  logger.info('[WA][BOT_START]', {
-    empresaId,
-    telefonoCliente: customerPhone,
-    whatsappId
-  });
-  const result = await processIncomingCustomerMessage({
+  await runCustomerMessageOperation({
     empresaId,
     phone: customerPhone,
-    message: message.body,
-    whatsappChatId: whatsappId,
-    contactName
-  });
-  logger.info('[WA][CONVERSATION] creada/encontrada', {
-    empresaId,
-    telefonoCliente: customerPhone,
-    id: result.conversacion_id ?? null
-  });
-  logger.info('[WA][MESSAGE_SAVED] messageId', {
-    empresaId,
-    messageId: result.conversacion_id ?? null,
-    telefonoCliente: customerPhone
-  });
+    operation: async () => {
+      await markCustomerActivity({
+        empresa_id: empresaId,
+        telefono_cliente: customerPhone
+      });
 
-  if (result.respuesta) {
-    const chat = await message.getChat();
-    logger.info('whatsapp_bot_response_send_attempt', {
-      empresaId,
-      telefonoCliente: customerPhone,
-      whatsappId,
-      conversacionId: result.conversacion_id ?? null,
-      mediaCount: Array.isArray(result.medios) ? result.medios.length : 0
-    });
+      if (await isBotPausedForCustomer({ empresa_id: empresaId, telefono_cliente: customerPhone })) {
+        logger.info('[WA][CONVERSATION] bot pausado; se notificara al dueno', {
+          empresaId,
+          telefonoCliente: customerPhone
+        });
+        logger.info('whatsapp_bot_paused_for_customer', {
+          empresaId,
+          telefonoCliente: customerPhone
+        });
 
-    const sentAt = new Date().toISOString();
-    const sendResult = await sendBotResultToChat({ chat, result });
+        await notifyOwnerOfCustomerMessage({
+          empresa_id: empresaId,
+          telefono_cliente: customerPhone,
+          mensaje: message.body
+        });
+        logger.info('[WA][MESSAGE_SAVED] mensaje registrado en modo humano', {
+          empresaId,
+          telefonoCliente: customerPhone
+        });
+        return;
+      }
 
-    logger.info('[WA][BOT_REPLY_SENT]', {
-      empresaId,
-      telefonoCliente: customerPhone,
-      whatsappId,
-      conversacionId: result.conversacion_id ?? null
-    });
-    logger.info('whatsapp_bot_response_sent', {
-      empresaId,
-      telefonoCliente: customerPhone,
-      whatsappId,
-      conversacionId: result.conversacion_id ?? null,
-      lastOutboundAt: sentAt,
-      mediaSent: sendResult.mediaSent,
-      textSent: sendResult.textSent
-    });
-  }
+      logger.info('[WA][BOT_START]', {
+        empresaId,
+        telefonoCliente: customerPhone,
+        whatsappId
+      });
+      const result = await processIncomingCustomerMessage({
+        empresaId,
+        phone: customerPhone,
+        message: message.body,
+        whatsappChatId: whatsappId,
+        whatsappMessageId,
+        contactName
+      });
+      logger.info('[WA][CONVERSATION] creada/encontrada', {
+        empresaId,
+        telefonoCliente: customerPhone,
+        id: result.conversacion_id ?? null
+      });
+      logger.info('[WA][MESSAGE_SAVED] messageId', {
+        empresaId,
+        messageId: result.conversacion_id ?? null,
+        telefonoCliente: customerPhone
+      });
 
-  logger.info('whatsapp_bot_response_processed', {
-    empresaId,
-    telefonoCliente: customerPhone,
-    whatsappId,
-    contactName,
-    hasResponse: Boolean(result.respuesta),
-    conversacionId: result.conversacion_id ?? null,
-    intencion: result.intencion ?? null
+      if (result.respuesta) {
+        const chat = await resolveOutgoingChat({ message, client, whatsappId });
+        logger.info('whatsapp_bot_response_send_attempt', {
+          empresaId,
+          telefonoCliente: customerPhone,
+          whatsappId,
+          conversacionId: result.conversacion_id ?? null,
+          mediaCount: Array.isArray(result.medios) ? result.medios.length : 0
+        });
+
+        const sentAt = new Date().toISOString();
+        const sendResult = await sendBotResultToChat({ chat, result });
+
+        logger.info('[WA][BOT_REPLY_SENT]', {
+          empresaId,
+          telefonoCliente: customerPhone,
+          whatsappId,
+          conversacionId: result.conversacion_id ?? null
+        });
+        logger.info('whatsapp_bot_response_sent', {
+          empresaId,
+          telefonoCliente: customerPhone,
+          whatsappId,
+          conversacionId: result.conversacion_id ?? null,
+          lastOutboundAt: sentAt,
+          mediaSent: sendResult.mediaSent,
+          textSent: sendResult.textSent
+        });
+      }
+
+      logger.info('whatsapp_bot_response_processed', {
+        empresaId,
+        telefonoCliente: customerPhone,
+        whatsappId,
+        contactName,
+        hasResponse: Boolean(result.respuesta),
+        conversacionId: result.conversacion_id ?? null,
+        intencion: result.intencion ?? null
+      });
+    }
   });
 }

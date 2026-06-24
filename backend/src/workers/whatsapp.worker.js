@@ -1,23 +1,15 @@
 import { closeDatabase } from '../config/database.js';
-import {
-  startHumanHandoffExpirationJob,
-  stopHumanHandoffExpirationJob
-} from '../bot/humanHandoffManager.js';
 import { logger } from '../utils/logger.js';
 
 // Legacy/deprecated worker.
 // WhatsApp sessions are now owned by backend/src/whatsapp/whatsapp-session.manager.js
 // inside the API process. Keep this file only so old npm scripts do not create
-// duplicate whatsapp-web.js clients.
+// duplicate whatsapp-web.js clients or background jobs.
 
 let shuttingDown = false;
 
 async function startWorker() {
   logger.info('whatsapp_worker_deprecated_noop_started');
-
-  if (process.env.HANDOFF_JOB_ENABLED !== 'false') {
-    startHumanHandoffExpirationJob();
-  }
 }
 
 async function shutdown(signal) {
@@ -29,9 +21,6 @@ async function shutdown(signal) {
   logger.info('whatsapp_worker_shutdown_started', { signal });
 
   try {
-    if (process.env.HANDOFF_JOB_ENABLED !== 'false') {
-      stopHumanHandoffExpirationJob();
-    }
     await closeDatabase();
     logger.info('whatsapp_worker_shutdown_completed');
     process.exit(0);

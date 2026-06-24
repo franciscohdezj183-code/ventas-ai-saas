@@ -7,16 +7,28 @@ import { isPlanLimitAvailable } from '../plans/plan-limits.service.js';
 import { registerAIUsage } from '../ai-usage/ai-usage.service.js';
 import { normalizeMexicanPhoneNumber } from '../../whatsapp/whatsapp-number.helper.js';
 import { logger } from '../../utils/logger.js';
+import {
+  classifyOpenAIError,
+  getOpenAIHealthSnapshot
+} from '../../ai/openai-health.service.js';
 
 function normalizePhone(value) {
   return normalizeMexicanPhoneNumber(value);
 }
 
-async function saveConversationWithoutReply({ empresaId, phone, message, whatsappChatId = null, contactName = null }) {
+async function saveConversationWithoutReply({
+  empresaId,
+  phone,
+  message,
+  whatsappChatId = null,
+  whatsappMessageId = null,
+  contactName = null
+}) {
   const result = await mcpClient.callTool('guardar_conversacion', {
     empresa_id: empresaId,
     telefono: phone,
     whatsapp_id: whatsappChatId,
+    whatsapp_message_id: whatsappMessageId,
     contact_name: contactName,
     mensaje: message,
     estado: 'open',
@@ -27,15 +39,25 @@ async function saveConversationWithoutReply({ empresaId, phone, message, whatsap
 }
 
 export function getAIStatus() {
+  const health = getOpenAIHealthSnapshot();
+
   return {
-    configured: Boolean(env.openai.apiKey),
+    ...health,
     model: env.openai.model,
     auto_reply: env.openai.autoReply,
     mode: 'intent_interpreter_mcp_orchestrator'
   };
 }
 
-export async function generateCompanyReply({ empresaId, userId = null, phone, message, whatsappChatId = null, contactName = null }) {
+export async function generateCompanyReply({
+  empresaId,
+  userId = null,
+  phone,
+  message,
+  whatsappChatId = null,
+  whatsappMessageId = null,
+  contactName = null
+}) {
   try {
     const aiLimit = await isPlanLimitAvailable(empresaId, 'aiMessagesMonthly');
 
@@ -55,14 +77,16 @@ export async function generateCompanyReply({ empresaId, userId = null, phone, me
       phone,
       message,
       whatsappChatId,
+      whatsappMessageId,
       contactName
     });
   } catch (error) {
+    const classified = classifyOpenAIError(error);
     await createAuditLog({
       empresaId,
       accion: 'ERROR',
       modulo: 'ai',
-      descripcion: `Error IA generando respuesta: ${error.message}`
+      descripcion: `Error IA generando respuesta: ${classified.status}`
     });
     throw error;
   }
@@ -106,17 +130,26 @@ export async function interpretCustomerIntent({ empresaId, userId = null, messag
 
     return intent;
   } catch (error) {
+    const classified = classifyOpenAIError(error);
     await createAuditLog({
       empresaId,
       accion: 'ERROR',
       modulo: 'ai',
-      descripcion: `Error IA interpretando intencion: ${error.message}`
+      descripcion: `Error IA interpretando intencion: ${classified.status}`
     });
     throw error;
   }
 }
 
-export async function processIncomingCustomerMessage({ empresaId, userId = null, phone, message, whatsappChatId = null, contactName = null }) {
+export async function processIncomingCustomerMessage({
+  empresaId,
+  userId = null,
+  phone,
+  message,
+  whatsappChatId = null,
+  whatsappMessageId = null,
+  contactName = null
+}) {
   const cleanPhone = normalizePhone(phone);
 
   if (!env.openai.autoReply) {
@@ -125,6 +158,7 @@ export async function processIncomingCustomerMessage({ empresaId, userId = null,
       phone: cleanPhone,
       message,
       whatsappChatId,
+      whatsappMessageId,
       contactName
     });
 
@@ -145,6 +179,7 @@ export async function processIncomingCustomerMessage({ empresaId, userId = null,
       phone: cleanPhone,
       message,
       whatsappChatId,
+      whatsappMessageId,
       contactName
     });
 
@@ -164,14 +199,24 @@ export async function processIncomingCustomerMessage({ empresaId, userId = null,
       phone: cleanPhone,
       message,
       whatsappChatId,
+      whatsappMessageId,
       contactName
     });
   } catch (error) {
-    logger.error('[WA][ERROR] Bot/IA fallo despues de recibir mensaje; guardando entrada sin respuesta', {
+    const openaiError = classifyOpenAIError(error);
+    logger.error('whatsapp_ai_fallback', {
       empresaId,
       telefonoCliente: cleanPhone,
       whatsappChatId,
-      error
+      openaiStatus: openaiError.status,
+      httpStatus: openaiError.httpStatus,
+      retryable: openaiError.retryable,
+      error: {
+        name: error?.name,
+        message: openaiError.message,
+        code: error?.code,
+        status: error?.status
+      }
     });
 
     const conversationId = await saveConversationWithoutReply({
@@ -179,6 +224,7 @@ export async function processIncomingCustomerMessage({ empresaId, userId = null,
       phone: cleanPhone,
       message,
       whatsappChatId,
+      whatsappMessageId,
       contactName
     });
 
@@ -191,7 +237,8 @@ export async function processIncomingCustomerMessage({ empresaId, userId = null,
 
     return {
       respuesta: null,
-      intencion: 'BOT_ERROR',
+      intencion: 'AI_ERROR_FALLBACK',
+      error_tipo: 'AI_ERROR_FALLBACK',
       herramienta_mcp: null,
       lead_id: null,
       conversacion_id: conversationId

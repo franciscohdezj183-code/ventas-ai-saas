@@ -11,6 +11,7 @@ const CONVERSATION_COLUMNS = `
   c.empresa_id,
   c.telefono_cliente,
   c.whatsapp_id,
+  c.whatsapp_message_id,
   c.contact_name,
   c.mensaje,
   c.respuesta,

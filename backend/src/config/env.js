@@ -178,6 +178,10 @@ export const env = {
     apiKey: process.env.OPENAI_API_KEY ?? '',
     model: process.env.OPENAI_MODEL ?? 'gpt-4.1-mini',
     autoReply: booleanEnv('OPENAI_AUTO_REPLY', true),
+    timeoutMs: numberEnv('OPENAI_TIMEOUT_MS', 15000),
+    maxRetries: numberEnv('OPENAI_MAX_RETRIES', 1),
+    temperature: numberEnv('OPENAI_TEMPERATURE', 0),
+    maxTokens: numberEnv('OPENAI_MAX_TOKENS', 300),
     inputCostPerMillion: numberEnv('OPENAI_INPUT_COST_PER_MILLION', 0),
     outputCostPerMillion: numberEnv('OPENAI_OUTPUT_COST_PER_MILLION', 0)
   },
