@@ -3,7 +3,10 @@ import { env } from '../config/env.js';
 import { query } from '../config/database.js';
 import { logger } from '../utils/logger.js';
 import { createWhatsappClient, getCompanyLocalAuthPath } from './whatsapp-client.factory.js';
-import { registerWhatsappClientEvents } from './whatsapp-events.handler.js';
+import {
+  registerWhatsappClientEvents,
+  WHATSAPP_EVENT_CONTROL
+} from './whatsapp-events.handler.js';
 import {
   emitWhatsappError,
   emitWhatsappStatus
@@ -204,6 +207,12 @@ function todayRange() {
 async function destroyClientQuietly(client) {
   if (!client) {
     return;
+  }
+
+  try {
+    client[WHATSAPP_EVENT_CONTROL]?.stop?.();
+  } catch {
+    // Polling cleanup is best-effort.
   }
 
   try {
@@ -493,11 +502,35 @@ async function startSessionNow(companyId, requestedGeneration = getOperationGene
 
       if (current?.client === client) {
         await destroyClientQuietly(client);
+        const errorMessage = error instanceof Error ? error.message : String(error ?? 'Error inicializando WhatsApp');
+        const transientInitializationError =
+          error?.code === 'WHATSAPP_INIT_TIMEOUT'
+          || isTargetClosedError(error);
+
+        if (transientInitializationError && shouldAutoReconnect(errorMessage)) {
+          const session = setStatus(id, WHATSAPP_SESSION_STATUSES.DISCONNECTED, {
+            client: null,
+            disconnectedAt: new Date().toISOString(),
+            phoneNumber: null,
+            lastError: null,
+            isInitializing: false
+          });
+          emitWhatsappStatus(id, session);
+          logger.warn('whatsapp_initialize_retryable_error', {
+            empresaId: id,
+            reason: errorMessage,
+            targetClosed: isTargetClosedError(error),
+            timeout: error?.code === 'WHATSAPP_INIT_TIMEOUT'
+          });
+          scheduleReconnect(id, null, errorMessage);
+          return getPublicSession(id);
+        }
+
         const session = setStatus(id, WHATSAPP_SESSION_STATUSES.FAILED, {
           client: null,
           disconnectedAt: new Date().toISOString(),
           phoneNumber: null,
-          lastError: error instanceof Error ? error.message : String(error ?? 'Error inicializando WhatsApp'),
+          lastError: errorMessage,
           isInitializing: false
         });
         emitWhatsappError(id, error);
@@ -733,22 +766,35 @@ export async function restoreSessionsOnBoot() {
      ORDER BY e.id ASC`
   );
 
-  return restoreCompanySessions(companies);
+  return restoreCompanySessions(companies, startSession, {
+    keepQrSessions: process.env.WHATSAPP_RESTORE_KEEP_QR_SESSIONS === 'true'
+  });
 }
 
-export async function restoreCompanySessions(companies, starter = startSession) {
+export async function restoreCompanySessions(companies, starter = startSession, {
+  keepQrSessions = true
+} = {}) {
   const restored = [];
 
   for (const company of companies) {
     try {
       logger.info('whatsapp_restore_session_start', { empresaId: company.id });
-      const session = await starter(company.id);
+      let session = await starter(company.id);
+
+      if (!keepQrSessions && session.status === WHATSAPP_SESSION_STATUSES.QR) {
+        logger.info('whatsapp_restore_qr_session_disconnected', {
+          empresaId: company.id,
+          reason: 'qr_required_during_boot'
+        });
+        session = await disconnectSession(company.id);
+      }
+
       restored.push(session);
       logger.info('whatsapp_restore_session_completed', {
         empresaId: company.id,
         status: session.status
       });
-      await wait(Number(process.env.WHATSAPP_RESTORE_SESSION_DELAY_MS ?? 500));
+      await wait(Number(process.env.WHATSAPP_RESTORE_SESSION_DELAY_MS ?? 2000));
     } catch (error) {
       logger.error('whatsapp_restore_session_error', {
         empresaId: company.id,

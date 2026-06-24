@@ -1,6 +1,7 @@
 import { query } from '../config/database.js';
 import { mcpClient } from '../mcp/mcpClient.js';
 import { normalizeMexicanPhoneNumber } from '../whatsapp/whatsapp-number.helper.js';
+import { buildReadableOwnerNotification } from './ownerNotificationFormatter.js';
 
 const NOTIFIABLE_INTENTS = new Set(['INTENCION_COMPRA', 'HABLAR_ASESOR', 'AGENDAR_CITA']);
 
@@ -16,18 +17,16 @@ function buildOwnerNotificationMessage({
   fecha,
   estadoBot = null
 }) {
-  return [
-    '🛎️ Nuevo cliente interesado',
-    '',
-    `Cliente: ${telefono || '-'}`,
-    `Empresa: ${empresa || '-'}`,
-    `Solicitud: ${solicitud || '-'}`,
-    `Mensaje: ${mensajeOriginal || '-'}`,
-    estadoBot ? `Atencion del bot: ${estadoBot}` : null,
-    `Fecha: ${fecha}`,
-    '',
-    'Dale seguimiento lo antes posible.'
-  ].filter((line) => line !== null).join('\n');
+  return buildReadableOwnerNotification({
+    title: 'Nuevo cliente interesado',
+    customerPhone: telefono,
+    companyName: empresa,
+    requestSummary: solicitud,
+    customerMessage: mensajeOriginal,
+    botStatus: estadoBot,
+    date: fecha,
+    footer: 'Dale seguimiento lo antes posible.'
+  });
 }
 
 async function resolveProductName({ empresaId, productoId, fallback, mcpClientInstance }) {

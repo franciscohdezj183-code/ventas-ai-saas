@@ -1,4 +1,10 @@
-import { FALLBACK_INTENT, interpretIntent, validateIntentJson } from '../ai/intentInterpreter.js';
+import {
+  FALLBACK_INTENT,
+  interpretIntent,
+  interpretIntentDetailed,
+  validateIntentJson
+} from '../ai/intentInterpreter.js';
+import { loadSafeConversationContext } from '../ai/conversation-context.builder.js';
 import {
   findConversationContext,
   saveConversationContext
@@ -269,9 +275,17 @@ function isComplexCommercialRequest(message) {
   );
 }
 
-function buildCommercialRequestSummary({ message, companyContext = {}, contactName = null, phone = null }) {
-  const businessName = extractNamedBusinessFromMessage(message);
-  const needs = mentionedCommercialNeeds(message);
+function buildCommercialRequestSummary({
+  message,
+  companyContext = {},
+  contactName = null,
+  phone = null,
+  intent = null
+}) {
+  const businessName = intent?.entidades?.nombre_negocio ?? extractNamedBusinessFromMessage(message);
+  const needs = Array.isArray(intent?.necesidades) && intent.necesidades.length > 0
+    ? intent.necesidades
+    : mentionedCommercialNeeds(message);
   const type = normalizedBusinessType(companyContext);
   const businessLabel = type.includes('servicio')
     ? 'servicio/proyecto'
@@ -298,6 +312,10 @@ function buildCommercialRequestSummary({ message, companyContext = {}, contactNa
     parts.push(`Necesita: ${needs.join(', ')}`);
   }
 
+  if (intent?.resumen_cliente) {
+    parts.push(`Resumen: ${intent.resumen_cliente}`);
+  }
+
   parts.push(`Mensaje: ${String(message ?? '').trim()}`);
   return parts.join(' | ');
 }
@@ -305,6 +323,42 @@ function buildCommercialRequestSummary({ message, companyContext = {}, contactNa
 function botHandledRequest(response) {
   const text = normalizarTextoBusqueda(response);
   return Boolean(text) && !/\b(no encontre|no pude|no hay|asesor|avisarle|pasarte)\b/.test(text);
+}
+
+function conversationalIntentOverride(message) {
+  const text = normalizarTextoBusqueda(message)
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (/^(?:ok |okay |perfecto |listo |vale )?(?:muchas )?gracias(?: por todo| por la ayuda| por su ayuda)?$/.test(text)) {
+    return 'AGRADECIMIENTO';
+  }
+
+  if (/^(?:adios|hasta luego|nos vemos|hasta pronto|que tengas buen dia|que tenga buen dia)$/.test(text)) {
+    return 'DESPEDIDA';
+  }
+
+  if (/^(?:hola|buenas|buenos dias|buen dia|buenas tardes|buenas noches|hey|hello)$/.test(text)) {
+    return 'SALUDO';
+  }
+
+  return null;
+}
+
+function applyConversationalIntentOverride(intent, message) {
+  const override = conversationalIntentOverride(message);
+
+  if (!override) {
+    return intent;
+  }
+
+  return {
+    ...intent,
+    intencion: override,
+    herramienta_mcp: '',
+    parametros: {}
+  };
 }
 
 function shouldConvertToAdvisorLead({ intent, message, companyContext }) {
@@ -329,7 +383,7 @@ function convertIntentToAdvisorLead({ intent, message, companyContext, contactNa
     herramienta_mcp: 'crear_lead',
     parametros: {
       ...(intent.parametros ?? {}),
-      interes: buildCommercialRequestSummary({ message, companyContext, contactName, phone }),
+      interes: buildCommercialRequestSummary({ message, companyContext, contactName, phone, intent }),
       nombre_cliente: intent.parametros?.nombre_cliente ?? contactName ?? undefined
     }
   };
@@ -1091,7 +1145,7 @@ function buildStaticResponse(intent, companyContext = {}) {
   const responses = {
     SALUDO: normalizeGreetingText(configuredText(profile, 'saludo_personalizado', companyContext.mensaje_bienvenida || 'Hola, gracias por escribirnos. Dime que producto o servicio buscas y te ayudo a revisarlo.')),
     DESPEDIDA: configuredText(profile, 'despedida_personalizada', 'Gracias por escribirnos. Cuando necesites algo mas, aqui te ayudamos.'),
-    AGRADECIMIENTO: 'Con gusto. Te puedo mostrar mas opciones o pasarte con un asesor.',
+    AGRADECIMIENTO: 'Con gusto. Gracias por escribirnos; cuando necesites algo mas, aqui estamos para ayudarte.',
     AYUDA: 'Puedo ayudarte a buscar productos, revisar precios, confirmar disponibilidad o pasarte con un asesor.',
     FUERA_DE_TEMA: fallback,
     MENSAJE_GENERAL: fallback
@@ -1517,6 +1571,17 @@ function serializeProductContext(product) {
   };
 }
 
+function serializeServiceContext(service) {
+  return {
+    id: service.id,
+    nombre: service.nombre,
+    precio: service.precio,
+    categoria: service.categoria ?? null,
+    tipo_precio: service.tipo_precio ?? null,
+    unidad_medida: service.unidad_medida ?? null
+  };
+}
+
 function extractContextPatch({ intent, toolResult, message, conversationContext }) {
   const previousData = conversationContext?.datos_json ?? {};
   const previousProductList = getLastShownProducts(conversationContext);
@@ -1528,7 +1593,11 @@ function extractContextPatch({ intent, toolResult, message, conversationContext 
   const leadProductId = toolResult?.producto_id ?? intent.parametros?.producto_id ?? null;
   const leadServiceId = toolResult?.servicio_id ?? intent.parametros?.servicio_id ?? null;
   const currentProductList = products.map(serializeProductContext);
+  const currentServiceList = services.map(serializeServiceContext);
   const lastProductList = currentProductList.length > 0 ? currentProductList : previousProductList;
+  const lastServiceList = currentServiceList.length > 0
+    ? currentServiceList
+    : previousData.ultima_lista_servicios ?? [];
   const lastCategory =
     product?.categoria ??
     products.find((product) => product?.categoria)?.categoria ??
@@ -1573,16 +1642,13 @@ function extractContextPatch({ intent, toolResult, message, conversationContext 
         ? serializeProductContext(product)
         : previousData.producto ?? null,
       ultima_lista_productos: lastProductList,
+      ultima_lista_servicios: lastServiceList,
       productos_mostrados: lastProductList,
       ultima_categoria: lastCategory,
       ultima_busqueda_productos: lastProductSearch,
       servicio: service
         ? {
-            id: service.id,
-            nombre: service.nombre,
-            precio: service.precio,
-            tipo_precio: service.tipo_precio,
-            unidad_medida: service.unidad_medida,
+            ...serializeServiceContext(service),
             requiere_medidas: service.requiere_medidas,
             requiere_cantidad: service.requiere_cantidad,
             incluye: service.incluye,
@@ -1590,7 +1656,7 @@ function extractContextPatch({ intent, toolResult, message, conversationContext 
             notas_cotizacion: service.notas_cotizacion,
             precio_minimo: service.precio_minimo
           }
-        : null
+        : previousData.servicio ?? null
     }
   };
 }
@@ -1893,16 +1959,37 @@ export async function orchestrateIncomingMessage({
   };
   let usageSnapshot = null;
   let interpretedIntent = null;
+  let intentDiagnostics = null;
+  const usesDefaultInterpreter = interpreter === interpretIntent;
 
   try {
-    interpretedIntent = await interpreter({
-      empresa_id: empresaId,
-      mensaje_cliente: normalizedMessage,
-      contexto: contextoCompleto,
-      onUsage: (usage) => {
-        usageSnapshot = usage;
-      }
-    });
+    if (usesDefaultInterpreter) {
+      const safeContext = await loadSafeConversationContext({
+        empresaId,
+        phone: cleanPhone,
+        message: normalizedMessage,
+        companyContext: contextoEmpresa,
+        conversationContext
+      });
+      intentDiagnostics = await interpretIntentDetailed({
+        empresa_id: empresaId,
+        mensaje_cliente: normalizedMessage,
+        contexto: safeContext,
+        onUsage: (usage) => {
+          usageSnapshot = usage;
+        }
+      });
+      interpretedIntent = intentDiagnostics.final_interpretation;
+    } else {
+      interpretedIntent = await interpreter({
+        empresa_id: empresaId,
+        mensaje_cliente: normalizedMessage,
+        contexto: contextoCompleto,
+        onUsage: (usage) => {
+          usageSnapshot = usage;
+        }
+      });
+    }
   } catch (error) {
     logger.error('ai_intent_interpreter_error', {
       empresaId,
@@ -1916,15 +2003,34 @@ export async function orchestrateIncomingMessage({
       }
     };
   }
-  let intent = businessStrategy.prepareIntent(
-    applyConversationContext(validateIntentJson(interpretedIntent), normalizedMessage, conversationContext),
-    {
-      companyContext: contextoEmpresa,
-      conversationContext,
-      normalizedMessage
-    }
+  const validatedIntent = validateIntentJson(interpretedIntent);
+  const enrichedIntent = intentDiagnostics && !intentDiagnostics.fallback_reason
+    ? {
+        ...interpretedIntent,
+        ...validatedIntent,
+        parametros: validatedIntent.parametros
+      }
+    : validatedIntent;
+  const contextualIntent = applyConversationContext(
+    applyConversationalIntentOverride(enrichedIntent, message),
+    normalizedMessage,
+    conversationContext
   );
-  if (shouldConvertToAdvisorLead({ intent, message, companyContext: contextoEmpresa })) {
+  let intent = intentDiagnostics && !intentDiagnostics.fallback_reason
+    ? contextualIntent
+    : businessStrategy.prepareIntent(
+        contextualIntent,
+        {
+          companyContext: contextoEmpresa,
+          conversationContext,
+          normalizedMessage
+        }
+      );
+  intent = applyConversationalIntentOverride(intent, message);
+  const shouldConvertDynamicIntent = intentDiagnostics && !intentDiagnostics.fallback_reason
+    ? intent.requiere_asesor === true
+    : shouldConvertToAdvisorLead({ intent, message, companyContext: contextoEmpresa });
+  if (shouldConvertDynamicIntent) {
     intent = convertIntentToAdvisorLead({
       intent,
       message,
@@ -2132,7 +2238,8 @@ export async function orchestrateIncomingMessage({
           message,
           companyContext: contextoEmpresa,
           contactName,
-          phone: cleanPhone
+          phone: cleanPhone,
+          intent
         }),
         respuesta_bot: response,
         atendido_por_bot: botHandledRequest(response),

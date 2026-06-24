@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { FALLBACK_INTENT, interpretIntent, validateIntentJson } from './intentInterpreter.js';
+import {
+  FALLBACK_INTENT,
+  interpretIntent,
+  interpretIntentDetailed,
+  validateIntentJson
+} from './intentInterpreter.js';
+import { validateIntentDetailed } from './intent-validation.service.js';
+import { buildSafeConversationContext } from './conversation-context.builder.js';
 import { env } from '../config/env.js';
 
 function mockOpenAIResponse(payload, calls = []) {
@@ -195,7 +202,7 @@ test('usa fallback con herramienta no registrada', () => {
   assert.deepEqual(result, FALLBACK_INTENT);
 });
 
-test('usa fallback con parametros peligrosos o desconocidos', () => {
+test('usa fallback con parametros peligrosos', () => {
   const result = validateIntentJson({
     intencion: 'BUSCAR_PRODUCTO',
     herramienta_mcp: 'buscar_productos',
@@ -208,6 +215,29 @@ test('usa fallback con parametros peligrosos o desconocidos', () => {
   });
 
   assert.deepEqual(result, FALLBACK_INTENT);
+});
+
+test('conserva la intencion e ignora parametros adicionales no permitidos', () => {
+  const result = validateIntentJson({
+    intencion: 'BUSCAR_SERVICIO',
+    herramienta_mcp: 'buscar_servicios',
+    parametros: {
+      texto: 'logo, colores y publicaciones para Instagram',
+      servicios_solicitados: ['logo', 'colores', 'publicaciones para Instagram']
+    },
+    confianza: 0.95,
+    requiere_respuesta_ia: true
+  });
+
+  assert.deepEqual(result, {
+    intencion: 'BUSCAR_SERVICIO',
+    herramienta_mcp: 'buscar_servicios',
+    parametros: {
+      texto: 'logo, colores y publicaciones para Instagram'
+    },
+    confianza: 0.95,
+    requiere_respuesta_ia: true
+  });
 });
 
 test('interpreta pagos y envios con configuracion de empresa', () => {
@@ -228,5 +258,132 @@ test('interpreta pagos y envios con configuracion de empresa', () => {
 
   assert.equal(pagos.herramienta_mcp, 'obtener_configuracion_empresa');
   assert.equal(envios.herramienta_mcp, 'obtener_configuracion_empresa');
+});
+
+test('devuelve diagnostico completo y conserva metadatos comerciales seguros', async () => {
+  const result = await interpretIntentDetailed({
+    empresa_id: 5,
+    mensaje_cliente: 'Soy Francisco de Cafe Luna y necesito logo y publicaciones',
+    contexto: {
+      tipo_negocio: 'SERVICIOS',
+      ultimos_mensajes_relevantes: [{ rol: 'cliente', texto: 'Hola' }],
+      ultimos_resultados_mostrados: []
+    },
+    client: mockOpenAIResponse({
+      intencion: 'BUSCAR_SERVICIO',
+      herramienta_mcp: 'buscar_servicios',
+      parametros: { texto: 'logo y publicaciones para Instagram' },
+      resumen_cliente: 'Francisco solicita renovar la imagen de Cafe Luna',
+      necesidades: ['logo', 'publicaciones para Instagram'],
+      entidades: {
+        nombre_cliente: 'Francisco',
+        nombre_negocio: 'Cafe Luna'
+      },
+      sentimiento: 'positivo',
+      prioridad: 'media',
+      requiere_asesor: true,
+      respuesta_sugerida: null,
+      confianza: 0.96,
+      requiere_respuesta_ia: false,
+      campo_no_soportado: 'ignorar'
+    })
+  });
+
+  assert.equal(result.raw_interpretation.intencion, 'BUSCAR_SERVICIO');
+  assert.equal(result.validated_interpretation.entidades.nombre_cliente, 'Francisco');
+  assert.equal(result.final_interpretation.resumen_cliente, 'Francisco solicita renovar la imagen de Cafe Luna');
+  assert.deepEqual(result.final_interpretation.necesidades, ['logo', 'publicaciones para Instagram']);
+  assert.deepEqual(result.ignored_fields, ['campo_no_soportado']);
+  assert.equal(result.fallback_reason, null);
+  assert.equal(result.model, 'test-model');
+  assert.equal(result.usage.total_tokens, 15);
+  assert.equal(result.context_used.business_type, 'SERVICIOS');
+  assert.equal(result.context_used.has_recent_messages, true);
+});
+
+test('rechaza campos peligrosos aunque esten anidados y los redacta del diagnostico', async () => {
+  const result = await interpretIntentDetailed({
+    empresa_id: 5,
+    mensaje_cliente: 'Busca un logo',
+    client: mockOpenAIResponse({
+      intencion: 'BUSCAR_SERVICIO',
+      herramienta_mcp: 'buscar_servicios',
+      parametros: {
+        texto: 'logo',
+        filtro: {
+          empresa_id: 99
+        }
+      },
+      confianza: 0.95
+    })
+  });
+
+  assert.match(result.fallback_reason, /^dangerous_field:/);
+  assert.equal(result.final_interpretation.intencion, 'MENSAJE_GENERAL');
+  assert.equal(result.raw_interpretation.parametros.filtro.empresa_id, '[REDACTED]');
+});
+
+test('usa fallback seguro cuando OpenAI falla sin propagar la excepcion', async () => {
+  const result = await interpretIntentDetailed({
+    empresa_id: 5,
+    mensaje_cliente: 'Hola',
+    client: {
+      chat: {
+        completions: {
+          create: async () => {
+            const error = new Error('timeout');
+            error.code = 'ETIMEDOUT';
+            throw error;
+          }
+        }
+      }
+    }
+  });
+
+  assert.equal(result.final_interpretation.intencion, 'SALUDO');
+  assert.equal(result.fallback_reason, 'openai_error:ETIMEDOUT');
+});
+
+test('aplica fallback cuando la confianza de OpenAI es insuficiente', () => {
+  const result = validateIntentDetailed({
+    intencion: 'BUSCAR_PRODUCTO',
+    herramienta_mcp: 'buscar_productos',
+    parametros: { texto: 'algo' },
+    confianza: 0.2
+  });
+
+  assert.deepEqual(result.interpretation, FALLBACK_INTENT);
+  assert.equal(result.fallbackReason, 'low_confidence');
+});
+
+test('construye contexto conversacional acotado para referencias posteriores', () => {
+  const context = buildSafeConversationContext({
+    message: 'Cuanto cuesta el segundo?',
+    companyContext: {
+      nombre: 'Demo',
+      tipo_negocio: 'MIXTO',
+      openai_api_key: 'no debe salir'
+    },
+    conversationContext: {
+      ultima_intencion: 'BUSCAR_SERVICIO',
+      datos_json: {
+        ultima_lista_servicios: [
+          { id: 10, nombre: 'Logo', precio: 1500, categoria: 'Diseno', secreto: 'oculto' },
+          { id: 11, nombre: 'Redes sociales', precio: 2500, categoria: 'Marketing' }
+        ]
+      }
+    },
+    recentMessages: [
+      { rol: 'cliente', texto: 'Quiero renovar mi marca' },
+      { rol: 'bot', texto: 'Te mostre dos servicios' }
+    ],
+    handoff: { estado: 'DECLINED' }
+  });
+
+  assert.equal(context.tipo_negocio, 'MIXTO');
+  assert.equal(context.ultimos_resultados_mostrados[1].id, 11);
+  assert.equal(context.ultimos_resultados_mostrados[0].secreto, undefined);
+  assert.equal(context.si_el_handoff_fue_rechazado, true);
+  assert.equal(context.empresa.openai_api_key, undefined);
 });
 

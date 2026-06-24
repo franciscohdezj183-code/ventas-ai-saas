@@ -2,80 +2,33 @@ import OpenAI from 'openai';
 import { env } from '../config/env.js';
 import { mcpClient } from '../mcp/mcpClient.js';
 import { logger } from '../utils/logger.js';
+import { buildSafeFallbackIntent } from './intent-fallback.service.js';
+import {
+  buildIntentDiagnostics,
+  logIntentDiagnostics
+} from './intent-diagnostics.service.js';
+import {
+  ALLOWED_INTENTS,
+  FALLBACK_INTENT,
+  TOOL_BY_INTENT,
+  expectedToolForIntent,
+  validateIntentDetailed,
+  validateIntentJson
+} from './intent-validation.service.js';
 import {
   recordOpenAIError,
   recordOpenAISuccess
 } from './openai-health.service.js';
 
-export const ALLOWED_INTENTS = [
-  'SALUDO',
-  'DESPEDIDA',
-  'AGRADECIMIENTO',
-  'AYUDA',
-  'BUSCAR_PRODUCTO',
-  'BUSCAR_SERVICIO',
-  'VER_CATEGORIAS',
-  'VER_PROMOCIONES',
-  'CONSULTAR_PRECIO',
-  'CONSULTAR_STOCK',
-  'CONSULTAR_HORARIO',
-  'CONSULTAR_UBICACION',
-  'CONSULTAR_METODOS_PAGO',
-  'CONSULTAR_ENVIOS',
-  'INTENCION_COMPRA',
-  'AGENDAR_CITA',
-  'HABLAR_ASESOR',
-  'FUERA_DE_TEMA',
-  'MENSAJE_GENERAL'
-];
-
-const TOOL_BY_INTENT = {
-  BUSCAR_PRODUCTO: 'buscar_productos',
-  BUSCAR_SERVICIO: 'buscar_servicios',
-  VER_CATEGORIAS: 'obtener_categorias',
-  VER_PROMOCIONES: 'obtener_promociones',
-  CONSULTAR_PRECIO: 'buscar_productos',
-  CONSULTAR_STOCK: 'buscar_productos',
-  CONSULTAR_HORARIO: 'obtener_configuracion_empresa',
-  CONSULTAR_UBICACION: 'obtener_configuracion_empresa',
-  CONSULTAR_METODOS_PAGO: 'obtener_configuracion_empresa',
-  CONSULTAR_ENVIOS: 'obtener_configuracion_empresa',
-  INTENCION_COMPRA: 'registrar_intencion_compra',
-  AGENDAR_CITA: 'crear_lead',
-  HABLAR_ASESOR: 'crear_lead'
-};
-
 const REGISTERED_TOOLS = new Set(mcpClient.listTools().map((tool) => tool.nombre));
-const DANGEROUS_PARAMETER_KEYS = new Set(['sql', 'query', 'raw_sql', 'statement', 'where', 'order_by']);
-
-const PARAMETER_CLEANERS = {
-  texto: cleanString,
-  categoria: cleanString,
-  color: cleanString,
-  tamano: cleanString,
-  presupuesto: cleanNullableNumber,
-  precio_min: cleanNullableNumber,
-  precio_max: cleanNullableNumber,
-  stock_requerido: cleanBoolean,
-  nombre_cliente: cleanString,
-  cliente_nombre: cleanString,
-  telefono: cleanString,
-  telefono_cliente: cleanString,
-  interes: cleanString,
-  total: cleanNullableNumber,
-  notas: cleanString,
-  conversation_id: cleanPositiveInteger,
-  producto_id: cleanPositiveInteger,
-  servicio_id: cleanPositiveInteger
-};
-
-export const FALLBACK_INTENT = {
-  intencion: 'MENSAJE_GENERAL',
-  herramienta_mcp: '',
-  parametros: {},
-  confianza: 0,
-  requiere_respuesta_ia: false
-};
+const ALLOWED_PARAMETER_NAMES = [
+  'texto', 'categoria', 'color', 'tamano', 'cantidad', 'presupuesto',
+  'precio_min', 'precio_max', 'stock_requerido', 'nombre_cliente',
+  'cliente_nombre', 'telefono', 'telefono_cliente', 'interes', 'total',
+  'notas', 'conversation_id', 'producto_id', 'servicio_id',
+  'opcion_numerada', 'offset'
+];
+export { ALLOWED_INTENTS, FALLBACK_INTENT, expectedToolForIntent, validateIntentJson };
 
 let openaiClient = null;
 
@@ -95,93 +48,8 @@ function getOpenAIClient() {
   return openaiClient;
 }
 
-function fallbackIntent() {
-  return { ...FALLBACK_INTENT, parametros: {} };
-}
-
-function clampConfidence(value) {
-  const confidence = Number(value);
-
-  if (!Number.isFinite(confidence)) {
-    return FALLBACK_INTENT.confianza;
-  }
-
-  return Math.min(Math.max(confidence, 0), 1);
-}
-
-function cleanString(value) {
-  if (value === null || value === undefined) {
-    return null;
-  }
-
-  if (typeof value === 'object') {
-    return null;
-  }
-
-  const cleanValue = String(value).trim();
-  return cleanValue || null;
-}
-
-function cleanNullableNumber(value) {
-  if (value === null || value === undefined || value === '') {
-    return null;
-  }
-
-  if (typeof value === 'object') {
-    return null;
-  }
-
-  const numberValue = Number(value);
-  return Number.isFinite(numberValue) && numberValue >= 0 ? numberValue : null;
-}
-
-function cleanPositiveInteger(value) {
-  if (value === null || value === undefined || value === '') {
-    return null;
-  }
-
-  const numberValue = Number(value);
-  return Number.isInteger(numberValue) && numberValue > 0 ? numberValue : null;
-}
-
-function cleanBoolean(value) {
-  if (value === true) {
-    return true;
-  }
-
-  if (value === false) {
-    return false;
-  }
-
-  return null;
-}
-
 function isPlainObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value);
-}
-
-function hasDangerousParameters(parameters = {}) {
-  return Object.entries(parameters).some(([key, value]) => {
-    const normalizedKey = key.toLowerCase();
-
-    if (DANGEROUS_PARAMETER_KEYS.has(normalizedKey) || !PARAMETER_CLEANERS[key]) {
-      return true;
-    }
-
-    return isPlainObject(value) || Array.isArray(value);
-  });
-}
-
-function cleanParameters(parameters = {}) {
-  if (!isPlainObject(parameters) || hasDangerousParameters(parameters)) {
-    return null;
-  }
-
-  const cleanEntries = Object.entries(PARAMETER_CLEANERS)
-    .map(([key, cleaner]) => [key, cleaner(parameters[key])])
-    .filter(([, value]) => value !== null && value !== undefined && value !== '');
-
-  return Object.fromEntries(cleanEntries);
 }
 
 function parseJsonObject(content) {
@@ -193,64 +61,20 @@ function parseJsonObject(content) {
   }
 }
 
-function normalizeToolName(value) {
-  return String(value ?? '').trim();
-}
-
-function isRegisteredTool(toolName) {
-  return toolName === '' || REGISTERED_TOOLS.has(toolName);
-}
-
-export function expectedToolForIntent(intent) {
-  return TOOL_BY_INTENT[intent] ?? '';
-}
-
-export function validateIntentJson(payload) {
-  if (!isPlainObject(payload)) {
-    return fallbackIntent();
-  }
-
-  const intencion = String(payload.intencion ?? '').trim().toUpperCase();
-
-  if (!ALLOWED_INTENTS.includes(intencion)) {
-    return fallbackIntent();
-  }
-
-  const expectedTool = expectedToolForIntent(intencion);
-  const providedTool = normalizeToolName(payload.herramienta_mcp);
-
-  if (!isRegisteredTool(expectedTool) || !isRegisteredTool(providedTool)) {
-    return fallbackIntent();
-  }
-
-  if (providedTool && providedTool !== expectedTool) {
-    return fallbackIntent();
-  }
-
-  const parametros = cleanParameters(payload.parametros ?? {});
-
-  if (!parametros) {
-    return fallbackIntent();
-  }
-
-  return {
-    intencion,
-    herramienta_mcp: expectedTool,
-    parametros,
-    confianza: clampConfidence(payload.confianza),
-    requiere_respuesta_ia: payload.requiere_respuesta_ia === true
-  };
-}
 
 function buildPrompt({ mensajeCliente, contexto }) {
   return [
-    'Convierte el mensaje de un cliente de WhatsApp en JSON estructurado.',
+    'Analiza dinamicamente el mensaje de un cliente de WhatsApp y conviertelo en JSON estructurado.',
     'No respondas al cliente, no vendas, no recomiendes, no inventes datos y no consultes bases de datos.',
-    'Tu unica tarea es clasificar la intencion y extraer parametros seguros.',
+    'No ejecutes herramientas. No decidas empresa_id o tenant_id. No generes SQL.',
+    'Usa el contexto solo cuando sea relevante para referencias como "el segundo", "ese", "tambien" o "cuanto cuesta".',
+    'Si el mensaje es saludo, agradecimiento, despedida o cambio claro de tema, no reutilices el contexto comercial.',
+    'Si hay varias necesidades, separalas en necesidades y resume la solicitud en parametros.texto.',
+    'Marca requiere_asesor=true cuando el cliente pida una cotizacion personalizada, una cita, un proyecto con varias necesidades o hablar con una persona.',
+    'Si no estas seguro usa MENSAJE_GENERAL con confianza baja.',
     'Devuelve un unico JSON valido, sin markdown y sin texto adicional.',
     '',
-    `Contexto minimo de empresa: ${JSON.stringify(contexto ?? {})}`,
-    'Si conversacion_contexto trae ultimo_producto_id o ultimo_servicio_id, usalo para interpretar frases de seguimiento como "cuanto cuesta", "precio", "me interesa" o "lo quiero".',
+    `Contexto conversacional seguro: ${JSON.stringify(contexto ?? {})}`,
     `Intenciones permitidas: ${ALLOWED_INTENTS.join(', ')}`,
     'Herramientas permitidas por intencion:',
     JSON.stringify(TOOL_BY_INTENT),
@@ -262,8 +86,12 @@ function buildPrompt({ mensajeCliente, contexto }) {
     '- busqueda por categoria: usa categoria',
     '- busqueda por color: usa color',
     '- busqueda por tamano: usa tamano',
+    '- busqueda de producto: coloca toda la descripcion buscada en el parametro texto',
+    '- busqueda de servicio: coloca todos los servicios o necesidades mencionados en un unico parametro texto',
+    '- no uses parametros como servicios_solicitados, productos_solicitados, items, necesidades ni listas; usa texto',
     '- intencion de compra: INTENCION_COMPRA para frases como "me interesa", "lo quiero", "la quiero", "quiero comprar", "apartamelo", "me lo llevo", "quiero ese" o "quiero informacion"',
     '- pedir asesor: HABLAR_ASESOR para frases como "pasame con asesor" o "quiero hablar con un asesor"',
+    '- una cotizacion de proyecto puede conservar BUSCAR_SERVICIO, pero debe marcar requiere_asesor=true y resumir claramente las necesidades',
     '- horarios: CONSULTAR_HORARIO',
     '- ubicacion: CONSULTAR_UBICACION',
     '- metodos de pago: CONSULTAR_METODOS_PAGO',
@@ -271,33 +99,47 @@ function buildPrompt({ mensajeCliente, contexto }) {
     '- promociones: VER_PROMOCIONES',
     '',
     'Parametros permitidos:',
-    JSON.stringify(Object.keys(PARAMETER_CLEANERS)),
+    JSON.stringify(ALLOWED_PARAMETER_NAMES),
     'No incluyas parametros SQL, filtros raw, where, order_by ni objetos anidados.',
     '',
-    'Formato obligatorio:',
-    JSON.stringify(FALLBACK_INTENT),
+    'Estructura obligatoria:',
+    '{"intencion":"INTENCION_PERMITIDA","herramienta_mcp":"HERRAMIENTA_CORRESPONDIENTE_O_VACIO","parametros":{"texto":"descripcion cuando aplique"},"resumen_cliente":"resumen breve","necesidades":[],"entidades":{"nombre_cliente":null,"nombre_negocio":null,"cantidad":null,"presupuesto":null,"producto_o_servicio_referenciado":null,"opcion_numerada":null},"sentimiento":"neutral","prioridad":"media","requiere_asesor":false,"respuesta_sugerida":null,"confianza":0.95,"requiere_respuesta_ia":false}',
     '',
     `Mensaje del cliente: ${mensajeCliente}`
   ].join('\n');
 }
 
-export async function interpretIntent({
+export async function interpretIntentDetailed({
   empresa_id: empresaId,
   mensaje_cliente: mensajeCliente,
   contexto = {},
   client = getOpenAIClient(),
-  onUsage = null
+  onUsage = null,
+  confidenceThreshold = 0.45,
+  conversation_id: conversationId = null
 }) {
   const cleanMessage = String(mensajeCliente ?? '').trim();
+  const startedAt = Date.now();
+  let rawInterpretation = null;
+  let usage = {};
+  let model = env.openai.model;
+  let errorCode = null;
 
   if (!empresaId || !cleanMessage || !client) {
-    return fallbackIntent();
+    const finalInterpretation = buildSafeFallbackIntent({ message: cleanMessage, context: contexto });
+    return buildIntentDiagnostics({
+      rawInterpretation: {},
+      validatedInterpretation: { ...FALLBACK_INTENT },
+      finalInterpretation,
+      fallbackReason: !client ? 'openai_not_configured' : 'missing_required_input',
+      model,
+      latencyMs: Date.now() - startedAt,
+      contextUsed: contexto
+    });
   }
 
-  let completion;
-
   try {
-    completion = await client.chat.completions.create({
+    const completion = await client.chat.completions.create({
       model: env.openai.model,
       temperature: env.openai.temperature,
       max_tokens: env.openai.maxTokens,
@@ -315,24 +157,60 @@ export async function interpretIntent({
       ]
     });
     recordOpenAISuccess();
+    model = completion.model ?? env.openai.model;
+    usage = {
+      tokens_input: Number(completion.usage?.prompt_tokens ?? 0),
+      tokens_output: Number(completion.usage?.completion_tokens ?? 0),
+      total_tokens: Number(completion.usage?.total_tokens ?? 0),
+      modelo_usado: model
+    };
+    rawInterpretation = parseJsonObject(completion.choices[0]?.message?.content ?? '{}');
+    const validation = validateIntentDetailed(rawInterpretation, { confidenceThreshold });
+    const finalInterpretation = validation.fallbackReason
+      ? buildSafeFallbackIntent({ message: cleanMessage, context: contexto })
+      : validation.interpretation;
+    const diagnostics = buildIntentDiagnostics({
+      rawInterpretation,
+      validatedInterpretation: validation.interpretation,
+      finalInterpretation,
+      ignoredFields: validation.ignoredFields,
+      fallbackReason: validation.fallbackReason,
+      model,
+      latencyMs: Date.now() - startedAt,
+      usage,
+      contextUsed: contexto
+    });
+
+    if (typeof onUsage === 'function') {
+      try {
+        await onUsage(usage);
+      } catch (error) {
+        logger.error('openai_usage_callback_error', { empresaId, error });
+      }
+    }
+
+    logIntentDiagnostics({ companyId: empresaId, conversationId, diagnostics });
+    return diagnostics;
   } catch (error) {
     recordOpenAIError(error);
-    throw error;
+    errorCode = error?.code ?? error?.name ?? 'OPENAI_ERROR';
+    const finalInterpretation = buildSafeFallbackIntent({ message: cleanMessage, context: contexto });
+    const diagnostics = buildIntentDiagnostics({
+      rawInterpretation: {},
+      validatedInterpretation: { ...FALLBACK_INTENT },
+      finalInterpretation,
+      fallbackReason: `openai_error:${errorCode}`,
+      model,
+      latencyMs: Date.now() - startedAt,
+      usage,
+      contextUsed: contexto
+    });
+    logIntentDiagnostics({ companyId: empresaId, conversationId, diagnostics, errorCode });
+    return diagnostics;
   }
+}
 
-  if (typeof onUsage === 'function') {
-    try {
-      await onUsage({
-        tokens_input: Number(completion.usage?.prompt_tokens ?? 0),
-        tokens_output: Number(completion.usage?.completion_tokens ?? 0),
-        total_tokens: Number(completion.usage?.total_tokens ?? 0),
-        modelo_usado: completion.model ?? env.openai.model
-      });
-    } catch (error) {
-      logger.error('openai_usage_callback_error', { empresaId, error });
-    }
-  }
-
-  const content = completion.choices[0]?.message?.content ?? '{}';
-  return validateIntentJson(parseJsonObject(content));
+export async function interpretIntent(args) {
+  const diagnostics = await interpretIntentDetailed(args);
+  return diagnostics.final_interpretation;
 }

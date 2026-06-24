@@ -4,6 +4,7 @@ import { getBotResponseProfile } from '../modules/bot-prompts/bot-prompts.servic
 import { CONVERSATION_STATES, markThreadState } from '../modules/conversations/conversation-status.service.js';
 import { logger } from '../utils/logger.js';
 import { normalizeMexicanPhoneNumber } from '../whatsapp/whatsapp-number.helper.js';
+import { buildReadableOwnerNotification } from './ownerNotificationFormatter.js';
 
 const HANDOFF_TIMEOUT_MS = 4 * 60 * 1000;
 const EXPIRATION_JOB_INTERVAL_MS = 30 * 1000;
@@ -42,6 +43,11 @@ function phonesMatch(left, right) {
   }
 
   return leftPhone === rightPhone || phoneKey(leftPhone) === phoneKey(rightPhone);
+}
+
+export function findOwnerPendingHandoff(rows, ownerPhone) {
+  return (Array.isArray(rows) ? rows : [])
+    .find((row) => phonesMatch(row.telefono_dueno, ownerPhone)) ?? null;
 }
 
 function normalizeText(value) {
@@ -210,22 +216,18 @@ function buildOwnerNotification({
   botResponse = null,
   attendedByBot = false
 }) {
-  return [
-    'Nuevo cliente requiere seguimiento',
-    '',
-    `Cliente: ${customerPhone}`,
-    `Empresa: ${companyName || '-'}`,
-    `Solicitud: ${productOrService || customerMessage || '-'}`,
-    `Mensaje: ${customerMessage || '-'}`,
-    `Atencion del bot: ${attendedByBot ? 'Respondio con informacion util' : 'Requiere apoyo del asesor'}`,
-    botResponse ? `Respuesta del bot: ${botResponse}` : null,
-    '',
-    'Puedes atenderlo ahora?',
-    '',
-    'Responde:',
-    '1 = Si, yo lo atiendo',
-    '2 = No puedo, que siga el bot'
-  ].filter((line) => line !== null).join('\n');
+  return buildReadableOwnerNotification({
+    title: 'Nuevo cliente necesita seguimiento',
+    customerPhone,
+    companyName,
+    requestSummary: productOrService,
+    customerMessage,
+    botResponse,
+    botStatus: attendedByBot
+      ? 'El bot pudo responder con informacion util, pero el cliente puede requerir seguimiento.'
+      : 'Requiere apoyo de un asesor. El bot ya aviso al cliente que un asesor puede apoyarlo.',
+    includeDecisionPrompt: true
+  });
 }
 
 async function findActiveHandoff({ empresaId, phone }) {
@@ -400,13 +402,7 @@ export async function handleOwnerResponse({ empresa_id: empresaId, telefono_duen
      LIMIT 10`,
     [empresaId]
   );
-  const handoff =
-    rows.find((row) => phonesMatch(row.telefono_dueno, ownerPhone)) ??
-    (
-      responseKind && rows.length === 1 && !phonesMatch(rows[0].telefono_cliente, ownerPhone)
-        ? rows[0]
-        : null
-    );
+  const handoff = findOwnerPendingHandoff(rows, ownerPhone);
 
   if (!handoff) {
     return { handled: false };

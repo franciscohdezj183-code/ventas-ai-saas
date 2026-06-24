@@ -316,6 +316,19 @@ describe('whatsapp session manager', () => {
     assert.match(status.lastError, /timed out/i);
   });
 
+  it('treats initialization timeout as retryable when auto reconnect is enabled', async () => {
+    process.env.WHATSAPP_AUTO_RECONNECT = 'true';
+    process.env.WHATSAPP_INITIALIZE_TIMEOUT_MS = '250';
+    process.env.WHATSAPP_RECONNECT_BASE_DELAY_MS = '1000';
+    process.env.WHATSAPP_RECONNECT_MAX_ATTEMPTS = '1';
+    setWhatsappClientFactoryForTests(() => new FakeWhatsappClient());
+
+    const status = await startSession(1);
+
+    assert.equal(status.status, 'disconnected');
+    assert.equal(status.lastError, null);
+  });
+
   it('disconnect keeps LocalAuth and leaves the session disconnected', async () => {
     let client;
     setWhatsappClientFactoryForTests(() => {
@@ -453,5 +466,24 @@ describe('whatsapp session manager', () => {
     assert.equal(maxActive, 1);
     assert.deepEqual(order, ['start-2', 'end-2', 'start-3', 'start-5', 'end-5']);
     assert.deepEqual(sessions.map((session) => session.companyId), [2, 5]);
+  });
+
+  it('disconnects QR sessions restored on boot when QR persistence is disabled', async () => {
+    let client;
+    setWhatsappClientFactoryForTests(() => {
+      client = new FakeWhatsappClient();
+      client.initializeEvents = [['qr', 'qr-payload']];
+      return client;
+    });
+
+    const sessions = await restoreCompanySessions(
+      [{ id: 5 }],
+      startSession,
+      { keepQrSessions: false }
+    );
+
+    assert.equal(sessions.length, 1);
+    assert.equal(sessions[0].status, 'disconnected');
+    assert.equal(client.destroyCalls, 1);
   });
 });

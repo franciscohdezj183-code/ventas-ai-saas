@@ -2593,4 +2593,55 @@ describe('messageOrchestrator', () => {
     assert.equal(handoffRequests[0].telefono_cliente, '522205722560');
     assert.equal(handoffRequests[0].atendido_por_bot, false);
   });
+
+  it('does not reuse product or service context for a thank-you message', async () => {
+    for (const tipoNegocio of ['PRODUCTOS', 'SERVICIOS', 'MIXTO']) {
+      const calls = [];
+      const result = await orchestrateIncomingMessage({
+        empresaId: 5,
+        phone: '527298349854',
+        message: 'Muchas gracias',
+        contexto: {
+          nombre: 'Empresa demo',
+          tipo_negocio: tipoNegocio
+        },
+        interpreter: async () => ({
+          intencion: 'BUSCAR_PRODUCTO',
+          herramienta_mcp: 'buscar_productos',
+          parametros: { texto: 'solicitud anterior' },
+          confianza: 0.2,
+          requiere_respuesta_ia: false
+        }),
+        mcpClient: {
+          async callTool(toolName) {
+            calls.push(toolName);
+
+            if (toolName === 'guardar_conversacion') {
+              return { conversacion_id: 900 };
+            }
+
+            throw new Error(`Unexpected tool: ${toolName}`);
+          }
+        },
+        contextStore: {
+          async find() {
+            return {
+              ultima_intencion: 'BUSCAR_SERVICIO',
+              ultimo_producto_id: 15,
+              ultimo_servicio_id: 31,
+              ultimo_texto_busqueda: 'branding para Cafe Luna',
+              datos_json: {}
+            };
+          },
+          async save() {}
+        }
+      });
+
+      assert.equal(result.intencion, 'AGRADECIMIENTO');
+      assert.equal(result.herramienta_mcp, '');
+      assert.match(result.respuesta, /Con gusto/i);
+      assert.doesNotMatch(result.respuesta, /no encontr/i);
+      assert.deepEqual(calls, ['guardar_conversacion']);
+    }
+  });
 });

@@ -1,10 +1,18 @@
 import { query } from '../../config/database.js';
+import { createHttpError } from '../../utils/http-error.js';
 import {
   assertAllowedArgs,
   normalizeEmpresaId,
   normalizePhone,
+  normalizePositiveId,
   normalizeText
 } from './utils.js';
+
+function normalizeOptionalId(value, fieldName) {
+  return value === null || value === undefined || value === ''
+    ? null
+    : normalizePositiveId(value, fieldName);
+}
 
 function normalizeLeadArgs(args, auth, defaultInterest) {
   assertAllowedArgs(args, [
@@ -32,12 +40,41 @@ function normalizeLeadArgs(args, auth, defaultInterest) {
     interes: normalizeText(args.interes ?? args.texto, 'interes', {
       fallback: defaultInterest
     }),
-    productoId: args.producto_id ? Number(args.producto_id) : null,
-    servicioId: args.servicio_id ? Number(args.servicio_id) : null
+    productoId: normalizeOptionalId(args.producto_id, 'producto_id'),
+    servicioId: normalizeOptionalId(args.servicio_id, 'servicio_id')
   };
 }
 
+async function assertLeadReferencesBelongToCompany(input) {
+  if (input.productoId) {
+    const [rows] = await query(
+      `SELECT id
+       FROM productos
+       WHERE empresa_id = ? AND id = ?
+       LIMIT 1`,
+      [input.empresaId, input.productoId]
+    );
+    if (!rows[0]) {
+      throw createHttpError(400, 'producto_id no pertenece a la empresa actual');
+    }
+  }
+
+  if (input.servicioId) {
+    const [rows] = await query(
+      `SELECT id
+       FROM servicios
+       WHERE empresa_id = ? AND id = ?
+       LIMIT 1`,
+      [input.empresaId, input.servicioId]
+    );
+    if (!rows[0]) {
+      throw createHttpError(400, 'servicio_id no pertenece a la empresa actual');
+    }
+  }
+}
+
 async function insertLead(input) {
+  await assertLeadReferencesBelongToCompany(input);
   const [result] = await query(
     `INSERT INTO leads
       (empresa_id, nombre_cliente, telefono, whatsapp_id, contact_name, interes, estado)

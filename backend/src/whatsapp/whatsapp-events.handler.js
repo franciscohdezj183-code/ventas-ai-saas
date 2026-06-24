@@ -20,6 +20,7 @@ import { isTargetClosedError } from './whatsapp-startup.coordinator.js';
 
 const UNREAD_POLL_INTERVAL_MS = Number(process.env.WHATSAPP_UNREAD_POLL_INTERVAL_MS ?? 3000);
 const UNREAD_POLL_MESSAGE_LIMIT = Number(process.env.WHATSAPP_UNREAD_POLL_MESSAGE_LIMIT ?? 5);
+export const WHATSAPP_EVENT_CONTROL = Symbol.for('ventas-ai.whatsapp-event-control');
 
 function getConnectedPhoneNumber(client) {
   const wid = client.info?.wid ?? client.info?.me;
@@ -52,7 +53,7 @@ function markClientAuthenticated(empresaId) {
   return session;
 }
 
-function scheduleReadyStateProbe(empresaId, client, attemptsLeft = 60) {
+function scheduleReadyStateProbe(empresaId, client, onReadyDetected, attemptsLeft = 60) {
   const timer = setTimeout(async () => {
     try {
       const currentSession = getSession(empresaId);
@@ -73,6 +74,7 @@ function scheduleReadyStateProbe(empresaId, client, attemptsLeft = 60) {
 
       if (state === 'CONNECTED' && phoneNumber) {
         markClientReady(empresaId, client, 'state_probe');
+        onReadyDetected?.();
         return;
       }
 
@@ -84,7 +86,7 @@ function scheduleReadyStateProbe(empresaId, client, attemptsLeft = 60) {
       }
 
       if (attemptsLeft > 1) {
-        scheduleReadyStateProbe(empresaId, client, attemptsLeft - 1);
+        scheduleReadyStateProbe(empresaId, client, onReadyDetected, attemptsLeft - 1);
         return;
       }
 
@@ -103,7 +105,7 @@ function scheduleReadyStateProbe(empresaId, client, attemptsLeft = 60) {
       });
 
       if (attemptsLeft > 1) {
-        scheduleReadyStateProbe(empresaId, client, attemptsLeft - 1);
+        scheduleReadyStateProbe(empresaId, client, onReadyDetected, attemptsLeft - 1);
       }
     }
   }, 1000);
@@ -121,10 +123,65 @@ function getMessageKey(message) {
     ].filter(Boolean).join(':');
 }
 
-export function registerWhatsappClientEvents({ companyId, client, onReady = null, onDisconnected = null }) {
+export function registerWhatsappClientEvents({
+  companyId,
+  client,
+  onReady = null,
+  onDisconnected = null,
+  unreadPollIntervalMs = UNREAD_POLL_INTERVAL_MS,
+  unreadPollMessageLimit = UNREAD_POLL_MESSAGE_LIMIT
+}) {
   const empresaId = normalizeCompanyId(companyId);
   const handledMessageKeys = new Set();
   let consecutiveUnreadPollFailures = 0;
+  let unreadPollTimer = null;
+  let unreadPollStopped = false;
+  let unreadPollRunning = false;
+
+  function stopUnreadMessagePoll() {
+    unreadPollStopped = true;
+    if (unreadPollTimer) {
+      clearTimeout(unreadPollTimer);
+      unreadPollTimer = null;
+    }
+  }
+
+  function resumeUnreadMessagePoll() {
+    unreadPollStopped = false;
+    scheduleUnreadMessagePoll();
+  }
+
+  function markPollingConnectionLost(error) {
+    if (unreadPollStopped) {
+      return;
+    }
+
+    stopUnreadMessagePoll();
+    const reason = `WhatsApp web perdio el contexto durante polling: ${error?.message ?? error}`;
+    const currentSession = getSession(empresaId);
+
+    if (
+      currentSession?.client !== client
+      || currentSession?.status === WHATSAPP_SESSION_STATUSES.DISCONNECTED
+    ) {
+      return;
+    }
+
+    const session = setStatus(empresaId, WHATSAPP_SESSION_STATUSES.DISCONNECTED, {
+      disconnectedAt: new Date().toISOString(),
+      phoneNumber: null,
+      lastError: reason,
+      isInitializing: false
+    });
+    emitWhatsappError(empresaId, reason);
+    emitWhatsappStatus(empresaId, session);
+    logger.error('whatsapp_unread_poll_reconnect_required', {
+      empresaId,
+      consecutiveFailures: consecutiveUnreadPollFailures,
+      reason
+    });
+    onDisconnected?.({ empresaId, client, reason });
+  }
 
   async function handleWhatsappMessageEvent(message, source) {
     const messageKey = getMessageKey(message);
@@ -173,26 +230,50 @@ export function registerWhatsappClientEvents({ companyId, client, onReady = null
   }
 
   function scheduleUnreadMessagePoll() {
-    if (!UNREAD_POLL_INTERVAL_MS || UNREAD_POLL_INTERVAL_MS < 1000) {
+    if (
+      unreadPollStopped
+      || unreadPollTimer
+      || unreadPollRunning
+      || !unreadPollIntervalMs
+      || unreadPollIntervalMs < 10
+    ) {
       return;
     }
 
-    const timer = setTimeout(async () => {
+    unreadPollTimer = setTimeout(async () => {
+      unreadPollTimer = null;
+      unreadPollRunning = true;
       try {
         const currentSession = getSession(empresaId);
 
         if (currentSession?.client !== client) {
+          stopUnreadMessagePoll();
           return;
         }
 
         if (currentSession?.status !== WHATSAPP_SESSION_STATUSES.READY) {
-          scheduleUnreadMessagePoll();
           return;
         }
 
-        if (!client.getChats) {
-          scheduleUnreadMessagePoll();
-          return;
+        if (client.pupPage?.isClosed?.()) {
+          const error = new Error('WhatsApp browser page is closed');
+          error.code = 'WHATSAPP_PAGE_CLOSED';
+          throw error;
+        }
+
+        if (client.getState) {
+          const state = await client.getState();
+          if (state && state !== 'CONNECTED') {
+            const error = new Error(`WhatsApp client state is ${state}`);
+            error.code = 'WHATSAPP_NOT_CONNECTED';
+            throw error;
+          }
+        }
+
+        if (typeof client.getChats !== 'function') {
+          const error = new Error('WhatsApp client getChats is unavailable');
+          error.code = 'WHATSAPP_GETCHATS_UNAVAILABLE';
+          throw error;
         }
 
         const chats = await client.getChats();
@@ -211,7 +292,7 @@ export function registerWhatsappClientEvents({ companyId, client, onReady = null
             continue;
           }
 
-          const limit = Math.max(1, Math.min(Number(chat.unreadCount ?? 1), UNREAD_POLL_MESSAGE_LIMIT));
+          const limit = Math.max(1, Math.min(Number(chat.unreadCount ?? 1), unreadPollMessageLimit));
           const messages = await chat.fetchMessages({ limit });
           const orderedMessages = [...messages].sort((left, right) => Number(left?.timestamp ?? 0) - Number(right?.timestamp ?? 0));
           let processedMessages = 0;
@@ -249,35 +330,29 @@ export function registerWhatsappClientEvents({ companyId, client, onReady = null
           error
         });
 
-        const clientContextLost = isTargetClosedError(error);
+        const clientContextLost =
+          isTargetClosedError(error)
+          || ['WHATSAPP_PAGE_CLOSED', 'WHATSAPP_NOT_CONNECTED', 'WHATSAPP_GETCHATS_UNAVAILABLE']
+            .includes(error?.code);
 
-        if (clientContextLost && consecutiveUnreadPollFailures >= 3) {
-          const reason = `WhatsApp web perdio el contexto durante polling: ${error?.message ?? error}`;
-          const session = setStatus(empresaId, WHATSAPP_SESSION_STATUSES.DISCONNECTED, {
-            disconnectedAt: new Date().toISOString(),
-            phoneNumber: null,
-            lastError: reason,
-            isInitializing: false
-          });
-          emitWhatsappError(empresaId, reason);
-          emitWhatsappStatus(empresaId, session);
-          logger.error('whatsapp_unread_poll_reconnect_required', {
-            empresaId,
-            consecutiveFailures: consecutiveUnreadPollFailures,
-            reason
-          });
-          onDisconnected?.({ empresaId, client, reason });
+        if (clientContextLost || consecutiveUnreadPollFailures >= 3) {
+          markPollingConnectionLost(error);
         }
       } finally {
+        unreadPollRunning = false;
         const currentSession = getSession(empresaId);
 
-        if (currentSession?.client === client && currentSession?.status === WHATSAPP_SESSION_STATUSES.READY) {
+        if (
+          !unreadPollStopped
+          && currentSession?.client === client
+          && currentSession?.status === WHATSAPP_SESSION_STATUSES.READY
+        ) {
           scheduleUnreadMessagePoll();
         }
       }
-    }, UNREAD_POLL_INTERVAL_MS);
+    }, unreadPollIntervalMs);
 
-    timer.unref?.();
+    unreadPollTimer.unref?.();
   }
 
   client.on('qr', async (qr) => {
@@ -298,7 +373,10 @@ export function registerWhatsappClientEvents({ companyId, client, onReady = null
     }
 
     markClientAuthenticated(empresaId);
-    scheduleReadyStateProbe(empresaId, client);
+    scheduleReadyStateProbe(empresaId, client, () => {
+      resumeUnreadMessagePoll();
+      onReady?.({ empresaId, client });
+    });
     logger.info('whatsapp_authenticated', { empresaId });
   });
 
@@ -307,6 +385,7 @@ export function registerWhatsappClientEvents({ companyId, client, onReady = null
       return;
     }
 
+    stopUnreadMessagePoll();
     clearQr(empresaId);
     const session = setError(empresaId, message || 'Fallo de autenticacion');
     emitWhatsappError(empresaId, message || 'Fallo de autenticacion');
@@ -320,6 +399,7 @@ export function registerWhatsappClientEvents({ companyId, client, onReady = null
     }
 
     markClientReady(empresaId, client);
+    resumeUnreadMessagePoll();
     onReady?.({ empresaId, client });
   });
 
@@ -328,6 +408,7 @@ export function registerWhatsappClientEvents({ companyId, client, onReady = null
       return;
     }
 
+    stopUnreadMessagePoll();
     clearQr(empresaId);
     const session = setStatus(empresaId, WHATSAPP_SESSION_STATUSES.DISCONNECTED, {
       disconnectedAt: new Date().toISOString(),
@@ -342,6 +423,9 @@ export function registerWhatsappClientEvents({ companyId, client, onReady = null
   });
 
   client.on('loading_screen', (percent, message) => {
+    if (getSession(empresaId)?.status === WHATSAPP_SESSION_STATUSES.READY) {
+      stopUnreadMessagePoll();
+    }
     upsertSession(empresaId, { lastError: null });
     emitWhatsappLog(empresaId, { event: 'loading_screen', percent, message });
     logger.info('whatsapp_loading_screen', {
@@ -354,6 +438,9 @@ export function registerWhatsappClientEvents({ companyId, client, onReady = null
   client.on('change_state', (state) => {
     emitWhatsappLog(empresaId, { event: 'change_state', state });
     logger.info('whatsapp_change_state', { empresaId, state });
+    if (state === 'CONNECTED' && getSession(empresaId)?.status === WHATSAPP_SESSION_STATUSES.READY) {
+      resumeUnreadMessagePoll();
+    }
   });
 
   client.on('message', async (message) => {
@@ -369,6 +456,10 @@ export function registerWhatsappClientEvents({ companyId, client, onReady = null
         source: 'message',
         error
       });
+      if (isTargetClosedError(error)) {
+        consecutiveUnreadPollFailures += 1;
+        markPollingConnectionLost(error);
+      }
     }
   });
 
@@ -385,8 +476,17 @@ export function registerWhatsappClientEvents({ companyId, client, onReady = null
         source: 'message_create',
         error
       });
+      if (isTargetClosedError(error)) {
+        consecutiveUnreadPollFailures += 1;
+        markPollingConnectionLost(error);
+      }
     }
   });
 
-  scheduleUnreadMessagePoll();
+  const control = {
+    stop: stopUnreadMessagePoll,
+    resume: resumeUnreadMessagePoll
+  };
+  client[WHATSAPP_EVENT_CONTROL] = control;
+  return control;
 }

@@ -1,5 +1,6 @@
 import { env } from '../../config/env.js';
-import { interpretIntent } from '../../ai/intentInterpreter.js';
+import { interpretIntentDetailed } from '../../ai/intentInterpreter.js';
+import { buildSafeConversationContext } from '../../ai/conversation-context.builder.js';
 import { orchestrateIncomingMessage } from '../../bot/messageOrchestrator.js';
 import { mcpClient } from '../../mcp/mcpClient.js';
 import { createAuditLog } from '../audit/audit.service.js';
@@ -110,10 +111,17 @@ export async function interpretCustomerIntent({ empresaId, userId = null, messag
     }
 
     let usageSnapshot = null;
-    const intent = await interpretIntent({
+    const safeContext = buildSafeConversationContext({
+      message,
+      companyContext: contexto?.empresa ?? contexto ?? {},
+      conversationContext: contexto?.conversacion_contexto ?? null,
+      recentMessages: contexto?.ultimos_mensajes_relevantes ?? [],
+      handoff: contexto?.handoff ?? null
+    });
+    const diagnostics = await interpretIntentDetailed({
       empresa_id: empresaId,
       mensaje_cliente: message,
-      contexto,
+      contexto: safeContext,
       onUsage: (usage) => {
         usageSnapshot = usage;
       }
@@ -130,7 +138,7 @@ export async function interpretCustomerIntent({ empresaId, userId = null, messag
       });
     }
 
-    return intent;
+    return diagnostics;
   } catch (error) {
     const classified = classifyOpenAIError(error);
     await createAuditLog({
