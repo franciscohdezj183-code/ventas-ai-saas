@@ -29,7 +29,7 @@ export function DataTable({
 
   return (
     <div className={`data-table-shell ${className}`}>
-      <div className="table-wrap">
+      <div className="table-wrap" role="region" aria-label="Tabla de datos" tabIndex="0">
         <table className="data-table">
           <thead>
             <tr>

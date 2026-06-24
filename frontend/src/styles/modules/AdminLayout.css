@@ -1,8 +1,8 @@
 /* AdminLayout module styles. Owns the app shell, workspace, backdrop, and responsive layout behavior. */
 
 .admin-shell {
-  --sidebar-width: 280px;
-  --sidebar-collapsed-width: 96px;
+  --sidebar-width: 264px;
+  --sidebar-collapsed-width: 80px;
   display: block;
   min-height: 100vh;
   overflow-x: hidden;
@@ -21,6 +21,8 @@
 .admin-workspace {
   display: grid;
   grid-template-rows: auto 1fr;
+  width: 100%;
+  min-height: 100vh;
   min-width: 0;
   background: transparent;
 }
@@ -28,10 +30,15 @@
 .main-content {
   display: grid;
   align-content: start;
-  gap: 24px;
+  gap: 0;
   width: 100%;
   min-width: 0;
-  padding: 30px clamp(24px, 2.4vw, 42px) 44px;
+  max-width: 100%;
+  padding:
+    var(--page-padding-block-start, 24px)
+    var(--page-padding-inline, 28px)
+    var(--page-padding-block-end, 40px);
+  overflow-x: clip;
 }
 
 .sidebar-backdrop {
@@ -45,9 +52,9 @@
   color: var(--color-text);
 }
 
-@media (max-width: 1180px) and (min-width: 901px) {
+@media (max-width: 1439px) and (min-width: 901px) {
   .admin-shell:not(.sidebar-collapsed) {
-    --sidebar-width: 252px;
+    --sidebar-width: 240px;
   }
 }
 
@@ -76,15 +83,21 @@
 
   .main-content,
   .admin-shell.sidebar-collapsed .main-content {
-    gap: 20px;
-    padding: 22px 18px 34px;
+    gap: 0;
+    padding:
+      var(--page-padding-block-start, 20px)
+      var(--page-padding-inline, 18px)
+      var(--page-padding-block-end, 32px);
   }
 }
 
 @media (max-width: 620px) {
   .main-content,
   .admin-shell.sidebar-collapsed .main-content {
-    gap: 18px;
-    padding: 18px 14px 28px;
+    gap: 0;
+    padding:
+      var(--page-padding-block-start, 16px)
+      var(--page-padding-inline, 12px)
+      var(--page-padding-block-end, 24px);
   }
 }

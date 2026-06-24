@@ -21,6 +21,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from '../components/Sidebar.jsx';
 import { Topbar } from '../components/Topbar.jsx';
+import { PageLayout } from '../components/ui/PageLayout.jsx';
 import { hasPermission, normalizeRole } from '../config/permissions.js';
 import { useAuth } from '../context/AuthContext.jsx';
 
@@ -162,7 +163,9 @@ export function AdminLayout() {
           user={user}
         />
         <main className="main-content">
-          <Outlet />
+          <PageLayout>
+            <Outlet />
+          </PageLayout>
         </main>
       </div>
     </div>

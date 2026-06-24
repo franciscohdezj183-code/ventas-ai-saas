@@ -27,6 +27,12 @@
   gap: 18px;
 }
 
+/* Use the full workspace on ultra-wide viewports and at reduced browser zoom. */
+.page-layout:has(> .commercial-dashboard) {
+  width: 100%;
+  max-width: none;
+}
+
 .enterprise-dashboard {
   gap: 20px;
 }

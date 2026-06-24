@@ -34,5 +34,5 @@ export function StatusBadge({ children, status }) {
     neutral: 'badge-neutral'
   }[tone];
 
-  return <span className={`status-badge badge badge-outline ${daisyTone} ${tone}`}>{children ?? status}</span>;
+  return <span className={`status-badge badge badge-outline ${daisyTone} status-badge-${tone} ${tone}`}>{children ?? status}</span>;
 }
