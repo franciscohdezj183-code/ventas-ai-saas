@@ -18,11 +18,13 @@ import { getBotResponseProfile } from '../modules/bot-prompts/bot-prompts.servic
 import { registerAIUsage } from '../modules/ai-usage/ai-usage.service.js';
 import { mcpClient as defaultMcpClient } from '../mcp/mcpClient.js';
 import { getBusinessStrategy } from './business-types/business-strategy.factory.js';
+import { isPurchaseIntentMessage } from './business-types/purchase-intent.js';
 import {
   buildCatalogServiceResponse,
   formatMoney
 } from './business-types/service-pricing.helper.js';
 import { normalizeMexicanPhoneNumber } from '../whatsapp/whatsapp-number.helper.js';
+import { classifyPaymentProof as defaultPaymentProofClassifier } from '../ai/paymentProofClassifier.js';
 import { logger } from '../utils/logger.js';
 
 function normalizePhone(value) {
@@ -1042,6 +1044,11 @@ function reservationEnabled(companyContext = {}) {
   return settings.apartadoActivo && settings.porcentaje && (settings.transferenciaActiva || settings.efectivoActivo);
 }
 
+function productReservationsAllowed(companyContext = {}) {
+  const type = normalizedBusinessType(companyContext);
+  return !type.includes('servicio') || type.includes('mixto') || type.includes('mixed');
+}
+
 function calculateDepositAmount(product, percentage) {
   const price = Number(product?.precio ?? 0);
 
@@ -1103,7 +1110,7 @@ function getPendingReservation(conversationContext) {
   return conversationContext?.datos_json?.apartado_pendiente ?? null;
 }
 
-function isPaymentProofMedia(media = {}) {
+function isSupportedPaymentProofFile(media = {}) {
   const type = String(media.type ?? '').toLowerCase();
   const mime = String(media.mimetype ?? '').toLowerCase();
   const filename = String(media.filename ?? '').toLowerCase();
@@ -1118,11 +1125,11 @@ function isPaymentProofMedia(media = {}) {
 }
 
 function buildPaymentProofAcceptedResponse() {
-  return 'Gracias, ya recibi tu comprobante. Un asesor te contactara en cuanto se refleje tu pago. Necesitas ayuda en otra cosa?';
+  return 'Listo, tu comprobante esta en revision. En cuanto este listo se contactara contigo un asesor. Te puedo ayudar en algo mas?';
 }
 
 function buildPaymentProofRejectedResponse() {
-  return 'Para continuar con el apartado necesito que envies una imagen o PDF del comprobante de pago. Tambien puedes responder "asesor" si prefieres apoyo personalizado.';
+  return 'No pude validar el comprobante. Por favor manda una captura mas clara, completa y sin recortes del comprobante de pago, o responde "asesor" si prefieres contactar con alguien.';
 }
 
 function buildReservationOwnerNotification({ phone, product, orderResult, depositAmount, percentage }) {
@@ -1137,6 +1144,16 @@ function buildReservationOwnerNotification({ phone, product, orderResult, deposi
     '',
     'El cliente envio un comprobante de pago. Favor de revisar que el pago se haya reflejado antes de confirmar el apartado.'
   ].filter(Boolean).join('\n');
+}
+
+function buildGenericImageContextResponse() {
+  return [
+    'Gracias, ya recibi la imagen.',
+    '',
+    'Para ayudarte mejor, dime que quieres revisar: si buscas algo igual, algo parecido, precio, medidas, color o disponibilidad.',
+    '',
+    'Con eso te busco opciones en el catalogo.'
+  ].join('\n');
 }
 
 function buildStaticResponse(intent, companyContext = {}) {
@@ -1270,12 +1287,37 @@ function buildToolArgs(toolName, { empresaId, phone, message, normalizedMessage,
   }
 }
 
+function activeConversationContextType(conversationContext) {
+  const lastIntent = String(conversationContext?.ultima_intencion ?? '').toUpperCase();
+  const lastTool = String(conversationContext?.datos_json?.herramienta_mcp ?? '').toLowerCase();
+  const hasProduct = Number(conversationContext?.ultimo_producto_id) > 0;
+  const hasService = Number(conversationContext?.ultimo_servicio_id) > 0;
+
+  if (lastTool.includes('servicio') || lastIntent.includes('SERVICIO') || lastIntent === 'AGENDAR_CITA') {
+    return hasService ? 'service' : null;
+  }
+
+  if (lastTool.includes('producto') || lastIntent.includes('PRODUCTO') || lastIntent === 'CONSULTAR_STOCK') {
+    return hasProduct ? 'product' : null;
+  }
+
+  if (hasService && !hasProduct) {
+    return 'service';
+  }
+
+  if (hasProduct && !hasService) {
+    return 'product';
+  }
+
+  return null;
+}
+
 function hasProductContext(conversationContext) {
-  return Number(conversationContext?.ultimo_producto_id) > 0;
+  return activeConversationContextType(conversationContext) === 'product';
 }
 
 function hasServiceContext(conversationContext) {
-  return Number(conversationContext?.ultimo_servicio_id) > 0;
+  return activeConversationContextType(conversationContext) === 'service';
 }
 
 function getLastShownProducts(conversationContext) {
@@ -1351,6 +1393,10 @@ function isSubjectlessContextFollowUp(message) {
 }
 
 function isPurchaseFollowUp(message) {
+  if (isPurchaseIntentMessage(message)) {
+    return true;
+  }
+
   return /\b(me interesa|lo quiero|la quiero|quiero comprar|comprar|apartar|ap[aá]rtamelo|apartamelo|ap[aá]rtalo|apartalo|apartarlo|ap[aá]rtarlo|aparto|ap[aá]rto|como lo aparto|c[oó]mo lo aparto|separar|separamelo|me lo llevo|quiero ese|p[aá]same con asesor|pasame con asesor|quiero informaci[oó]n|quiero informacion|hacer pedido|levantar pedido|finalizar compra|cerrar compra)\b/i.test(message);
 }
 
@@ -1404,7 +1450,9 @@ function applyConversationContext(intent, message, conversationContext) {
     };
   }
 
-  const selectedProduct = findSelectedProductFromContext(message, conversationContext);
+  const selectedProduct = hasProductContext(conversationContext)
+    ? findSelectedProductFromContext(message, conversationContext)
+    : null;
 
   if (selectedProduct?.id) {
     return {
@@ -1725,7 +1773,9 @@ export async function orchestrateIncomingMessage({
   contextStore = {
     find: findConversationContext,
     save: saveConversationContext
-  }
+  },
+  paymentProofClassifier = defaultPaymentProofClassifier,
+  detailedInterpreter = interpretIntentDetailed
 }) {
   const cleanPhone = normalizePhone(phone);
   const conversationContext = await contextStore.find({ empresaId, phone: cleanPhone });
@@ -1734,7 +1784,7 @@ export async function orchestrateIncomingMessage({
   const normalizedMessage = normalizarTextoBusqueda(message, contextoEmpresa.response_profile?.sinonimos);
   const blockedTopics = parseBlockedTopics(contextoEmpresa.temas_bloqueados);
 
-  if (isPendingReservationContext(conversationContext)) {
+  if (productReservationsAllowed(contextoEmpresa) && isPendingReservationContext(conversationContext)) {
     const pendingReservation = getPendingReservation(conversationContext);
     const product = pendingReservation.producto;
     const settings = paymentSettings(contextoEmpresa);
@@ -1802,18 +1852,25 @@ export async function orchestrateIncomingMessage({
     }
 
     if (incomingMedia?.hasMedia) {
-      const response = isPaymentProofMedia(incomingMedia)
-        ? buildPaymentProofAcceptedResponse()
-        : buildPaymentProofRejectedResponse();
+      const proofClassification = isSupportedPaymentProofFile(incomingMedia)
+        ? await paymentProofClassifier(incomingMedia, { expectedAmount: depositAmount })
+        : {
+            accepted: false,
+            confidence: 0,
+            reason: 'El archivo no es imagen ni PDF'
+          };
+      const proofAccepted = proofClassification.accepted === true;
+      const response = proofAccepted ? buildPaymentProofAcceptedResponse() : buildPaymentProofRejectedResponse();
       let orderResult = null;
       let ownerMediaNotification = null;
 
-      if (isPaymentProofMedia(incomingMedia)) {
+      if (proofAccepted) {
         const notes = [
           `Apartado de producto: ${product?.nombre ?? '-'}`,
           product?.id ? `Producto ID: ${product.id}` : null,
           settings.porcentaje ? `Anticipo solicitado: ${settings.porcentaje}%` : null,
           depositAmount ? `Monto de anticipo: ${formatMoney(depositAmount)}` : null,
+          proofClassification.reason ? `Validacion del comprobante: ${proofClassification.reason}` : null,
           'Comprobante recibido por WhatsApp, pendiente de validar reflejo de pago.'
         ].filter(Boolean).join('\n');
 
@@ -1850,19 +1907,20 @@ export async function orchestrateIncomingMessage({
       await contextStore.save({
         empresaId,
         phone: cleanPhone,
-        ultimaIntencion: isPaymentProofMedia(incomingMedia) ? 'COMPROBANTE_APARTADO' : 'COMPROBANTE_INVALIDO',
+        ultimaIntencion: proofAccepted ? 'COMPROBANTE_APARTADO' : 'COMPROBANTE_INVALIDO',
         ultimoProductoId: product?.id ?? null,
         ultimoServicioId: null,
         ultimoTextoBusqueda: product?.nombre ?? message,
         datos: {
           ...(conversationContext?.datos_json ?? {}),
-          apartado_pendiente: isPaymentProofMedia(incomingMedia) ? null : pendingReservation,
-          ultimo_apartado: isPaymentProofMedia(incomingMedia)
+          apartado_pendiente: proofAccepted ? null : pendingReservation,
+          ultimo_apartado: proofAccepted
             ? {
                 producto: product,
                 pedido_id: orderResult?.pedido_id ?? null,
                 porcentaje: settings.porcentaje,
-                anticipo: depositAmount
+                anticipo: depositAmount,
+                comprobante_validacion: proofClassification
               }
             : conversationContext?.datos_json?.ultimo_apartado ?? null
         }
@@ -1871,8 +1929,8 @@ export async function orchestrateIncomingMessage({
       return {
         respuesta: response,
         medios: [],
-        intencion: isPaymentProofMedia(incomingMedia) ? 'COMPROBANTE_APARTADO' : 'COMPROBANTE_INVALIDO',
-        herramienta_mcp: isPaymentProofMedia(incomingMedia) ? 'crear_pedido' : null,
+        intencion: proofAccepted ? 'COMPROBANTE_APARTADO' : 'COMPROBANTE_INVALIDO',
+        herramienta_mcp: proofAccepted ? 'crear_pedido' : null,
         parametros: {},
         confianza: 1,
         requiere_respuesta_ia: false,
@@ -1880,9 +1938,57 @@ export async function orchestrateIncomingMessage({
         notificacion: null,
         lead_id: null,
         conversacion_id: savedConversation.conversacion_id,
-        owner_media_notification: ownerMediaNotification
+        owner_media_notification: ownerMediaNotification,
+        comprobante_validacion: proofClassification
       };
     }
+  }
+
+  if (
+    incomingMedia?.hasMedia
+    && (
+      String(incomingMedia.type ?? '').toLowerCase() === 'image'
+      || String(incomingMedia.mimetype ?? '').toLowerCase().startsWith('image/')
+    )
+  ) {
+    const response = buildGenericImageContextResponse();
+    const savedConversation = await mcpClient.callTool('guardar_conversacion', {
+      empresa_id: empresaId,
+      telefono: cleanPhone,
+      whatsapp_id: whatsappChatId,
+      contact_name: contactName,
+      mensaje: message || `[${incomingMedia.type || 'imagen'} recibida]`,
+      respuesta: response,
+      estado: 'bot_active',
+      tipo_mensaje: 'bot'
+    });
+
+    await contextStore.save({
+      empresaId,
+      phone: cleanPhone,
+      ultimaIntencion: 'IMAGEN_RECIBIDA',
+      ultimoProductoId: conversationContext?.ultimo_producto_id ?? null,
+      ultimoServicioId: conversationContext?.ultimo_servicio_id ?? null,
+      ultimoTextoBusqueda: message || 'imagen recibida',
+      datos: {
+        ...(conversationContext?.datos_json ?? {}),
+        ultima_imagen_recibida_at: new Date().toISOString()
+      }
+    });
+
+    return {
+      respuesta: response,
+      medios: [],
+      intencion: 'IMAGEN_RECIBIDA',
+      herramienta_mcp: null,
+      parametros: {},
+      confianza: 1,
+      requiere_respuesta_ia: false,
+      mcp_result: null,
+      notificacion: null,
+      lead_id: null,
+      conversacion_id: savedConversation.conversacion_id
+    };
   }
 
   if (matchesBlockedTopic(message, blockedTopics)) {
@@ -1971,7 +2077,7 @@ export async function orchestrateIncomingMessage({
         companyContext: contextoEmpresa,
         conversationContext
       });
-      intentDiagnostics = await interpretIntentDetailed({
+      intentDiagnostics = await detailedInterpreter({
         empresa_id: empresaId,
         mensaje_cliente: normalizedMessage,
         contexto: safeContext,
@@ -2016,16 +2122,14 @@ export async function orchestrateIncomingMessage({
     normalizedMessage,
     conversationContext
   );
-  let intent = intentDiagnostics && !intentDiagnostics.fallback_reason
-    ? contextualIntent
-    : businessStrategy.prepareIntent(
-        contextualIntent,
-        {
-          companyContext: contextoEmpresa,
-          conversationContext,
-          normalizedMessage
-        }
-      );
+  let intent = businessStrategy.prepareIntent(
+    contextualIntent,
+    {
+      companyContext: contextoEmpresa,
+      conversationContext,
+      normalizedMessage
+    }
+  );
   intent = applyConversationalIntentOverride(intent, message);
   const shouldConvertDynamicIntent = intentDiagnostics && !intentDiagnostics.fallback_reason
     ? intent.requiere_asesor === true
@@ -2058,7 +2162,7 @@ export async function orchestrateIncomingMessage({
     }
 
     const settings = paymentSettings(contextoEmpresa);
-    const canReserve = reservationEnabled(contextoEmpresa) && product?.id;
+    const canReserve = productReservationsAllowed(contextoEmpresa) && reservationEnabled(contextoEmpresa) && product?.id;
     const response = canReserve
       ? buildReservationInstructionsResponse({ product, companyContext: contextoEmpresa })
       : buildReservationUnavailableResponse(product);

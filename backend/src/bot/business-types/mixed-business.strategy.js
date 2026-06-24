@@ -5,6 +5,7 @@ import {
   hasServiceResults,
   searchTextFromIntent
 } from './shared-response-helpers.js';
+import { isPurchaseIntentMessage, stripPurchaseIntentWords } from './purchase-intent.js';
 import { serviceBusinessStrategy } from './service-business.strategy.js';
 
 function hasLastProduct(conversationContext) {
@@ -46,6 +47,10 @@ function isPriceQuestion(message) {
 }
 
 function isPurchaseQuestion(message) {
+  if (isPurchaseIntentMessage(message)) {
+    return true;
+  }
+
   const normalized = String(message ?? '')
     .toLowerCase()
     .normalize('NFD')
@@ -98,6 +103,12 @@ function isLikelyProductNameSearch(message) {
 }
 
 function productSearchTextFromPurchase(message) {
+  const searchText = stripPurchaseIntentWords(message);
+
+  if (searchText !== '') {
+    return searchText;
+  }
+
   return String(message ?? '')
     .replace(/\b(me interesa|lo quiero|la quiero|quiero comprar|comprar|apartar|apartamelo|apartalo|apartarlo|aparto|como lo aparto|separar|separamelo|me lo llevo|quiero ese|quiero informacion|quiero información|hacer pedido|levantar pedido|finalizar compra|cerrar compra|quiero|una|un|el|la)\b/gi, ' ')
     .replace(/\s+/g, ' ')

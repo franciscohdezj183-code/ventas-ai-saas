@@ -415,6 +415,71 @@ describe('messageOrchestrator', () => {
     assert.match(result.respuesta, /asesor/);
   });
 
+  it('applies product business strategy when the real OpenAI path returns a generic intent', async () => {
+    const calls = [];
+    const mcpClient = {
+      async callTool(toolName, args) {
+        calls.push({ toolName, args });
+
+        if (toolName === 'buscar_productos') {
+          return {
+            productos: [
+              {
+                id: 71,
+                nombre: 'Silla de madera',
+                precio: 800,
+                stock: 5,
+                imagen: null,
+                categoria: 'Sillas'
+              }
+            ],
+            paginacion: {
+              offset: 0,
+              limit: 5,
+              next_offset: 1,
+              has_more: false
+            }
+          };
+        }
+
+        if (toolName === 'guardar_conversacion') {
+          return { conversacion_id: 113 };
+        }
+
+        throw new Error(`Unexpected tool: ${toolName}`);
+      }
+    };
+
+    const result = await orchestrateIncomingMessage({
+      empresaId: 1,
+      phone: '5215550000000@c.us',
+      message: 'Silla',
+      contexto: { nombre: 'Demo', tipo_negocio: 'PRODUCTOS' },
+      mcpClient,
+      contextStore: {
+        async find() {
+          return null;
+        },
+        async save() {}
+      },
+      detailedInterpreter: async () => ({
+        final_interpretation: {
+          intencion: 'MENSAJE_GENERAL',
+          herramienta_mcp: '',
+          parametros: {},
+          confianza: 0.95,
+          requiere_respuesta_ia: false
+        },
+        fallback_reason: null
+      })
+    });
+    const productSearchCall = calls.find((call) => call.toolName === 'buscar_productos');
+
+    assert.equal(result.intencion, 'BUSCAR_PRODUCTO');
+    assert.equal(productSearchCall.args.texto, 'silla');
+    assert.match(result.respuesta, /1\. Silla de madera/);
+  });
+
   it('uses the last product search for more options follow-up messages', async () => {
     const calls = [];
     const savedContexts = [];
@@ -613,6 +678,230 @@ describe('messageOrchestrator', () => {
     assert.equal(savedContexts[0].datos.apartado_pendiente.anticipo, 5000);
   });
 
+  it('understands similar reservation phrases from the last product context', async () => {
+    const calls = [];
+    const savedContexts = [];
+    const mcpClient = {
+      async callTool(toolName, args) {
+        calls.push({ toolName, args });
+
+        if (toolName === 'guardar_conversacion') {
+          return { conversacion_id: 104 };
+        }
+
+        throw new Error(`Unexpected tool: ${toolName}`);
+      }
+    };
+    const contextStore = {
+      async find() {
+        return {
+          ultima_intencion: 'CONSULTAR_PRECIO',
+          ultimo_producto_id: 22,
+          ultimo_servicio_id: null,
+          ultimo_texto_busqueda: 'Silla de madera',
+          datos_json: {
+            ultima_lista_productos: [
+              {
+                id: 22,
+                nombre: 'Silla de madera',
+                precio: 800,
+                imagen: null,
+                categoria: 'Sillas'
+              }
+            ]
+          }
+        };
+      },
+      async save(context) {
+        savedContexts.push(context);
+      }
+    };
+
+    const result = await orchestrateIncomingMessage({
+      empresaId: 1,
+      phone: '5215550000000@c.us',
+      message: 'quiero aparatarlo',
+      contexto: {
+        nombre: 'Demo',
+        tipo_negocio: 'Mixto',
+        apartado_activo: true,
+        apartado_porcentaje: 50,
+        pago_transferencia_activo: true,
+        transferencia_banco: 'Banco Demo',
+        transferencia_clabe: '123456789012345678'
+      },
+      interpreter: async () => ({
+        intencion: 'MENSAJE_GENERAL',
+        herramienta_mcp: '',
+        parametros: {},
+        confianza: 0.4,
+        requiere_respuesta_ia: false
+      }),
+      mcpClient,
+      handoffManager: noopHandoffManager,
+      contextStore
+    });
+
+    assert.equal(result.intencion, 'SOLICITAR_APARTADO');
+    assert.equal(result.herramienta_mcp, null);
+    assert.equal(calls.some((call) => call.toolName === 'crear_pedido'), false);
+    assert.match(result.respuesta, /Para apartar \*Silla de madera\*/);
+    assert.match(result.respuesta, /Anticipo requerido: \$400\.00/);
+    assert.equal(savedContexts[0].datos.apartado_pendiente.producto.id, 22);
+  });
+
+  it('does not start a reservation for service-only businesses even when payment settings exist', async () => {
+    const calls = [];
+    const savedContexts = [];
+    const mcpClient = {
+      async callTool(toolName, args) {
+        calls.push({ toolName, args });
+
+        if (toolName === 'crear_lead') {
+          return {
+            lead_id: 301,
+            telefono: args.telefono,
+            interes: args.interes,
+            servicio_id: args.servicio_id
+          };
+        }
+
+        if (toolName === 'guardar_conversacion') {
+          return { conversacion_id: 301 };
+        }
+
+        throw new Error(`Unexpected tool: ${toolName}`);
+      }
+    };
+
+    const result = await orchestrateIncomingMessage({
+      empresaId: 1,
+      phone: '5215550000000@c.us',
+      message: 'me interesa',
+      contexto: {
+        nombre: 'Servicios Demo',
+        tipo_negocio: 'SERVICIOS',
+        apartado_activo: true,
+        apartado_porcentaje: 50,
+        pago_transferencia_activo: true,
+        transferencia_banco: 'Banco Demo'
+      },
+      interpreter: async () => ({
+        intencion: 'MENSAJE_GENERAL',
+        herramienta_mcp: '',
+        parametros: {},
+        confianza: 0.4,
+        requiere_respuesta_ia: false
+      }),
+      mcpClient,
+      handoffManager: noopHandoffManager,
+      contextStore: {
+        async find() {
+          return {
+            ultima_intencion: 'BUSCAR_SERVICIO',
+            ultimo_producto_id: null,
+            ultimo_servicio_id: 75,
+            ultimo_texto_busqueda: 'Instalacion',
+            datos_json: {
+              servicio: {
+                id: 75,
+                nombre: 'Instalacion',
+                precio: 500,
+                tipo_precio: 'FIJO'
+              }
+            }
+          };
+        },
+        async save(context) {
+          savedContexts.push(context);
+        }
+      }
+    });
+
+    assert.equal(result.intencion, 'AGENDAR_CITA');
+    assert.equal(result.herramienta_mcp, 'crear_lead');
+    assert.equal(calls.some((call) => call.toolName === 'crear_pedido'), false);
+    assert.equal(calls.some((call) => call.toolName === 'obtener_producto'), false);
+    assert.equal(savedContexts[0].datos.apartado_pendiente, undefined);
+    assert.equal(savedContexts[0].ultimoServicioId, 75);
+  });
+
+  it('keeps mixed-business service interest as a lead instead of product reservation', async () => {
+    const calls = [];
+    const savedContexts = [];
+    const mcpClient = {
+      async callTool(toolName, args) {
+        calls.push({ toolName, args });
+
+        if (toolName === 'registrar_intencion_compra') {
+          return {
+            lead_id: 302,
+            telefono: args.telefono,
+            interes: args.interes,
+            servicio_id: args.servicio_id
+          };
+        }
+
+        if (toolName === 'guardar_conversacion') {
+          return { conversacion_id: 302 };
+        }
+
+        throw new Error(`Unexpected tool: ${toolName}`);
+      }
+    };
+
+    const result = await orchestrateIncomingMessage({
+      empresaId: 1,
+      phone: '5215550000000@c.us',
+      message: 'apartalo',
+      contexto: {
+        nombre: 'Mixto Demo',
+        tipo_negocio: 'MIXTO',
+        apartado_activo: true,
+        apartado_porcentaje: 50,
+        pago_transferencia_activo: true,
+        transferencia_banco: 'Banco Demo'
+      },
+      interpreter: async () => ({
+        intencion: 'MENSAJE_GENERAL',
+        herramienta_mcp: '',
+        parametros: {},
+        confianza: 0.4,
+        requiere_respuesta_ia: false
+      }),
+      mcpClient,
+      handoffManager: noopHandoffManager,
+      contextStore: {
+        async find() {
+          return {
+            ultima_intencion: 'BUSCAR_SERVICIO',
+            ultimo_producto_id: null,
+            ultimo_servicio_id: 80,
+            ultimo_texto_busqueda: 'Logo',
+            datos_json: {
+              servicio: {
+                id: 80,
+                nombre: 'Logo',
+                precio: 1200,
+                tipo_precio: 'FIJO'
+              }
+            }
+          };
+        },
+        async save(context) {
+          savedContexts.push(context);
+        }
+      }
+    });
+
+    assert.equal(result.intencion, 'INTENCION_COMPRA');
+    assert.equal(result.herramienta_mcp, 'registrar_intencion_compra');
+    assert.equal(calls.some((call) => call.toolName === 'crear_pedido'), false);
+    assert.equal(calls.some((call) => call.toolName === 'obtener_producto'), false);
+    assert.equal(savedContexts[0].datos.apartado_pendiente, undefined);
+    assert.equal(savedContexts[0].ultimoServicioId, 80);
+  });
+
   it('creates an order and prepares owner notification when a payment proof image is received', async () => {
     const calls = [];
     const savedContexts = [];
@@ -659,9 +948,15 @@ describe('messageOrchestrator', () => {
         hasMedia: true,
         type: 'image',
         mimetype: 'image/jpeg',
-        filename: 'comprobante.jpg'
+        filename: 'comprobante.jpg',
+        data: 'base64-image'
       },
       mcpClient,
+      paymentProofClassifier: async () => ({
+        accepted: true,
+        confidence: 0.91,
+        reason: 'Se observan monto, fecha y referencia bancaria'
+      }),
       contextStore: {
         async find() {
           return {
@@ -695,11 +990,286 @@ describe('messageOrchestrator', () => {
     assert.equal(result.herramienta_mcp, 'crear_pedido');
     assert.equal(orderCall.args.total, 10000);
     assert.match(orderCall.args.notas, /Comprobante recibido/);
-    assert.match(result.respuesta, /recibi tu comprobante/);
+    assert.match(result.respuesta, /comprobante esta en revision/);
     assert.equal(result.owner_media_notification.telefono_dueno, '+525512345678');
     assert.match(result.owner_media_notification.caption, /Silla Plastico/);
     assert.equal(savedContexts[0].datos.apartado_pendiente, null);
     assert.equal(savedContexts[0].datos.ultimo_apartado.pedido_id, 88);
+  });
+
+  it('rejects image files that the proof classifier does not identify as payment proof', async () => {
+    const calls = [];
+    const savedContexts = [];
+    const mcpClient = {
+      async callTool(toolName, args) {
+        calls.push({ toolName, args });
+
+        if (toolName === 'obtener_configuracion_empresa') {
+          return {
+            empresa: {
+              nombre: 'Demo',
+              tipo_negocio: 'Tienda',
+              telefono_dueno: '+525512345678',
+              apartado_activo: 1,
+              apartado_porcentaje: 50,
+              pago_transferencia_activo: 1
+            }
+          };
+        }
+
+        if (toolName === 'guardar_conversacion') {
+          return { conversacion_id: 109 };
+        }
+
+        throw new Error(`Unexpected tool: ${toolName}`);
+      }
+    };
+
+    const result = await orchestrateIncomingMessage({
+      empresaId: 1,
+      phone: '5215550000000@c.us',
+      message: '',
+      incomingMedia: {
+        hasMedia: true,
+        type: 'image',
+        mimetype: 'image/jpeg',
+        filename: 'foto-producto.jpg',
+        data: 'base64-image'
+      },
+      mcpClient,
+      paymentProofClassifier: async () => ({
+        accepted: false,
+        confidence: 0.18,
+        reason: 'La imagen parece una foto de producto'
+      }),
+      contextStore: {
+        async find() {
+          return {
+            ultima_intencion: 'SOLICITAR_APARTADO',
+            ultimo_producto_id: 22,
+            ultimo_servicio_id: null,
+            ultimo_texto_busqueda: 'Silla Plastico',
+            datos_json: {
+              apartado_pendiente: {
+                producto: {
+                  id: 22,
+                  nombre: 'Silla Plastico',
+                  precio: 10000,
+                  imagen: null,
+                  categoria: 'Sillas'
+                },
+                porcentaje: 50,
+                anticipo: 5000
+              }
+            }
+          };
+        },
+        async save(context) {
+          savedContexts.push(context);
+        }
+      }
+    });
+
+    assert.equal(result.intencion, 'COMPROBANTE_INVALIDO');
+    assert.equal(result.herramienta_mcp, null);
+    assert.equal(calls.some((call) => call.toolName === 'crear_pedido'), false);
+    assert.match(result.respuesta, /No pude validar el comprobante/i);
+    assert.equal(result.owner_media_notification, null);
+    assert.equal(savedContexts[0].datos.apartado_pendiente.producto.id, 22);
+  });
+
+  it('asks for context when an image arrives without a pending reservation', async () => {
+    const calls = [];
+    const savedContexts = [];
+    const mcpClient = {
+      async callTool(toolName, args) {
+        calls.push({ toolName, args });
+
+        if (toolName === 'guardar_conversacion') {
+          return { conversacion_id: 110 };
+        }
+
+        throw new Error(`Unexpected tool: ${toolName}`);
+      }
+    };
+
+    const result = await orchestrateIncomingMessage({
+      empresaId: 1,
+      phone: '5215550000000@c.us',
+      message: '',
+      contexto: {
+        nombre: 'Demo',
+        tipo_negocio: 'Mixto'
+      },
+      incomingMedia: {
+        hasMedia: true,
+        type: 'image',
+        mimetype: 'image/jpeg',
+        filename: 'foto.jpg',
+        data: 'base64-image'
+      },
+      mcpClient,
+      paymentProofClassifier: async () => {
+        throw new Error('Proof classifier should not run');
+      },
+      contextStore: {
+        async find() {
+          return {
+            ultima_intencion: 'SALUDO',
+            ultimo_producto_id: null,
+            ultimo_servicio_id: null,
+            ultimo_texto_busqueda: null,
+            datos_json: {}
+          };
+        },
+        async save(context) {
+          savedContexts.push(context);
+        }
+      }
+    });
+
+    assert.equal(result.intencion, 'IMAGEN_RECIBIDA');
+    assert.equal(result.herramienta_mcp, null);
+    assert.match(result.respuesta, /ya recibi la imagen/i);
+    assert.match(result.respuesta, /precio, medidas, color o disponibilidad/i);
+    assert.equal(calls.some((call) => call.toolName === 'crear_pedido'), false);
+    assert.equal(savedContexts[0].ultimaIntencion, 'IMAGEN_RECIBIDA');
+  });
+
+  it('does not validate payment proof images for service context without product reservation', async () => {
+    const calls = [];
+    const savedContexts = [];
+    const mcpClient = {
+      async callTool(toolName, args) {
+        calls.push({ toolName, args });
+
+        if (toolName === 'guardar_conversacion') {
+          return { conversacion_id: 303 };
+        }
+
+        throw new Error(`Unexpected tool: ${toolName}`);
+      }
+    };
+
+    const result = await orchestrateIncomingMessage({
+      empresaId: 1,
+      phone: '5215550000000@c.us',
+      message: '',
+      contexto: {
+        nombre: 'Servicios Demo',
+        tipo_negocio: 'SERVICIOS',
+        apartado_activo: true,
+        apartado_porcentaje: 50,
+        pago_transferencia_activo: true
+      },
+      incomingMedia: {
+        hasMedia: true,
+        type: 'image',
+        mimetype: 'image/jpeg',
+        filename: 'comprobante.jpg',
+        data: 'base64-image'
+      },
+      mcpClient,
+      paymentProofClassifier: async () => {
+        throw new Error('Proof classifier should not run for services');
+      },
+      contextStore: {
+        async find() {
+          return {
+            ultima_intencion: 'BUSCAR_SERVICIO',
+            ultimo_producto_id: null,
+            ultimo_servicio_id: 75,
+            ultimo_texto_busqueda: 'Instalacion',
+            datos_json: {
+              servicio: {
+                id: 75,
+                nombre: 'Instalacion',
+                precio: 500
+              }
+            }
+          };
+        },
+        async save(context) {
+          savedContexts.push(context);
+        }
+      }
+    });
+
+    assert.equal(result.intencion, 'IMAGEN_RECIBIDA');
+    assert.equal(result.herramienta_mcp, null);
+    assert.equal(calls.some((call) => call.toolName === 'crear_pedido'), false);
+    assert.equal(result.owner_media_notification, undefined);
+    assert.equal(savedContexts[0].ultimoServicioId, 75);
+  });
+
+  it('ignores stale product reservation context for service-only businesses', async () => {
+    const calls = [];
+    const savedContexts = [];
+    const mcpClient = {
+      async callTool(toolName, args) {
+        calls.push({ toolName, args });
+
+        if (toolName === 'guardar_conversacion') {
+          return { conversacion_id: 304 };
+        }
+
+        throw new Error(`Unexpected tool: ${toolName}`);
+      }
+    };
+
+    const result = await orchestrateIncomingMessage({
+      empresaId: 1,
+      phone: '5215550000000@c.us',
+      message: '',
+      contexto: {
+        nombre: 'Servicios Demo',
+        tipo_negocio: 'SERVICIOS',
+        apartado_activo: true,
+        apartado_porcentaje: 50,
+        pago_transferencia_activo: true
+      },
+      incomingMedia: {
+        hasMedia: true,
+        type: 'image',
+        mimetype: 'image/jpeg',
+        filename: 'comprobante.jpg',
+        data: 'base64-image'
+      },
+      mcpClient,
+      paymentProofClassifier: async () => {
+        throw new Error('Proof classifier should not run for service-only businesses');
+      },
+      contextStore: {
+        async find() {
+          return {
+            ultima_intencion: 'SOLICITAR_APARTADO',
+            ultimo_producto_id: 22,
+            ultimo_servicio_id: null,
+            ultimo_texto_busqueda: 'Producto viejo',
+            datos_json: {
+              apartado_pendiente: {
+                producto: {
+                  id: 22,
+                  nombre: 'Producto viejo',
+                  precio: 1000
+                },
+                porcentaje: 50,
+                anticipo: 500
+              }
+            }
+          };
+        },
+        async save(context) {
+          savedContexts.push(context);
+        }
+      }
+    });
+
+    assert.equal(result.intencion, 'IMAGEN_RECIBIDA');
+    assert.equal(result.herramienta_mcp, null);
+    assert.equal(calls.some((call) => call.toolName === 'crear_pedido'), false);
+    assert.equal(result.owner_media_notification, undefined);
+    assert.equal(savedContexts[0].ultimaIntencion, 'IMAGEN_RECIBIDA');
   });
 
   it('creates a lead for purchase phrases even without prior context', async () => {

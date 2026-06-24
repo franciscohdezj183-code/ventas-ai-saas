@@ -70,6 +70,24 @@ describe('mixedBusinessStrategy commercial routing', () => {
     assert.equal(result.parametros.texto, 'silla');
   });
 
+  it('routes reservation wording variants to the last product', () => {
+    const context = {
+      ultima_intencion: 'CONSULTAR_PRECIO',
+      ultimo_producto_id: 22,
+      ultimo_servicio_id: null,
+      ultimo_texto_busqueda: 'silla de madera',
+      datos_json: {}
+    };
+
+    for (const phrase of ['aparatalo', 'quiero aparatarlo', 'apartemoslo', 'apartamelo']) {
+      const result = run(phrase, context);
+
+      assert.equal(result.intencion, 'INTENCION_COMPRA', phrase);
+      assert.equal(result.herramienta_mcp, 'crear_pedido', phrase);
+      assert.equal(result.parametros.producto_id, 22, phrase);
+    }
+  });
+
   it('keeps purchase follow-up on service context as a lead flow', () => {
     const result = run('me interesa', {
       ultima_intencion: 'BUSCAR_SERVICIO',

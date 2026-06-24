@@ -1,3 +1,4 @@
+import { isPurchaseIntentMessage, stripPurchaseIntentWords } from './purchase-intent.js';
 import { asProductSearchIntent } from './shared-response-helpers.js';
 
 function hasLastProduct(conversationContext) {
@@ -25,6 +26,10 @@ function isCategoryQuestion(message) {
 }
 
 function isPurchaseQuestion(message) {
+  if (isPurchaseIntentMessage(message)) {
+    return true;
+  }
+
   return /\b(lo quiero|la quiero|me interesa|quiero comprar|comprar|apartar|ap[aá]rtamelo|apartamelo|ap[aá]rtalo|apartalo|apartarlo|ap[aá]rtarlo|aparto|ap[aá]rto|como lo aparto|c[oó]mo lo aparto|separar|separamelo|me lo llevo|quiero ese|quiero informacion|quiero informaci[oó]n|hacer pedido|levantar pedido|finalizar compra|cerrar compra)\b/i.test(message);
 }
 
@@ -50,6 +55,12 @@ function isLikelyProductSearch(message) {
 }
 
 function productSearchTextFromPurchase(message) {
+  const searchText = stripPurchaseIntentWords(message);
+
+  if (searchText !== '') {
+    return searchText;
+  }
+
   return String(message ?? '')
     .replace(/\b(lo quiero|la quiero|me interesa|quiero comprar|comprar|apartar|apartamelo|apartalo|apartarlo|aparto|como lo aparto|separar|separamelo|me lo llevo|quiero ese|quiero informacion|quiero información|hacer pedido|levantar pedido|finalizar compra|cerrar compra|quiero|una|un|el|la)\b/gi, ' ')
     .replace(/\s+/g, ' ')

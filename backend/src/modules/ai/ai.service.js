@@ -17,13 +17,29 @@ function normalizePhone(value) {
   return normalizeMexicanPhoneNumber(value);
 }
 
+function fallbackMessageText(message, incomingMedia = null) {
+  const cleanMessage = String(message ?? '').trim();
+
+  if (cleanMessage) {
+    return cleanMessage;
+  }
+
+  if (incomingMedia?.hasMedia) {
+    const type = String(incomingMedia.type ?? 'archivo').trim() || 'archivo';
+    return `[${type} recibido]`;
+  }
+
+  return '[mensaje recibido sin texto]';
+}
+
 async function saveConversationWithoutReply({
   empresaId,
   phone,
   message,
   whatsappChatId = null,
   whatsappMessageId = null,
-  contactName = null
+  contactName = null,
+  incomingMedia = null
 }) {
   const result = await mcpClient.callTool('guardar_conversacion', {
     empresa_id: empresaId,
@@ -31,7 +47,7 @@ async function saveConversationWithoutReply({
     whatsapp_id: whatsappChatId,
     whatsapp_message_id: whatsappMessageId,
     contact_name: contactName,
-    mensaje: message,
+    mensaje: fallbackMessageText(message, incomingMedia),
     estado: 'open',
     tipo_mensaje: 'customer'
   });
@@ -170,7 +186,8 @@ export async function processIncomingCustomerMessage({
       message,
       whatsappChatId,
       whatsappMessageId,
-      contactName
+      contactName,
+      incomingMedia
     });
 
     return {
@@ -212,7 +229,8 @@ export async function processIncomingCustomerMessage({
       message,
       whatsappChatId,
       whatsappMessageId,
-      contactName
+      contactName,
+      incomingMedia
     });
   } catch (error) {
     const openaiError = classifyOpenAIError(error);
@@ -237,7 +255,8 @@ export async function processIncomingCustomerMessage({
       message,
       whatsappChatId,
       whatsappMessageId,
-      contactName
+      contactName,
+      incomingMedia
     });
 
     logger.info('[WA][MESSAGE_SAVED] messageId', {

@@ -135,16 +135,32 @@ export async function resolveOutgoingChat({ message, client, whatsappId }) {
   };
 }
 
-function buildIncomingMediaMetadata(message) {
+async function buildIncomingMediaMetadata(message) {
+  let media = null;
+
+  if (message?.hasMedia) {
+    try {
+      media = await message.downloadMedia();
+    } catch (error) {
+      logger.error('whatsapp_incoming_media_download_error', {
+        type: message?.type ?? null,
+        error
+      });
+    }
+  }
+
   return {
     hasMedia: Boolean(message?.hasMedia),
     type: message?.type ?? null,
-    mimetype: message?._data?.mimetype ?? message?.mimetype ?? null,
-    filename: message?._data?.filename ?? message?.filename ?? null
+    mimetype: media?.mimetype ?? message?._data?.mimetype ?? message?.mimetype ?? null,
+    filename: media?.filename ?? message?._data?.filename ?? message?.filename ?? null,
+    caption: message?.body ?? null,
+    data: media?.data ?? null,
+    media
   };
 }
 
-async function forwardIncomingMediaToOwner({ client, empresaId, message, notification }) {
+async function forwardIncomingMediaToOwner({ client, empresaId, message, media = null, notification }) {
   const ownerPhone = normalizePhoneForWhatsapp(notification?.telefono_dueno);
   const caption = String(notification?.caption ?? '').trim();
 
@@ -153,13 +169,13 @@ async function forwardIncomingMediaToOwner({ client, empresaId, message, notific
   }
 
   try {
-    const media = await message.downloadMedia();
+    const nextMedia = media ?? await message.downloadMedia();
 
-    if (!media) {
+    if (!nextMedia) {
       return { sent: false, reason: 'media_download_empty' };
     }
 
-    await client.sendMessage(ownerPhone, media, caption ? { caption } : undefined);
+    await client.sendMessage(ownerPhone, nextMedia, caption ? { caption } : undefined);
     logger.info('whatsapp_payment_proof_forwarded_to_owner', {
       empresaId,
       ownerPhone
@@ -182,7 +198,7 @@ export async function handleIncomingWhatsappMessage({ companyId, client, message
   const empresaId = normalizeCompanyId(companyId);
   const whatsappId = normalizeWhatsappId(message?.from);
   const hasBody = Boolean(message?.body?.trim());
-  const incomingMedia = buildIncomingMediaMetadata(message);
+  const incomingMedia = await buildIncomingMediaMetadata(message);
   const ignoreGroups = process.env.WHATSAPP_IGNORE_GROUPS !== 'false';
   const isGroup = whatsappId.includes('@g.us');
 
@@ -366,11 +382,12 @@ export async function handleIncomingWhatsappMessage({ companyId, client, message
 
       if (result.owner_media_notification) {
         await forwardIncomingMediaToOwner({
-          client,
-          empresaId,
-          message,
-          notification: result.owner_media_notification
-        });
+        client,
+        empresaId,
+        message,
+        media: incomingMedia.media,
+        notification: result.owner_media_notification
+      });
       }
 
       if (result.respuesta) {
