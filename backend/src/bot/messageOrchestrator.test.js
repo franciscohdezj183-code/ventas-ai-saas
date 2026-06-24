@@ -528,23 +528,27 @@ describe('messageOrchestrator', () => {
     assert.equal(savedContexts[0].datos.ultima_busqueda_productos.has_more, false);
   });
 
-  it('creates an order from the last product context for short purchase follow-up messages', async () => {
+  it('sends reservation payment instructions from the last product context', async () => {
     const calls = [];
+    const savedContexts = [];
     const mcpClient = {
       async callTool(toolName, args) {
         calls.push({ toolName, args });
 
         if (toolName === 'obtener_configuracion_empresa') {
-          return { empresa: { nombre: 'Demo', tipo_negocio: 'Tienda' } };
-        }
-
-        if (toolName === 'crear_pedido') {
           return {
-            pedido_id: 55,
-            cliente_nombre: args.cliente_nombre,
-            telefono_cliente: args.telefono,
-            total: args.total,
-            estado: 'NUEVO'
+            empresa: {
+              nombre: 'Demo',
+              tipo_negocio: 'Tienda',
+              apartado_activo: 1,
+              apartado_porcentaje: 50,
+              pago_transferencia_activo: 1,
+              pago_efectivo_activo: 1,
+              transferencia_banco: 'Banco Demo',
+              transferencia_titular: 'Demo SA',
+              transferencia_clabe: '123456789012345678',
+              apartado_instrucciones: 'El apartado se confirma cuando el pago se refleje.'
+            }
           };
         }
 
@@ -576,7 +580,9 @@ describe('messageOrchestrator', () => {
           }
         };
       },
-      async save() {}
+      async save(context) {
+        savedContexts.push(context);
+      }
     };
 
     const result = await orchestrateIncomingMessage({
@@ -594,16 +600,106 @@ describe('messageOrchestrator', () => {
       handoffManager: noopHandoffManager,
       contextStore
     });
+
+    assert.equal(result.intencion, 'SOLICITAR_APARTADO');
+    assert.equal(result.herramienta_mcp, null);
+    assert.equal(calls.some((call) => call.toolName === 'crear_pedido'), false);
+    assert.equal(result.notificacion, null);
+    assert.match(result.respuesta, /50%/);
+    assert.match(result.respuesta, /Anticipo requerido: \$5,000\.00/);
+    assert.match(result.respuesta, /Banco Demo/);
+    assert.match(result.respuesta, /comprobante/);
+    assert.equal(savedContexts[0].datos.apartado_pendiente.producto.id, 22);
+    assert.equal(savedContexts[0].datos.apartado_pendiente.anticipo, 5000);
+  });
+
+  it('creates an order and prepares owner notification when a payment proof image is received', async () => {
+    const calls = [];
+    const savedContexts = [];
+    const mcpClient = {
+      async callTool(toolName, args) {
+        calls.push({ toolName, args });
+
+        if (toolName === 'obtener_configuracion_empresa') {
+          return {
+            empresa: {
+              nombre: 'Demo',
+              tipo_negocio: 'Tienda',
+              telefono_dueno: '+525512345678',
+              apartado_activo: 1,
+              apartado_porcentaje: 50,
+              pago_transferencia_activo: 1
+            }
+          };
+        }
+
+        if (toolName === 'crear_pedido') {
+          return {
+            pedido_id: 88,
+            cliente_nombre: args.cliente_nombre,
+            telefono_cliente: args.telefono,
+            total: args.total,
+            estado: 'NUEVO'
+          };
+        }
+
+        if (toolName === 'guardar_conversacion') {
+          return { conversacion_id: 108 };
+        }
+
+        throw new Error(`Unexpected tool: ${toolName}`);
+      }
+    };
+
+    const result = await orchestrateIncomingMessage({
+      empresaId: 1,
+      phone: '5215550000000@c.us',
+      message: '',
+      incomingMedia: {
+        hasMedia: true,
+        type: 'image',
+        mimetype: 'image/jpeg',
+        filename: 'comprobante.jpg'
+      },
+      mcpClient,
+      contextStore: {
+        async find() {
+          return {
+            ultima_intencion: 'SOLICITAR_APARTADO',
+            ultimo_producto_id: 22,
+            ultimo_servicio_id: null,
+            ultimo_texto_busqueda: 'Silla Plastico',
+            datos_json: {
+              apartado_pendiente: {
+                producto: {
+                  id: 22,
+                  nombre: 'Silla Plastico',
+                  precio: 10000,
+                  imagen: null,
+                  categoria: 'Sillas'
+                },
+                porcentaje: 50,
+                anticipo: 5000
+              }
+            }
+          };
+        },
+        async save(context) {
+          savedContexts.push(context);
+        }
+      }
+    });
     const orderCall = calls.find((call) => call.toolName === 'crear_pedido');
 
-    assert.equal(result.intencion, 'INTENCION_COMPRA');
+    assert.equal(result.intencion, 'COMPROBANTE_APARTADO');
     assert.equal(result.herramienta_mcp, 'crear_pedido');
     assert.equal(orderCall.args.total, 10000);
-    assert.match(orderCall.args.notas, /Silla Plastico/);
-    assert.match(orderCall.args.notas, /Producto ID: 22/);
-    assert.equal(result.notificacion, null);
-    assert.match(result.respuesta, /apartado/);
-    assert.match(result.respuesta, /#55/);
+    assert.match(orderCall.args.notas, /Comprobante recibido/);
+    assert.match(result.respuesta, /recibi tu comprobante/);
+    assert.equal(result.owner_media_notification.telefono_dueno, '+525512345678');
+    assert.match(result.owner_media_notification.caption, /Silla Plastico/);
+    assert.equal(savedContexts[0].datos.apartado_pendiente, null);
+    assert.equal(savedContexts[0].datos.ultimo_apartado.pedido_id, 88);
   });
 
   it('creates a lead for purchase phrases even without prior context', async () => {
@@ -724,7 +820,7 @@ describe('messageOrchestrator', () => {
     assert.match(result.respuesta, /Lunes a viernes 9:00 a 18:00/);
   });
 
-  it('creates product orders outside business hours without notifying an advisor', async () => {
+  it('starts product reservations outside business hours without notifying an advisor', async () => {
     const calls = [];
     const handoffCalls = [];
     const savedContexts = [];
@@ -736,13 +832,16 @@ describe('messageOrchestrator', () => {
           return { conversacion_id: 115 };
         }
 
-        if (toolName === 'crear_pedido') {
+        if (toolName === 'obtener_producto') {
           return {
-            pedido_id: 115,
-            cliente_nombre: args.cliente_nombre,
-            telefono_cliente: args.telefono,
-            total: args.total,
-            estado: 'NUEVO'
+            producto: {
+              id: args.producto_id,
+              nombre: 'Silla',
+              precio: 1200,
+              stock: 2,
+              imagen: null,
+              categoria: 'Sillas'
+            }
           };
         }
 
@@ -767,7 +866,12 @@ describe('messageOrchestrator', () => {
       contexto: {
         nombre: 'Demo',
         tipo_negocio: 'Mixto',
-        horario_atencion: 'Lunes a viernes 9:00 a 18:00'
+        horario_atencion: 'Lunes a viernes 9:00 a 18:00',
+        apartado_activo: true,
+        apartado_porcentaje: 50,
+        pago_transferencia_activo: true,
+        transferencia_banco: 'Banco Demo',
+        transferencia_clabe: '123456789012345678'
       },
       currentDate: new Date('2026-06-24T02:00:00.000Z'),
       interpreter: async () => ({
@@ -795,17 +899,17 @@ describe('messageOrchestrator', () => {
       }
     });
 
-    const orderCall = calls.find((call) => call.toolName === 'crear_pedido');
-
     assert.equal(result.fuera_horario, undefined);
-    assert.equal(result.herramienta_mcp, 'crear_pedido');
+    assert.equal(result.intencion, 'SOLICITAR_APARTADO');
+    assert.equal(result.herramienta_mcp, null);
     assert.equal(calls.some((call) => call.toolName === 'registrar_intencion_compra'), false);
+    assert.equal(calls.some((call) => call.toolName === 'crear_pedido'), false);
     assert.deepEqual(handoffCalls, []);
     assert.equal(calls.find((call) => call.toolName === 'guardar_conversacion').args.estado, 'bot_active');
-    assert.equal(orderCall.args.total, 0);
-    assert.match(orderCall.args.notas, /Producto ID: 7/);
-    assert.match(result.respuesta, /apartado/);
+    assert.match(result.respuesta, /50%/);
+    assert.match(result.respuesta, /Banco Demo/);
     assert.equal(savedContexts[0].ultimoProductoId, 7);
+    assert.equal(savedContexts[0].datos.apartado_pendiente.producto.id, 7);
   });
 
   it('allows advisor requests during business hours', async () => {

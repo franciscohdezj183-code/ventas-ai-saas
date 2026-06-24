@@ -135,10 +135,54 @@ export async function resolveOutgoingChat({ message, client, whatsappId }) {
   };
 }
 
+function buildIncomingMediaMetadata(message) {
+  return {
+    hasMedia: Boolean(message?.hasMedia),
+    type: message?.type ?? null,
+    mimetype: message?._data?.mimetype ?? message?.mimetype ?? null,
+    filename: message?._data?.filename ?? message?.filename ?? null
+  };
+}
+
+async function forwardIncomingMediaToOwner({ client, empresaId, message, notification }) {
+  const ownerPhone = normalizePhoneForWhatsapp(notification?.telefono_dueno);
+  const caption = String(notification?.caption ?? '').trim();
+
+  if (!ownerPhone || !message?.hasMedia) {
+    return { sent: false, reason: ownerPhone ? 'missing_media' : 'missing_owner_phone' };
+  }
+
+  try {
+    const media = await message.downloadMedia();
+
+    if (!media) {
+      return { sent: false, reason: 'media_download_empty' };
+    }
+
+    await client.sendMessage(ownerPhone, media, caption ? { caption } : undefined);
+    logger.info('whatsapp_payment_proof_forwarded_to_owner', {
+      empresaId,
+      ownerPhone
+    });
+    return { sent: true };
+  } catch (error) {
+    logger.error('whatsapp_payment_proof_forward_error', {
+      empresaId,
+      ownerPhone,
+      error
+    });
+    return {
+      sent: false,
+      reason: error instanceof Error ? error.message : String(error ?? 'forward_error')
+    };
+  }
+}
+
 export async function handleIncomingWhatsappMessage({ companyId, client, message }) {
   const empresaId = normalizeCompanyId(companyId);
   const whatsappId = normalizeWhatsappId(message?.from);
   const hasBody = Boolean(message?.body?.trim());
+  const incomingMedia = buildIncomingMediaMetadata(message);
   const ignoreGroups = process.env.WHATSAPP_IGNORE_GROUPS !== 'false';
   const isGroup = whatsappId.includes('@g.us');
 
@@ -158,7 +202,7 @@ export async function handleIncomingWhatsappMessage({ companyId, client, message
     hasBody
   });
 
-  if (message?.fromMe || !hasBody || (ignoreGroups && isGroup)) {
+  if (message?.fromMe || (!hasBody && !incomingMedia.hasMedia) || (ignoreGroups && isGroup)) {
     logger.info('[WA][IGNORED] razon exacta', {
       empresaId,
       whatsappId,
@@ -306,7 +350,8 @@ export async function handleIncomingWhatsappMessage({ companyId, client, message
         message: message.body,
         whatsappChatId: whatsappId,
         whatsappMessageId,
-        contactName
+        contactName,
+        incomingMedia
       });
       logger.info('[WA][CONVERSATION] creada/encontrada', {
         empresaId,
@@ -318,6 +363,15 @@ export async function handleIncomingWhatsappMessage({ companyId, client, message
         messageId: result.conversacion_id ?? null,
         telefonoCliente: customerPhone
       });
+
+      if (result.owner_media_notification) {
+        await forwardIncomingMediaToOwner({
+          client,
+          empresaId,
+          message,
+          notification: result.owner_media_notification
+        });
+      }
 
       if (result.respuesta) {
         const chat = await resolveOutgoingChat({ message, client, whatsappId });

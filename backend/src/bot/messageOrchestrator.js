@@ -962,6 +962,129 @@ function buildOrderResponse(intent, result) {
   return `Listo, tu apartado${productText} quedo registrado${orderId}. Te comparto el folio para seguimiento. Puedes escribir "asesor" si necesitas que alguien lo revise contigo.`;
 }
 
+function paymentSettings(companyContext = {}) {
+  const percentage = Number(companyContext.apartado_porcentaje);
+
+  return {
+    apartadoActivo: Boolean(companyContext.apartado_activo),
+    porcentaje: Number.isFinite(percentage) && percentage > 0 ? Math.min(percentage, 100) : null,
+    efectivoActivo: companyContext.pago_efectivo_activo !== false && companyContext.pago_efectivo_activo !== 0,
+    transferenciaActiva: Boolean(companyContext.pago_transferencia_activo),
+    banco: String(companyContext.transferencia_banco ?? '').trim(),
+    titular: String(companyContext.transferencia_titular ?? '').trim(),
+    cuenta: String(companyContext.transferencia_cuenta ?? '').trim(),
+    clabe: String(companyContext.transferencia_clabe ?? '').trim(),
+    tarjeta: String(companyContext.transferencia_tarjeta ?? '').trim(),
+    instrucciones: String(companyContext.apartado_instrucciones ?? '').trim()
+  };
+}
+
+function hasTransferData(settings) {
+  return Boolean(settings.banco || settings.titular || settings.cuenta || settings.clabe || settings.tarjeta);
+}
+
+function reservationEnabled(companyContext = {}) {
+  const settings = paymentSettings(companyContext);
+  return settings.apartadoActivo && settings.porcentaje && (settings.transferenciaActiva || settings.efectivoActivo);
+}
+
+function calculateDepositAmount(product, percentage) {
+  const price = Number(product?.precio ?? 0);
+
+  if (!Number.isFinite(price) || price <= 0 || !percentage) {
+    return null;
+  }
+
+  return price * (percentage / 100);
+}
+
+function buildTransferLines(settings) {
+  if (!settings.transferenciaActiva || !hasTransferData(settings)) {
+    return [];
+  }
+
+  return [
+    'Datos para transferencia:',
+    settings.banco ? `Banco: ${settings.banco}` : null,
+    settings.titular ? `Titular: ${settings.titular}` : null,
+    settings.cuenta ? `Cuenta: ${settings.cuenta}` : null,
+    settings.clabe ? `CLABE: ${settings.clabe}` : null,
+    settings.tarjeta ? `Tarjeta: ${settings.tarjeta}` : null
+  ].filter(Boolean);
+}
+
+function buildReservationInstructionsResponse({ product, companyContext }) {
+  const settings = paymentSettings(companyContext);
+  const price = Number(product?.precio ?? 0);
+  const depositAmount = calculateDepositAmount(product, settings.porcentaje);
+  const lines = [
+    `Para apartar *${product?.nombre ?? 'este producto'}* debes cubrir el ${settings.porcentaje}% de anticipo.`,
+    Number.isFinite(price) && price > 0 ? `Precio del producto: ${formatMoney(price)}` : null,
+    depositAmount ? `Anticipo requerido: ${formatMoney(depositAmount)}` : null,
+    settings.efectivoActivo ? 'Tambien puedes pagar en efectivo directamente con el negocio.' : null,
+    ...buildTransferLines(settings),
+    settings.instrucciones ? `Instrucciones: ${settings.instrucciones}` : null,
+    '',
+    'Cuando hagas el pago, manda aqui la imagen o PDF del comprobante para avisar al asesor.',
+    'Tambien puedes responder "asesor" si prefieres que alguien te apoye.'
+  ].filter((line) => line !== null);
+
+  return lines.join('\n');
+}
+
+function buildReservationUnavailableResponse(product) {
+  const productText = product?.nombre ? ` para *${product.nombre}*` : '';
+  return `Aun no hay instrucciones de apartado configuradas${productText}. Puedo pasarte con un asesor para que te indique como continuar.`;
+}
+
+function isAdvisorRequest(message) {
+  return /\b(asesor|persona|humano|alguien|atienda|contacten|contactarme|hablar)\b/i.test(message);
+}
+
+function isPendingReservationContext(conversationContext) {
+  return Boolean(conversationContext?.datos_json?.apartado_pendiente?.producto?.id);
+}
+
+function getPendingReservation(conversationContext) {
+  return conversationContext?.datos_json?.apartado_pendiente ?? null;
+}
+
+function isPaymentProofMedia(media = {}) {
+  const type = String(media.type ?? '').toLowerCase();
+  const mime = String(media.mimetype ?? '').toLowerCase();
+  const filename = String(media.filename ?? '').toLowerCase();
+
+  return Boolean(media.hasMedia)
+    && (
+      type === 'image'
+      || mime.startsWith('image/')
+      || mime === 'application/pdf'
+      || filename.endsWith('.pdf')
+    );
+}
+
+function buildPaymentProofAcceptedResponse() {
+  return 'Gracias, ya recibi tu comprobante. Un asesor te contactara en cuanto se refleje tu pago. Necesitas ayuda en otra cosa?';
+}
+
+function buildPaymentProofRejectedResponse() {
+  return 'Para continuar con el apartado necesito que envies una imagen o PDF del comprobante de pago. Tambien puedes responder "asesor" si prefieres apoyo personalizado.';
+}
+
+function buildReservationOwnerNotification({ phone, product, orderResult, depositAmount, percentage }) {
+  const orderId = orderResult?.pedido_id ? `#${orderResult.pedido_id}` : 'sin folio';
+  return [
+    'Nuevo apartado con comprobante por revisar',
+    '',
+    `Cliente: ${phone}`,
+    `Producto: ${product?.nombre ?? '-'}`,
+    `Pedido: ${orderId}`,
+    percentage ? `Anticipo indicado: ${percentage}%${depositAmount ? ` (${formatMoney(depositAmount)})` : ''}` : null,
+    '',
+    'El cliente envio un comprobante de pago. Favor de revisar que el pago se haya reflejado antes de confirmar el apartado.'
+  ].filter(Boolean).join('\n');
+}
+
 function buildStaticResponse(intent, companyContext = {}) {
   const profile = companyContext.response_profile ?? {};
   const fallback = configuredFallback(companyContext);
@@ -1490,12 +1613,24 @@ async function getMinimalCompanyContext(empresaId, mcpClient) {
       instrucciones_negocio: company?.instrucciones_negocio,
       temas_bloqueados: company?.temas_bloqueados,
       faq_personalizada: company?.faq_personalizada,
+      telefono: company?.telefono,
+      telefono_dueno: company?.telefono_dueno,
       auto_pedidos: company?.auto_pedidos !== undefined ? Boolean(company.auto_pedidos) : true,
       envio_imagenes: company?.envio_imagenes !== undefined ? Boolean(company.envio_imagenes) : true,
       fallback_message: company?.fallback_message,
       horario_atencion: company?.horario_atencion,
       politica_entrega: company?.politica_entrega,
       politica_pagos: company?.politica_pagos,
+      pago_efectivo_activo: company?.pago_efectivo_activo !== undefined ? Boolean(company.pago_efectivo_activo) : true,
+      pago_transferencia_activo: company?.pago_transferencia_activo !== undefined ? Boolean(company.pago_transferencia_activo) : false,
+      transferencia_banco: company?.transferencia_banco,
+      transferencia_titular: company?.transferencia_titular,
+      transferencia_cuenta: company?.transferencia_cuenta,
+      transferencia_clabe: company?.transferencia_clabe,
+      transferencia_tarjeta: company?.transferencia_tarjeta,
+      apartado_activo: company?.apartado_activo !== undefined ? Boolean(company.apartado_activo) : false,
+      apartado_porcentaje: company?.apartado_porcentaje,
+      apartado_instrucciones: company?.apartado_instrucciones,
       response_profile: responseProfile
     };
   } catch (error) {
@@ -1512,6 +1647,7 @@ export async function orchestrateIncomingMessage({
   whatsappChatId = null,
   whatsappMessageId = null,
   contactName = null,
+  incomingMedia = null,
   contexto = null,
   currentDate = new Date(),
   interpreter = interpretIntent,
@@ -1531,6 +1667,157 @@ export async function orchestrateIncomingMessage({
   const businessStrategy = getBusinessStrategy(contextoEmpresa);
   const normalizedMessage = normalizarTextoBusqueda(message, contextoEmpresa.response_profile?.sinonimos);
   const blockedTopics = parseBlockedTopics(contextoEmpresa.temas_bloqueados);
+
+  if (isPendingReservationContext(conversationContext)) {
+    const pendingReservation = getPendingReservation(conversationContext);
+    const product = pendingReservation.producto;
+    const settings = paymentSettings(contextoEmpresa);
+    const depositAmount = calculateDepositAmount(product, settings.porcentaje);
+
+    if (isAdvisorRequest(message)) {
+      const response = 'De acuerdo, voy a avisarle a un asesor. Espera un momento en lo que se comunica contigo.';
+      const savedConversation = await mcpClient.callTool('guardar_conversacion', {
+        empresa_id: empresaId,
+        telefono: cleanPhone,
+        whatsapp_id: whatsappChatId,
+        contact_name: contactName,
+        mensaje: message,
+        respuesta: response,
+        estado: 'requires_human',
+        tipo_mensaje: 'bot'
+      });
+
+      let notificationResult = null;
+
+      try {
+        notificationResult = await handoffManager.request({
+          empresa_id: empresaId,
+          conversation_id: savedConversation.conversacion_id,
+          telefono_cliente: cleanPhone,
+          whatsapp_chat_id: whatsappChatId,
+          mensaje_cliente: `Cliente solicita asesor para apartado de ${product?.nombre ?? 'producto'}`,
+          producto_id: product?.id ?? null,
+          motivo: 'HABLAR_ASESOR',
+          mcpClientInstance: mcpClient
+        });
+      } catch (error) {
+        notificationResult = {
+          estado: 'ERROR',
+          error: error.message
+        };
+      }
+
+      await contextStore.save({
+        empresaId,
+        phone: cleanPhone,
+        ultimaIntencion: 'HABLAR_ASESOR',
+        ultimoProductoId: product?.id ?? null,
+        ultimoServicioId: null,
+        ultimoTextoBusqueda: product?.nombre ?? message,
+        datos: {
+          ...(conversationContext?.datos_json ?? {}),
+          apartado_pendiente: pendingReservation
+        }
+      });
+
+      return {
+        respuesta: response,
+        medios: [],
+        intencion: 'HABLAR_ASESOR',
+        herramienta_mcp: null,
+        parametros: {},
+        confianza: 1,
+        requiere_respuesta_ia: false,
+        mcp_result: null,
+        notificacion: notificationResult,
+        lead_id: null,
+        conversacion_id: savedConversation.conversacion_id
+      };
+    }
+
+    if (incomingMedia?.hasMedia) {
+      const response = isPaymentProofMedia(incomingMedia)
+        ? buildPaymentProofAcceptedResponse()
+        : buildPaymentProofRejectedResponse();
+      let orderResult = null;
+      let ownerMediaNotification = null;
+
+      if (isPaymentProofMedia(incomingMedia)) {
+        const notes = [
+          `Apartado de producto: ${product?.nombre ?? '-'}`,
+          product?.id ? `Producto ID: ${product.id}` : null,
+          settings.porcentaje ? `Anticipo solicitado: ${settings.porcentaje}%` : null,
+          depositAmount ? `Monto de anticipo: ${formatMoney(depositAmount)}` : null,
+          'Comprobante recibido por WhatsApp, pendiente de validar reflejo de pago.'
+        ].filter(Boolean).join('\n');
+
+        orderResult = await mcpClient.callTool('crear_pedido', {
+          empresa_id: empresaId,
+          telefono: cleanPhone,
+          cliente_nombre: contactName ?? 'Cliente WhatsApp',
+          total: Number(product?.precio ?? 0),
+          notas: notes
+        });
+        ownerMediaNotification = {
+          telefono_dueno: contextoEmpresa.telefono_dueno ?? contextoEmpresa.telefono ?? null,
+          caption: buildReservationOwnerNotification({
+            phone: cleanPhone,
+            product,
+            orderResult,
+            depositAmount,
+            percentage: settings.porcentaje
+          })
+        };
+      }
+
+      const savedConversation = await mcpClient.callTool('guardar_conversacion', {
+        empresa_id: empresaId,
+        telefono: cleanPhone,
+        whatsapp_id: whatsappChatId,
+        contact_name: contactName,
+        mensaje: message || `[${incomingMedia.type || 'archivo'} recibido]`,
+        respuesta: response,
+        estado: 'bot_active',
+        tipo_mensaje: 'bot'
+      });
+
+      await contextStore.save({
+        empresaId,
+        phone: cleanPhone,
+        ultimaIntencion: isPaymentProofMedia(incomingMedia) ? 'COMPROBANTE_APARTADO' : 'COMPROBANTE_INVALIDO',
+        ultimoProductoId: product?.id ?? null,
+        ultimoServicioId: null,
+        ultimoTextoBusqueda: product?.nombre ?? message,
+        datos: {
+          ...(conversationContext?.datos_json ?? {}),
+          apartado_pendiente: isPaymentProofMedia(incomingMedia) ? null : pendingReservation,
+          ultimo_apartado: isPaymentProofMedia(incomingMedia)
+            ? {
+                producto: product,
+                pedido_id: orderResult?.pedido_id ?? null,
+                porcentaje: settings.porcentaje,
+                anticipo: depositAmount
+              }
+            : conversationContext?.datos_json?.ultimo_apartado ?? null
+        }
+      });
+
+      return {
+        respuesta: response,
+        medios: [],
+        intencion: isPaymentProofMedia(incomingMedia) ? 'COMPROBANTE_APARTADO' : 'COMPROBANTE_INVALIDO',
+        herramienta_mcp: isPaymentProofMedia(incomingMedia) ? 'crear_pedido' : null,
+        parametros: {},
+        confianza: 1,
+        requiere_respuesta_ia: false,
+        mcp_result: orderResult,
+        notificacion: null,
+        lead_id: null,
+        conversacion_id: savedConversation.conversacion_id,
+        owner_media_notification: ownerMediaNotification
+      };
+    }
+  }
 
   if (matchesBlockedTopic(message, blockedTopics)) {
     const response = ensureResponseText(configuredFallback(contextoEmpresa), contextoEmpresa);
@@ -1651,6 +1938,70 @@ export async function orchestrateIncomingMessage({
   let notificationResult = null;
   let responseIntent = intent;
   const shouldRequestHuman = shouldNotifyOwner(intent.intencion) && intent.herramienta_mcp !== 'crear_pedido';
+
+  if (intent.herramienta_mcp === 'crear_pedido') {
+    const selectedProduct = findContextProduct(conversationContext, intent.parametros?.producto_id);
+    let product = selectedProduct;
+
+    if (!product?.id && (intent.parametros?.producto_id || conversationContext?.ultimo_producto_id)) {
+      const productResult = await mcpClient.callTool('obtener_producto', {
+        empresa_id: empresaId,
+        producto_id: intent.parametros?.producto_id ?? conversationContext?.ultimo_producto_id
+      });
+      product = productResult?.producto ?? null;
+    }
+
+    const settings = paymentSettings(contextoEmpresa);
+    const canReserve = reservationEnabled(contextoEmpresa) && product?.id;
+    const response = canReserve
+      ? buildReservationInstructionsResponse({ product, companyContext: contextoEmpresa })
+      : buildReservationUnavailableResponse(product);
+    const savedConversation = await mcpClient.callTool('guardar_conversacion', {
+      empresa_id: empresaId,
+      telefono: cleanPhone,
+      whatsapp_id: whatsappChatId,
+      contact_name: contactName,
+      mensaje: message,
+      respuesta: response,
+      estado: 'bot_active',
+      tipo_mensaje: 'bot'
+    });
+
+    await contextStore.save({
+      empresaId,
+      phone: cleanPhone,
+      ultimaIntencion: canReserve ? 'SOLICITAR_APARTADO' : 'APARTADO_NO_CONFIGURADO',
+      ultimoProductoId: product?.id ?? conversationContext?.ultimo_producto_id ?? null,
+      ultimoServicioId: null,
+      ultimoTextoBusqueda: product?.nombre ?? intent.parametros?.interes ?? message,
+      datos: {
+        ...(conversationContext?.datos_json ?? {}),
+        producto: product ?? conversationContext?.datos_json?.producto ?? null,
+        apartado_pendiente: canReserve
+          ? {
+              producto: serializeProductContext(product),
+              porcentaje: settings.porcentaje,
+              anticipo: calculateDepositAmount(product, settings.porcentaje),
+              instrucciones_enviadas_at: new Date().toISOString()
+            }
+          : null
+      }
+    });
+
+    return {
+      respuesta: response,
+      medios: [],
+      intencion: canReserve ? 'SOLICITAR_APARTADO' : 'APARTADO_NO_CONFIGURADO',
+      herramienta_mcp: null,
+      parametros: intent.parametros,
+      confianza: intent.confianza,
+      requiere_respuesta_ia: false,
+      mcp_result: null,
+      notificacion: null,
+      lead_id: null,
+      conversacion_id: savedConversation.conversacion_id
+    };
+  }
 
   if (shouldRequestHuman && !isWithinBusinessHours(contextoEmpresa.horario_atencion, currentDate)) {
     const response = ensureResponseText(buildAfterHoursAdvisorResponse(contextoEmpresa, currentDate), contextoEmpresa);

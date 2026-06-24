@@ -56,7 +56,8 @@ export async function generateCompanyReply({
   message,
   whatsappChatId = null,
   whatsappMessageId = null,
-  contactName = null
+  contactName = null,
+  incomingMedia = null
 }) {
   try {
     const aiLimit = await isPlanLimitAvailable(empresaId, 'aiMessagesMonthly');
@@ -78,7 +79,8 @@ export async function generateCompanyReply({
       message,
       whatsappChatId,
       whatsappMessageId,
-      contactName
+      contactName,
+      incomingMedia
     });
   } catch (error) {
     const classified = classifyOpenAIError(error);
@@ -148,7 +150,8 @@ export async function processIncomingCustomerMessage({
   message,
   whatsappChatId = null,
   whatsappMessageId = null,
-  contactName = null
+  contactName = null,
+  incomingMedia = null
 }) {
   const cleanPhone = normalizePhone(phone);
 
@@ -180,7 +183,8 @@ export async function processIncomingCustomerMessage({
       message,
       whatsappChatId,
       whatsappMessageId,
-      contactName
+      contactName,
+      incomingMedia
     });
 
     return {

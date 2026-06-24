@@ -35,6 +35,20 @@ function nullableText(value) {
   return cleanValue || null;
 }
 
+function resolveOrderEmpresaId(payload, auth) {
+  if (auth) {
+    return resolveScopedEmpresaId(auth, payload.empresa_id);
+  }
+
+  const empresaId = Number(payload.empresa_id);
+
+  if (!Number.isInteger(empresaId) || empresaId <= 0) {
+    throw createHttpError(400, 'La empresa es requerida');
+  }
+
+  return empresaId;
+}
+
 function normalizeOrderPayload(payload, auth) {
   const clienteNombre = String(payload.cliente_nombre ?? payload.nombre_cliente ?? '').trim();
   const telefonoCliente = nullableText(payload.telefono_cliente ?? payload.telefono);
@@ -60,7 +74,7 @@ function normalizeOrderPayload(payload, auth) {
   }
 
   return {
-    empresaId: resolveScopedEmpresaId(auth, payload.empresa_id),
+    empresaId: resolveOrderEmpresaId(payload, auth),
     clienteNombre,
     telefonoCliente,
     conversationId,
@@ -113,8 +127,19 @@ export async function findOrders(auth) {
   return rows.map(mapOrderRow);
 }
 
-export async function findOrderById(orderId, auth) {
-  const scope = appendCompanyScope(auth, [orderId], 'o');
+export async function findOrderById(orderId, auth, empresaId = null) {
+  const scopedEmpresaId = empresaId ? Number(empresaId) : null;
+
+  if (!auth && (!Number.isInteger(scopedEmpresaId) || scopedEmpresaId <= 0)) {
+    throw createHttpError(400, 'La empresa es requerida');
+  }
+
+  const scope = auth
+    ? appendCompanyScope(auth, [orderId], 'o')
+    : {
+        clause: scopedEmpresaId ? 'AND o.empresa_id = ?' : '',
+        params: scopedEmpresaId ? [orderId, scopedEmpresaId] : [orderId]
+      };
 
   const [rows] = await query(
     `SELECT ${ORDER_COLUMNS}
@@ -150,7 +175,7 @@ export async function createOrder(payload, auth) {
       ]
     );
 
-    return findOrderById(result.insertId, auth);
+    return findOrderById(result.insertId, auth, order.empresaId);
   } catch (error) {
     mapDatabaseError(error);
   }

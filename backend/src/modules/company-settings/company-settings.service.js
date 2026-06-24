@@ -23,6 +23,16 @@ const SETTINGS_COLUMNS = `
   ce.horario_atencion,
   ce.politica_entrega,
   ce.politica_pagos,
+  COALESCE(ce.pago_efectivo_activo, 1) AS pago_efectivo_activo,
+  COALESCE(ce.pago_transferencia_activo, 0) AS pago_transferencia_activo,
+  ce.transferencia_banco,
+  ce.transferencia_titular,
+  ce.transferencia_cuenta,
+  ce.transferencia_clabe,
+  ce.transferencia_tarjeta,
+  COALESCE(ce.apartado_activo, 0) AS apartado_activo,
+  ce.apartado_porcentaje,
+  ce.apartado_instrucciones,
   COALESCE(ce.activo_ia, 1) AS activo_ia,
   COALESCE(ce.activo_whatsapp, 1) AS activo_whatsapp,
   ce.fecha_creacion,
@@ -49,7 +59,46 @@ function normalizeBoolean(value, defaultValue = true) {
   return value === true || value === 'true' || value === 1 || value === '1';
 }
 
+function normalizePercentage(value) {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+
+  const percentage = Number(value);
+
+  if (!Number.isFinite(percentage) || percentage <= 0 || percentage > 100) {
+    throw createHttpError(400, 'El porcentaje de apartado debe estar entre 1 y 100');
+  }
+
+  return percentage;
+}
+
+function digitsOnly(value) {
+  return String(value ?? '').replace(/\D/g, '');
+}
+
+function normalizeNumericField(value, fieldLabel, { maxLength, exactLength = null } = {}) {
+  const cleanValue = digitsOnly(value);
+
+  if (!cleanValue) {
+    return null;
+  }
+
+  if (exactLength && cleanValue.length !== exactLength) {
+    throw createHttpError(400, `${fieldLabel} debe tener ${exactLength} digitos`);
+  }
+
+  if (maxLength && cleanValue.length > maxLength) {
+    throw createHttpError(400, `${fieldLabel} debe tener maximo ${maxLength} digitos`);
+  }
+
+  return cleanValue;
+}
+
 function normalizeSettingsPayload(payload, auth) {
+  const apartadoActivo = normalizeBoolean(payload.apartado_activo, false);
+  const pagoTransferenciaActivo = normalizeBoolean(payload.pago_transferencia_activo, false);
+
   return {
     empresaId: resolveScopedEmpresaId(auth, payload.empresa_id),
     nombreBot: nullableText(payload.nombre_bot),
@@ -67,6 +116,16 @@ function normalizeSettingsPayload(payload, auth) {
     horarioAtencion: nullableText(payload.horario_atencion),
     politicaEntrega: nullableText(payload.politica_entrega),
     politicaPagos: nullableText(payload.politica_pagos),
+    pagoEfectivoActivo: normalizeBoolean(payload.pago_efectivo_activo, true),
+    pagoTransferenciaActivo,
+    transferenciaBanco: nullableText(payload.transferencia_banco),
+    transferenciaTitular: nullableText(payload.transferencia_titular),
+    transferenciaCuenta: normalizeNumericField(payload.transferencia_cuenta, 'La cuenta', { maxLength: 11 }),
+    transferenciaClabe: normalizeNumericField(payload.transferencia_clabe, 'La CLABE', { exactLength: 18 }),
+    transferenciaTarjeta: normalizeNumericField(payload.transferencia_tarjeta, 'La tarjeta', { exactLength: 16 }),
+    apartadoActivo,
+    apartadoPorcentaje: apartadoActivo ? normalizePercentage(payload.apartado_porcentaje) : null,
+    apartadoInstrucciones: nullableText(payload.apartado_instrucciones),
     activoIa: normalizeBoolean(payload.activo_ia),
     activoWhatsapp: normalizeBoolean(payload.activo_whatsapp)
   };
@@ -91,6 +150,12 @@ function mapSettingsRow(row) {
     activo_whatsapp: Boolean(row.activo_whatsapp),
     auto_pedidos: Boolean(row.auto_pedidos),
     envio_imagenes: Boolean(row.envio_imagenes),
+    pago_efectivo_activo: Boolean(row.pago_efectivo_activo),
+    pago_transferencia_activo: Boolean(row.pago_transferencia_activo),
+    apartado_activo: Boolean(row.apartado_activo),
+    apartado_porcentaje: row.apartado_porcentaje === null || row.apartado_porcentaje === undefined
+      ? null
+      : Number(row.apartado_porcentaje),
     empresa_activo: Boolean(row.empresa_activo)
   };
 }
@@ -154,10 +219,20 @@ export async function upsertCompanySettings(payload, auth) {
           horario_atencion,
           politica_entrega,
           politica_pagos,
+          pago_efectivo_activo,
+          pago_transferencia_activo,
+          transferencia_banco,
+          transferencia_titular,
+          transferencia_cuenta,
+          transferencia_clabe,
+          transferencia_tarjeta,
+          apartado_activo,
+          apartado_porcentaje,
+          apartado_instrucciones,
           activo_ia,
           activo_whatsapp
         )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
           nombre_bot = VALUES(nombre_bot),
           tono_respuesta = VALUES(tono_respuesta),
@@ -174,6 +249,16 @@ export async function upsertCompanySettings(payload, auth) {
           horario_atencion = VALUES(horario_atencion),
           politica_entrega = VALUES(politica_entrega),
           politica_pagos = VALUES(politica_pagos),
+          pago_efectivo_activo = VALUES(pago_efectivo_activo),
+          pago_transferencia_activo = VALUES(pago_transferencia_activo),
+          transferencia_banco = VALUES(transferencia_banco),
+          transferencia_titular = VALUES(transferencia_titular),
+          transferencia_cuenta = VALUES(transferencia_cuenta),
+          transferencia_clabe = VALUES(transferencia_clabe),
+          transferencia_tarjeta = VALUES(transferencia_tarjeta),
+          apartado_activo = VALUES(apartado_activo),
+          apartado_porcentaje = VALUES(apartado_porcentaje),
+          apartado_instrucciones = VALUES(apartado_instrucciones),
           activo_ia = VALUES(activo_ia),
           activo_whatsapp = VALUES(activo_whatsapp)`,
       [
@@ -193,6 +278,16 @@ export async function upsertCompanySettings(payload, auth) {
         settings.horarioAtencion,
         settings.politicaEntrega,
         settings.politicaPagos,
+        settings.pagoEfectivoActivo ? 1 : 0,
+        settings.pagoTransferenciaActivo ? 1 : 0,
+        settings.transferenciaBanco,
+        settings.transferenciaTitular,
+        settings.transferenciaCuenta,
+        settings.transferenciaClabe,
+        settings.transferenciaTarjeta,
+        settings.apartadoActivo ? 1 : 0,
+        settings.apartadoPorcentaje,
+        settings.apartadoInstrucciones,
         settings.activoIa ? 1 : 0,
         settings.activoWhatsapp ? 1 : 0
       ]

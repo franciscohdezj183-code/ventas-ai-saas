@@ -435,6 +435,12 @@
   font-weight: 850;
 }
 
+.platform-settings-inline-error {
+  color: var(--ps-danger);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
 .platform-settings-switch {
   position: relative;
   display: grid;

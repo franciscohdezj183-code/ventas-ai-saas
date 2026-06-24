@@ -18,8 +18,8 @@ async function getHandoffConfig(empresaId) {
   return {
     timeoutMinutes: Number.isInteger(timeoutMinutes) && timeoutMinutes > 0 ? Math.min(timeoutMinutes, 120) : 4,
     mensajeTomar: profile?.handoff?.mensaje_tomar || 'Listo, un asesor continuara contigo por aqui',
-    mensajeDeclinar: profile?.handoff?.mensaje_declinar || 'Por ahora el asesor no esta disponible, pero yo puedo seguir ayudandote',
-    mensajeExpirado: profile?.handoff?.mensaje_expirado || 'Por ahora el asesor no esta disponible, pero yo puedo seguir ayudandote',
+    mensajeDeclinar: profile?.handoff?.mensaje_declinar || 'Por ahora nuestros asesores estan ocupados. Pueden contactarte despues y se comunicaran en cuanto puedan. Mientras tanto puedo seguir ayudandote por aqui.',
+    mensajeExpirado: profile?.handoff?.mensaje_expirado || 'Por ahora nuestros asesores estan ocupados. Pueden contactarte despues y se comunicaran en cuanto puedan. Mientras tanto puedo seguir ayudandote por aqui.',
     mensajeReactivar: profile?.handoff?.mensaje_reactivar || 'Voy a continuar apoyandote por aqui. Que otra duda tienes?'
   };
 }

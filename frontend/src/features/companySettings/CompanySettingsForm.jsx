@@ -10,10 +10,12 @@ import {
   Globe2,
   HelpCircle,
   KeyRound,
+  Landmark,
   MapPin,
   MessageSquare,
   PackageCheck,
   Palette,
+  Percent,
   PlugZap,
   RefreshCw,
   RotateCcw,
@@ -44,8 +46,24 @@ const initialForm = {
   horario_atencion: '',
   politica_entrega: '',
   politica_pagos: '',
+  pago_efectivo_activo: true,
+  pago_transferencia_activo: false,
+  transferencia_banco: '',
+  transferencia_titular: '',
+  transferencia_cuenta: '',
+  transferencia_clabe: '',
+  transferencia_tarjeta: '',
+  apartado_activo: false,
+  apartado_porcentaje: '',
+  apartado_instrucciones: '',
   activo_ia: true,
   activo_whatsapp: true
+};
+
+const numericTransferLimits = {
+  transferencia_cuenta: 11,
+  transferencia_clabe: 18,
+  transferencia_tarjeta: 16
 };
 
 function toFormValue(settings) {
@@ -66,6 +84,16 @@ function toFormValue(settings) {
     horario_atencion: settings?.horario_atencion ?? '',
     politica_entrega: settings?.politica_entrega ?? '',
     politica_pagos: settings?.politica_pagos ?? '',
+    pago_efectivo_activo: settings?.pago_efectivo_activo ?? true,
+    pago_transferencia_activo: settings?.pago_transferencia_activo ?? false,
+    transferencia_banco: settings?.transferencia_banco ?? '',
+    transferencia_titular: settings?.transferencia_titular ?? '',
+    transferencia_cuenta: settings?.transferencia_cuenta ?? '',
+    transferencia_clabe: settings?.transferencia_clabe ?? '',
+    transferencia_tarjeta: settings?.transferencia_tarjeta ?? '',
+    apartado_activo: settings?.apartado_activo ?? false,
+    apartado_porcentaje: settings?.apartado_porcentaje ?? '',
+    apartado_instrucciones: settings?.apartado_instrucciones ?? '',
     activo_ia: settings?.activo_ia ?? true,
     activo_whatsapp: settings?.activo_whatsapp ?? true
   };
@@ -76,6 +104,26 @@ function validateSettings(form, canSelectCompany) {
 
   if (canSelectCompany && !form.empresa_id) {
     errors.empresa_id = 'Selecciona una empresa.';
+  }
+
+  if (form.apartado_activo) {
+    const percentage = Number(form.apartado_porcentaje);
+
+    if (!Number.isFinite(percentage) || percentage <= 0 || percentage > 100) {
+      errors.apartado_porcentaje = 'Usa un porcentaje entre 1 y 100.';
+    }
+
+    if (!form.pago_efectivo_activo && !form.pago_transferencia_activo) {
+      errors.apartado_activo = 'Activa al menos un metodo de pago.';
+    }
+  }
+
+  if (form.transferencia_clabe && form.transferencia_clabe.length !== numericTransferLimits.transferencia_clabe) {
+    errors.transferencia_clabe = 'La CLABE debe tener 18 digitos.';
+  }
+
+  if (form.transferencia_tarjeta && form.transferencia_tarjeta.length !== numericTransferLimits.transferencia_tarjeta) {
+    errors.transferencia_tarjeta = 'La tarjeta debe tener 16 digitos.';
   }
 
   return errors;
@@ -592,7 +640,7 @@ function NotificationsPage({ form, onChange }) {
   );
 }
 
-function BillingPage({ form, onChange }) {
+function BillingPage({ errors, form, onChange }) {
   return (
     <>
       <Can permission="billing.view" fallback={<EmptyConfig title="Facturacion no disponible" />}>
@@ -611,6 +659,142 @@ function BillingPage({ form, onChange }) {
             placeholder="Metodos de pago, anticipos y facturacion"
             value={form.politica_pagos}
           />
+        </SettingsGroup>
+        <SettingsGroup
+          description="Selecciona las formas de pago que puede ofrecer el bot."
+          icon={Landmark}
+          title="Metodos de pago"
+        >
+          <div className="platform-settings-grid">
+            <Can role="owner">
+              <SettingsSwitch
+                checked={form.pago_efectivo_activo}
+                description="Permite indicar al cliente que puede pagar en efectivo."
+                icon={CreditCard}
+                id="settings-cash-payment"
+                label="Efectivo"
+                name="pago_efectivo_activo"
+                onChange={onChange}
+              />
+              <SettingsSwitch
+                checked={form.pago_transferencia_activo}
+                description="Permite mostrar datos bancarios para transferencia."
+                icon={Landmark}
+                id="settings-transfer-payment"
+                label="Transferencia"
+                name="pago_transferencia_activo"
+                onChange={onChange}
+              />
+            </Can>
+          </div>
+          {form.pago_transferencia_activo ? (
+            <div className="platform-settings-grid">
+              <SettingsField
+                help="Banco receptor de la transferencia."
+                id="settings-transfer-bank"
+                label="Banco"
+                name="transferencia_banco"
+                onChange={onChange}
+                placeholder="BBVA, Santander, Banorte..."
+                type="text"
+                value={form.transferencia_banco}
+              />
+              <SettingsField
+                help="Nombre de quien aparece como titular de la cuenta."
+                id="settings-transfer-holder"
+                label="Titular"
+                name="transferencia_titular"
+                onChange={onChange}
+                placeholder="Nombre del titular"
+                type="text"
+                value={form.transferencia_titular}
+              />
+              <SettingsField
+                help="Numero de cuenta bancaria."
+                id="settings-transfer-account"
+                label="Cuenta"
+                maxLength={numericTransferLimits.transferencia_cuenta}
+                name="transferencia_cuenta"
+                onChange={onChange}
+                inputMode="numeric"
+                pattern="[0-9]*"
+                type="text"
+                value={form.transferencia_cuenta}
+              />
+              <SettingsField
+                error={errors.transferencia_clabe}
+                help="CLABE interbancaria."
+                id="settings-transfer-clabe"
+                label="CLABE"
+                maxLength={numericTransferLimits.transferencia_clabe}
+                name="transferencia_clabe"
+                onChange={onChange}
+                inputMode="numeric"
+                pattern="[0-9]*"
+                type="text"
+                value={form.transferencia_clabe}
+              />
+              <SettingsField
+                className="wide"
+                error={errors.transferencia_tarjeta}
+                help="Numero de tarjeta opcional para transferencias SPEI o deposito."
+                id="settings-transfer-card"
+                label="Tarjeta"
+                maxLength={numericTransferLimits.transferencia_tarjeta}
+                name="transferencia_tarjeta"
+                onChange={onChange}
+                inputMode="numeric"
+                pattern="[0-9]*"
+                type="text"
+                value={form.transferencia_tarjeta}
+              />
+            </div>
+          ) : null}
+        </SettingsGroup>
+        <SettingsGroup
+          description="Configura como debe pedir el anticipo cuando un cliente quiera apartar un producto."
+          icon={Percent}
+          title="Apartado de productos"
+        >
+          <Can role="owner">
+            <SettingsSwitch
+              checked={form.apartado_activo}
+              description="El bot enviara instrucciones antes de registrar el apartado."
+              icon={PackageCheck}
+              id="settings-reservation-active"
+              label="Permitir apartado"
+              name="apartado_activo"
+              onChange={onChange}
+            />
+          </Can>
+          {errors.apartado_activo ? <small className="platform-settings-inline-error">{errors.apartado_activo}</small> : null}
+          {form.apartado_activo ? (
+            <div className="platform-settings-grid">
+              <SettingsField
+                error={errors.apartado_porcentaje}
+                help="Ejemplo: 50 para pedir la mitad del precio como anticipo."
+                id="settings-reservation-percent"
+                label="Porcentaje de anticipo"
+                max="100"
+                min="1"
+                name="apartado_porcentaje"
+                onChange={onChange}
+                type="number"
+                value={form.apartado_porcentaje}
+              />
+              <SettingsField
+                as="textarea"
+                className="wide"
+                help="Condiciones adicionales que vera el cliente al apartar."
+                id="settings-reservation-instructions"
+                label="Instrucciones de apartado"
+                name="apartado_instrucciones"
+                onChange={onChange}
+                placeholder="El apartado se confirma cuando el pago se refleje..."
+                value={form.apartado_instrucciones}
+              />
+            </div>
+          ) : null}
         </SettingsGroup>
       </Can>
       <SettingsGroup
@@ -738,7 +922,7 @@ function CategoryContent({ activeId, canSelectCompany, companies, errors, form, 
   }
 
   if (activeId === 'facturacion') {
-    return <BillingPage form={form} onChange={onChange} />;
+    return <BillingPage errors={errors} form={form} onChange={onChange} />;
   }
 
   if (activeId === 'apariencia') {
@@ -861,7 +1045,19 @@ export function CompanySettingsForm({
               : item.id === 'notificaciones'
                 ? ['mensaje_bienvenida', 'mensaje_fuera_horario']
                 : item.id === 'facturacion'
-                  ? ['politica_pagos']
+                  ? [
+                      'politica_pagos',
+                      'pago_efectivo_activo',
+                      'pago_transferencia_activo',
+                      'transferencia_banco',
+                      'transferencia_titular',
+                      'transferencia_cuenta',
+                      'transferencia_clabe',
+                      'transferencia_tarjeta',
+                      'apartado_activo',
+                      'apartado_porcentaje',
+                      'apartado_instrucciones'
+                    ]
                   : item.id === 'sistema'
                     ? ['politica_entrega']
                     : []
@@ -899,7 +1095,11 @@ export function CompanySettingsForm({
 
   function handleChange(event) {
     const { checked, name, type, value } = event.target;
-    const nextValue = type === 'checkbox' ? checked : value;
+    const nextValue = type === 'checkbox'
+      ? checked
+      : numericTransferLimits[name]
+        ? value.replace(/\D/g, '').slice(0, numericTransferLimits[name])
+        : value;
 
     setForm((currentForm) => ({
       ...currentForm,
@@ -934,7 +1134,8 @@ export function CompanySettingsForm({
 
     onSubmit({
       ...form,
-      empresa_id: form.empresa_id ? Number(form.empresa_id) : undefined
+      empresa_id: form.empresa_id ? Number(form.empresa_id) : undefined,
+      apartado_porcentaje: form.apartado_porcentaje ? Number(form.apartado_porcentaje) : null
     });
   }
 
