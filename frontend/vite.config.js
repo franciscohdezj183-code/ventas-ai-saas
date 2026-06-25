@@ -3,17 +3,11 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
 function getDevProxyTarget(apiUrl) {
-  if (!apiUrl) {
-    return null
-  }
+  if (!apiUrl) return null
 
   try {
-    const parsedUrl = new URL(apiUrl)
-    parsedUrl.pathname = parsedUrl.pathname.replace(/\/api\/?$/, '') || '/'
-    parsedUrl.search = ''
-    parsedUrl.hash = ''
-
-    return parsedUrl.toString().replace(/\/$/, '')
+    const url = new URL(apiUrl)
+    return `${url.protocol}//${url.host}`
   } catch {
     return null
   }
@@ -24,6 +18,7 @@ export default defineConfig(({ mode }) => {
   const devProxyTarget = getDevProxyTarget(env.VITE_API_URL)
 
   return {
+    base: '/nexus/',
     plugins: [
       react(),
       tailwindcss()
@@ -41,12 +36,14 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: 5173,
-      proxy: devProxyTarget ? {
-        '/api': {
-          target: devProxyTarget,
-          changeOrigin: true
-        }
-      } : undefined
+      proxy: devProxyTarget
+        ? {
+            '/api': {
+              target: devProxyTarget,
+              changeOrigin: true
+            }
+          }
+        : undefined
     }
   }
 })

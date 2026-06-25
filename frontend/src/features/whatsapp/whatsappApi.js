@@ -15,6 +15,18 @@ export function resolveSocketUrl() {
   return window.location.origin;
 }
 
+export function resolveSocketPath() {
+  const configuredApiUrl = import.meta.env.VITE_API_URL;
+
+  if (!configuredApiUrl) {
+    return '/socket.io';
+  }
+
+  const pathname = new URL(configuredApiUrl).pathname.replace(/\/$/, '');
+
+  return `${pathname}/socket.io`;
+}
+
 export function getWhatsappSocketToken() {
   return getStoredToken();
 }
