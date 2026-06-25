@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { query } from '../config/database.js';
 import { mcpClient } from '../mcp/mcpClient.js';
 import { getBotResponseProfile } from '../modules/bot-prompts/bot-prompts.service.js';
@@ -45,9 +46,26 @@ function phonesMatch(left, right) {
   return leftPhone === rightPhone || phoneKey(leftPhone) === phoneKey(rightPhone);
 }
 
-export function findOwnerPendingHandoff(rows, ownerPhone) {
+function normalizeHandoffCode(value) {
+  return String(value ?? '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .trim();
+}
+
+function generateHandoffCode() {
+  const digits = String(Math.floor(10000 + Math.random() * 90000));
+  const suffix = randomBytes(1).toString('hex').toUpperCase();
+  return `${digits}${suffix}`;
+}
+
+export function findOwnerPendingHandoff(rows, ownerPhone, code = null) {
+  const expectedCode = normalizeHandoffCode(code);
   return (Array.isArray(rows) ? rows : [])
-    .find((row) => phonesMatch(row.telefono_dueno, ownerPhone)) ?? null;
+    .find((row) => (
+      phonesMatch(row.telefono_dueno, ownerPhone)
+      && (!expectedCode || normalizeHandoffCode(row.codigo) === expectedCode)
+    )) ?? null;
 }
 
 function normalizeText(value) {
@@ -74,6 +92,42 @@ function ownerResponseKind(message) {
   return null;
 }
 
+function ownerDecisionKind(message) {
+  const text = normalizeText(message);
+
+  if (/^(?:1|si|yo lo atiendo|yo atiendo|lo atiendo)(?:\s+[a-z0-9]+)?$/i.test(text)) {
+    return 'ACCEPT';
+  }
+
+  if (/^(?:2|no|no puedo|que siga el bot|siga el bot)(?:\s+[a-z0-9]+)?$/i.test(text)) {
+    return 'DECLINE';
+  }
+
+  return null;
+}
+
+function ownerDecisionCode(message, responseKind) {
+  if (!responseKind) {
+    return null;
+  }
+
+  const text = normalizeText(message);
+  const prefix = responseKind === 'ACCEPT'
+    ? /^(?:yo lo atiendo|yo atiendo|lo atiendo|1|si)\s*/i
+    : /^(?:que siga el bot|siga el bot|no puedo|2|no)\s*/i;
+  return normalizeHandoffCode(text.replace(prefix, '').trim());
+}
+
+function buildMissingCodeOwnerMessage(rows, ownerPhone) {
+  const codes = (Array.isArray(rows) ? rows : [])
+    .filter((row) => phonesMatch(row.telefono_dueno, ownerPhone))
+    .map((row) => normalizeHandoffCode(row.codigo))
+    .filter(Boolean);
+  const examples = codes.length > 0 ? ` Codigos pendientes: ${codes.join(', ')}.` : '';
+
+  return `Para saber que conversacion atender, responde con el codigo: "si CODIGO" para atender o "no CODIGO" para que continue el bot.${examples}`;
+}
+
 async function ensureHumanHandoffTable() {
   if (!tableReadyPromise) {
     tableReadyPromise = (async () => {
@@ -84,6 +138,7 @@ async function ensureHumanHandoffTable() {
           conversation_id BIGINT UNSIGNED NULL,
           telefono_cliente VARCHAR(40) NOT NULL,
           telefono_dueno VARCHAR(40) NULL,
+          codigo VARCHAR(20) NULL,
           estado ENUM('PENDING_OWNER', 'HUMAN_TAKEOVER', 'BOT_ACTIVE', 'EXPIRED', 'DECLINED') NOT NULL DEFAULT 'PENDING_OWNER',
           motivo VARCHAR(120) NULL,
           mensaje_cliente TEXT NULL,
@@ -99,6 +154,7 @@ async function ensureHumanHandoffTable() {
           PRIMARY KEY (id),
           KEY human_handoffs_empresa_cliente_estado_index (empresa_id, telefono_cliente, estado),
           KEY human_handoffs_empresa_dueno_estado_index (empresa_id, telefono_dueno, estado),
+          KEY human_handoffs_empresa_codigo_estado_index (empresa_id, codigo, estado),
           KEY human_handoffs_expires_at_index (expires_at),
           KEY human_handoffs_last_activity_at_index (last_activity_at),
           CONSTRAINT human_handoffs_empresa_id_foreign
@@ -117,11 +173,17 @@ async function ensureHumanHandoffTable() {
          FROM INFORMATION_SCHEMA.COLUMNS
          WHERE TABLE_SCHEMA = DATABASE()
            AND TABLE_NAME = 'human_handoffs'
-           AND COLUMN_NAME = 'whatsapp_chat_id'`
+           AND COLUMN_NAME IN ('whatsapp_chat_id', 'codigo')`
       );
+      const columnNames = new Set(columns.map((column) => column.COLUMN_NAME));
 
-      if (columns.length === 0) {
+      if (!columnNames.has('whatsapp_chat_id')) {
         await query('ALTER TABLE human_handoffs ADD COLUMN whatsapp_chat_id VARCHAR(80) NULL AFTER mensaje_cliente');
+      }
+
+      if (!columnNames.has('codigo')) {
+        await query('ALTER TABLE human_handoffs ADD COLUMN codigo VARCHAR(20) NULL AFTER telefono_dueno');
+        await query('ALTER TABLE human_handoffs ADD INDEX human_handoffs_empresa_codigo_estado_index (empresa_id, codigo, estado)');
       }
     })();
   }
@@ -147,7 +209,9 @@ async function notifyOwnerForHandoff({
   productOrService,
   customerMessage,
   botResponse = null,
-  attendedByBot = false
+  attendedByBot = false,
+  handoffCode = null,
+  timeoutMinutes = null
 }) {
   if (!ownerPhone) {
     logger.info('human_handoff_owner_notification_omitted', {
@@ -165,7 +229,9 @@ async function notifyOwnerForHandoff({
     productOrService,
     customerMessage,
     botResponse,
-    attendedByBot
+    attendedByBot,
+    handoffCode,
+    timeoutMinutes
   });
 
   try {
@@ -214,7 +280,9 @@ function buildOwnerNotification({
   productOrService,
   customerMessage,
   botResponse = null,
-  attendedByBot = false
+  attendedByBot = false,
+  handoffCode = null,
+  timeoutMinutes = null
 }) {
   return buildReadableOwnerNotification({
     title: 'Nuevo cliente necesita seguimiento',
@@ -226,7 +294,9 @@ function buildOwnerNotification({
     botStatus: attendedByBot
       ? 'El bot pudo responder con informacion util, pero el cliente puede requerir seguimiento.'
       : 'Requiere apoyo de un asesor. El bot ya aviso al cliente que un asesor puede apoyarlo.',
-    includeDecisionPrompt: true
+    includeDecisionPrompt: true,
+    decisionCode: handoffCode,
+    timeoutMinutes
   });
 }
 
@@ -273,6 +343,7 @@ export async function requestHandoff({
   if (activeHandoff) {
     const company = await getCompanyConfig(empresaId, mcpClientInstance);
     const ownerPhone = normalizePhone(activeHandoff.telefono_dueno ?? company.telefono_dueno ?? company.telefono);
+    const handoffCode = activeHandoff.codigo || generateHandoffCode();
 
     await query(
       `UPDATE human_handoffs
@@ -280,9 +351,10 @@ export async function requestHandoff({
            expires_at = DATE_ADD(NOW(), INTERVAL ${handoffConfig.timeoutMinutes} MINUTE),
            mensaje_cliente = COALESCE(?, mensaje_cliente),
            whatsapp_chat_id = COALESCE(?, whatsapp_chat_id),
-           telefono_dueno = COALESCE(telefono_dueno, ?)
+           telefono_dueno = COALESCE(telefono_dueno, ?),
+           codigo = COALESCE(codigo, ?)
        WHERE id = ?`,
-      [mensajeCliente ?? null, whatsappChatId ?? null, ownerPhone || null, activeHandoff.id]
+      [mensajeCliente ?? null, whatsappChatId ?? null, ownerPhone || null, handoffCode, activeHandoff.id]
     );
     const ownerNotification = await notifyOwnerForHandoff({
       empresaId,
@@ -293,7 +365,9 @@ export async function requestHandoff({
       productOrService: resumenSolicitud ?? mensajeCliente,
       customerMessage: mensajeCliente,
       botResponse: respuestaBot,
-      attendedByBot: atendidoPorBot
+      attendedByBot: atendidoPorBot,
+      handoffCode,
+      timeoutMinutes: handoffConfig.timeoutMinutes
     });
 
     if (ownerNotification.estado !== 'ENVIADA') {
@@ -326,16 +400,18 @@ export async function requestHandoff({
   const company = await getCompanyConfig(empresaId, mcpClientInstance);
   const ownerPhone = normalizePhone(company.telefono_dueno ?? company.telefono);
   const productOrService = resumenSolicitud ?? mensajeCliente;
+  const handoffCode = generateHandoffCode();
   const [result] = await query(
     `INSERT INTO human_handoffs
-      (empresa_id, conversation_id, telefono_cliente, telefono_dueno, estado, motivo,
+      (empresa_id, conversation_id, telefono_cliente, telefono_dueno, codigo, estado, motivo,
        mensaje_cliente, whatsapp_chat_id, producto_id, servicio_id, owner_notified_at, expires_at, last_activity_at)
-     VALUES (?, ?, ?, ?, 'PENDING_OWNER', ?, ?, ?, ?, ?, NULL, DATE_ADD(NOW(), INTERVAL ${handoffConfig.timeoutMinutes} MINUTE), NOW())`,
+     VALUES (?, ?, ?, ?, ?, 'PENDING_OWNER', ?, ?, ?, ?, ?, NULL, DATE_ADD(NOW(), INTERVAL ${handoffConfig.timeoutMinutes} MINUTE), NOW())`,
     [
       empresaId,
       conversationId ?? null,
       customerPhone,
       ownerPhone || null,
+      handoffCode,
       motivo,
       mensajeCliente ?? null,
       whatsappChatId ?? null,
@@ -359,7 +435,9 @@ export async function requestHandoff({
     productOrService,
     customerMessage: mensajeCliente,
     botResponse: respuestaBot,
-    attendedByBot: atendidoPorBot
+    attendedByBot: atendidoPorBot,
+    handoffCode,
+    timeoutMinutes: handoffConfig.timeoutMinutes
   });
 
   if (ownerNotification.estado !== 'ENVIADA') {
@@ -391,7 +469,8 @@ export async function handleOwnerResponse({ empresa_id: empresaId, telefono_duen
   await ensureHumanHandoffTable();
   const handoffConfig = await getHandoffConfig(empresaId);
   const ownerPhone = normalizePhone(telefonoDueno);
-  const responseKind = ownerResponseKind(mensaje);
+  const responseKind = ownerDecisionKind(mensaje);
+  const responseCode = ownerDecisionCode(mensaje, responseKind);
   const [rows] = await query(
     `SELECT *
      FROM human_handoffs
@@ -402,10 +481,34 @@ export async function handleOwnerResponse({ empresa_id: empresaId, telefono_duen
      LIMIT 10`,
     [empresaId]
   );
-  const handoff = findOwnerPendingHandoff(rows, ownerPhone);
+  const ownerRows = rows.filter((row) => phonesMatch(row.telefono_dueno, ownerPhone));
+
+  if (ownerRows.length === 0) {
+    return { handled: false };
+  }
+
+  if (responseKind && !responseCode) {
+    return {
+      handled: true,
+      action: 'MISSING_CODE',
+      telefono_dueno: ownerPhone,
+      mensaje_dueno: buildMissingCodeOwnerMessage(ownerRows, ownerPhone)
+    };
+  }
+
+  const handoff = responseKind ? findOwnerPendingHandoff(rows, ownerPhone, responseCode) : null;
 
   if (!handoff) {
-    return { handled: false };
+    if (responseKind) {
+      return {
+        handled: true,
+        action: 'CODE_NOT_FOUND',
+        telefono_dueno: ownerPhone,
+        mensaje_dueno: `No encontre una solicitud pendiente con el codigo ${responseCode}. Responde usando el codigo exacto que aparece en el aviso.`
+      };
+    }
+
+    return { handled: true, action: 'IGNORED' };
   }
 
   if (responseKind === 'ACCEPT') {

@@ -67,6 +67,8 @@ export function buildReadableOwnerNotification({
   botResponse = null,
   botStatus = null,
   includeDecisionPrompt = false,
+  decisionCode = null,
+  timeoutMinutes = null,
   footer = null,
   date = null
 }) {
@@ -137,11 +139,25 @@ export function buildReadableOwnerNotification({
   }
 
   if (includeDecisionPrompt) {
+    if (decisionCode) {
+      lines.push(`Codigo: ${decisionCode}`);
+      lines.push('');
+    }
+
     lines.push('Puedes atenderlo ahora?');
     lines.push('');
     lines.push('Responde:');
-    lines.push('1 = Si, yo lo atiendo');
-    lines.push('2 = No puedo, que siga el bot');
+    if (decisionCode) {
+      lines.push(`si ${decisionCode} = Si, yo lo atiendo`);
+      lines.push(`no ${decisionCode} = No puedo, que siga el bot`);
+      if (timeoutMinutes) {
+        lines.push('');
+        lines.push(`Tienes ${timeoutMinutes} minutos para responder.`);
+      }
+    } else {
+      lines.push('si CODIGO = Si, yo lo atiendo');
+      lines.push('no CODIGO = No puedo, que siga el bot');
+    }
   } else if (footer) {
     lines.push(footer);
   }

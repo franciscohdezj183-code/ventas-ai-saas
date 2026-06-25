@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { afterEach, test } from 'node:test';
+import { afterEach, describe, it, test } from 'node:test';
 import { registerWhatsappClientEvents } from './whatsapp-events.handler.js';
 import {
   getSession,
@@ -23,6 +23,10 @@ class PollingClient extends EventEmitter {
     this.getChatsCalls += 1;
     throw new Error('Execution context was destroyed, most likely because of a navigation.');
   }
+}
+
+function waitForTick() {
+  return new Promise((resolve) => setImmediate(resolve));
 }
 
 afterEach(() => {
@@ -62,4 +66,35 @@ test('no inicia polling mientras la sesion solo esta esperando QR', async () => 
   await new Promise((resolve) => setTimeout(resolve, 50));
 
   assert.equal(client.getChatsCalls, 0);
+});
+
+describe('whatsapp events handler', () => {
+  it('deduplicates media messages received through message_create and message events', async () => {
+    const client = new EventEmitter();
+    const calls = [];
+    const message = {
+      id: { _serialized: 'false_196808420634826@lid_3EB04B103B6D87DD2245C4' },
+      from: '196808420634826@lid',
+      to: '5212205722560@c.us',
+      fromMe: false,
+      body: '',
+      type: 'image',
+      hasMedia: true
+    };
+
+    registerWhatsappClientEvents({
+      companyId: 5,
+      client,
+      onIncomingMessage: async (payload) => {
+        calls.push(payload);
+      }
+    });
+
+    client.emit('message_create', message);
+    client.emit('message', message);
+    await waitForTick();
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].message, message);
+  });
 });

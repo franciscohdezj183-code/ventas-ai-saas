@@ -129,7 +129,8 @@ export function registerWhatsappClientEvents({
   onReady = null,
   onDisconnected = null,
   unreadPollIntervalMs = UNREAD_POLL_INTERVAL_MS,
-  unreadPollMessageLimit = UNREAD_POLL_MESSAGE_LIMIT
+  unreadPollMessageLimit = UNREAD_POLL_MESSAGE_LIMIT,
+  onIncomingMessage = handleIncomingWhatsappMessage
 }) {
   const empresaId = normalizeCompanyId(companyId);
   const handledMessageKeys = new Set();
@@ -201,7 +202,7 @@ export function registerWhatsappClientEvents({
       type: message?.type ?? null
     });
 
-    if (messageKey && hasBody && handledMessageKeys.has(messageKey)) {
+    if (messageKey && handledMessageKeys.has(messageKey)) {
       logger.info('whatsapp_message_event_duplicate_ignored', {
         empresaId,
         source,
@@ -210,7 +211,7 @@ export function registerWhatsappClientEvents({
       return;
     }
 
-    if (messageKey && hasBody) {
+    if (messageKey) {
       handledMessageKeys.add(messageKey);
 
       if (handledMessageKeys.size > 500) {
@@ -218,7 +219,7 @@ export function registerWhatsappClientEvents({
       }
     }
 
-    await handleIncomingWhatsappMessage({ companyId: empresaId, client, message });
+    await onIncomingMessage({ companyId: empresaId, client, message });
     const processedAt = new Date().toISOString();
     upsertSession(empresaId, { lastProcessedAt: processedAt });
     logger.info('whatsapp_message_event_processed', {
