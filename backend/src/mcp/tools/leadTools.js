@@ -8,6 +8,18 @@ import {
   normalizeText
 } from './utils.js';
 
+const LEAD_INTEREST_MAX_LENGTH = 180;
+
+function normalizeLeadInterest(value, defaultInterest) {
+  const text = normalizeText(value, 'interes', { fallback: defaultInterest });
+
+  if (!text || text.length <= LEAD_INTEREST_MAX_LENGTH) {
+    return text;
+  }
+
+  return `${text.slice(0, LEAD_INTEREST_MAX_LENGTH - 3).trimEnd()}...`;
+}
+
 function normalizeOptionalId(value, fieldName) {
   return value === null || value === undefined || value === ''
     ? null
@@ -37,9 +49,7 @@ function normalizeLeadArgs(args, auth, defaultInterest) {
     telefono: normalizePhone(args.telefono),
     whatsappId: normalizeText(args.whatsapp_id ?? args.external_id, 'whatsapp_id'),
     contactName: normalizeText(args.contact_name ?? args.nombre_contacto, 'contact_name'),
-    interes: normalizeText(args.interes ?? args.texto, 'interes', {
-      fallback: defaultInterest
-    }),
+    interes: normalizeLeadInterest(args.interes ?? args.texto, defaultInterest),
     productoId: normalizeOptionalId(args.producto_id, 'producto_id'),
     servicioId: normalizeOptionalId(args.servicio_id, 'servicio_id')
   };

@@ -32,6 +32,10 @@ function hasExplicitServiceSubject(message) {
     || /\b(pagina|sitio)\s+web\b/i.test(message);
 }
 
+function isServiceCatalogRequest(message) {
+  return /\b(catalogo|catalogos|lista|menu|opciones|que servicios|servicios tienen|servicios manejan|servicios ofrecen|que hacen|que ofrecen)\b/i.test(message);
+}
+
 function buildExplicitServiceSearchIntent(intent, message) {
   const {
     servicio_id: _serviceId,
@@ -131,6 +135,14 @@ export const serviceBusinessStrategy = {
   type: 'SERVICIOS',
 
   prepareIntent(intent, { conversationContext = null, normalizedMessage = '' } = {}) {
+    if (intent.intencion === 'HABLAR_ASESOR' || intent.herramienta_mcp === 'crear_lead') {
+      return buildAdvisorIntent(intent, normalizedMessage);
+    }
+
+    if (isServiceCatalogRequest(normalizedMessage) && !hasExplicitServiceSubject(normalizedMessage)) {
+      return buildExplicitServiceSearchIntent(intent, '');
+    }
+
     if (hasExplicitServiceSubject(normalizedMessage)) {
       return buildExplicitServiceSearchIntent(intent, normalizedMessage);
     }

@@ -2043,6 +2043,157 @@ describe('messageOrchestrator', () => {
     assert.doesNotMatch(result.respuesta, /Quieres que te contacte un asesor/);
   });
 
+  it('treats catalog requests as service catalog questions for service businesses', async () => {
+    const calls = [];
+    const savedContexts = [];
+    const mcpClient = {
+      async callTool(toolName, args) {
+        calls.push({ toolName, args });
+
+        if (toolName === 'buscar_servicios') {
+          return {
+            servicios: [
+              {
+                id: 80,
+                nombre: 'Diseno web',
+                precio: null,
+                tipo_precio: 'COTIZACION',
+                duracion: 60,
+                requiere_medidas: false,
+                requiere_cantidad: false,
+                categoria: 'Digital'
+              },
+              {
+                id: 81,
+                nombre: 'Banner arana 0.80 x 1.80 m',
+                precio: null,
+                tipo_precio: 'COTIZACION',
+                duracion: 60,
+                requiere_medidas: false,
+                requiere_cantidad: false,
+                categoria: 'Banners'
+              }
+            ]
+          };
+        }
+
+        if (toolName === 'guardar_conversacion') {
+          return { conversacion_id: 122 };
+        }
+
+        throw new Error(`Unexpected tool: ${toolName}`);
+      }
+    };
+
+    const result = await orchestrateIncomingMessage({
+      empresaId: 1,
+      phone: '5215550000000@c.us',
+      message: 'Tienes catalogo',
+      contexto: { nombre: 'MOK Estudio + Taller', tipo_negocio: 'SERVICIOS' },
+      interpreter: async () => ({
+        intencion: 'MENSAJE_GENERAL',
+        herramienta_mcp: '',
+        parametros: {},
+        confianza: 0.4,
+        requiere_respuesta_ia: false
+      }),
+      mcpClient,
+      contextStore: {
+        async find() {
+          return null;
+        },
+        async save(context) {
+          savedContexts.push(context);
+        }
+      }
+    });
+
+    const serviceCall = calls.find((call) => call.toolName === 'buscar_servicios');
+
+    assert.equal(result.herramienta_mcp, 'buscar_servicios');
+    assert.equal(serviceCall.args.texto, '');
+    assert.match(result.respuesta, /Diseno web/);
+    assert.match(result.respuesta, /Banner arana/);
+    assert.equal(savedContexts[0].datos.estado_comercial, 'asesor_ofrecido');
+  });
+
+  it('understands short yes after an advisor offer as a human handoff request', async () => {
+    const calls = [];
+    const handoffRequests = [];
+    const mcpClient = {
+      async callTool(toolName, args) {
+        calls.push({ toolName, args });
+
+        if (toolName === 'crear_lead') {
+          return {
+            lead_id: 130,
+            telefono: args.telefono,
+            interes: args.interes,
+            servicio_id: args.servicio_id
+          };
+        }
+
+        if (toolName === 'guardar_conversacion') {
+          return { conversacion_id: 131 };
+        }
+
+        throw new Error(`Unexpected tool: ${toolName}`);
+      }
+    };
+
+    const result = await orchestrateIncomingMessage({
+      empresaId: 1,
+      phone: '5215550000000@c.us',
+      whatsappChatId: '5215550000000@c.us',
+      message: 'Si',
+      contexto: { nombre: 'MOK Estudio + Taller', tipo_negocio: 'SERVICIOS' },
+      interpreter: async () => ({
+        intencion: 'MENSAJE_GENERAL',
+        herramienta_mcp: '',
+        parametros: {},
+        confianza: 0.4,
+        requiere_respuesta_ia: false
+      }),
+      mcpClient,
+      handoffManager: {
+        async hasActive() {
+          return false;
+        },
+        async request(args) {
+          handoffRequests.push(args);
+          return { handoff_id: 132, estado: 'PENDING_OWNER', duplicate: false };
+        }
+      },
+      contextStore: {
+        async find() {
+          return {
+            ultima_intencion: 'BUSCAR_SERVICIO',
+            ultimo_producto_id: null,
+            ultimo_servicio_id: 80,
+            ultimo_texto_busqueda: 'Diseno web',
+            datos_json: {
+              herramienta_mcp: 'buscar_servicios',
+              estado_comercial: 'asesor_ofrecido',
+              asesor_ofrecido: true,
+              servicio: { id: 80, nombre: 'Diseno web', tipo_precio: 'COTIZACION' }
+            }
+          };
+        },
+        async save() {}
+      }
+    });
+
+    const leadCall = calls.find((call) => call.toolName === 'crear_lead');
+
+    assert.equal(result.intencion, 'HABLAR_ASESOR');
+    assert.equal(result.herramienta_mcp, 'crear_lead');
+    assert.equal(result.lead_id, 130);
+    assert.equal(leadCall.args.servicio_id, 80);
+    assert.match(leadCall.args.interes, /Diseno web/);
+    assert.equal(handoffRequests.length, 1);
+    assert.match(result.respuesta, /asesor/i);
+  });
+
   it('selects the matching service and preserves decimal measurements', async () => {
     const savedContexts = [];
     const mcpClient = {
@@ -2975,6 +3126,66 @@ describe('messageOrchestrator', () => {
     assert.ok(result.respuesta.trim().length > 0);
     assert.equal(savedArgs.mensaje, 'Hola');
     assert.equal(savedArgs.respuesta, result.respuesta);
+  });
+
+  it('keeps the bot response when AI usage registration fails after saving', async () => {
+    const calls = [];
+    const result = await orchestrateIncomingMessage({
+      empresaId: 5,
+      phone: '527712444430',
+      message: 'Tienen un catalogo de servicios?',
+      contexto: { nombre: 'MOK Estudio + Taller', tipo_negocio: 'SERVICIOS' },
+      interpreter: async ({ onUsage }) => {
+        onUsage({
+          tokens_input: 10,
+          tokens_output: 5,
+          total_tokens: 15,
+          modelo_usado: 'test-model'
+        });
+        return {
+          intencion: 'BUSCAR_SERVICIO',
+          herramienta_mcp: 'buscar_servicios',
+          parametros: { texto: '' },
+          confianza: 0.9,
+          requiere_respuesta_ia: false
+        };
+      },
+      mcpClient: {
+        async callTool(toolName, args) {
+          calls.push({ toolName, args });
+
+          if (toolName === 'buscar_servicios') {
+            return {
+              servicios: [{
+                id: 90,
+                nombre: 'Diseno web',
+                precio: null,
+                tipo_precio: 'COTIZACION',
+                duracion: 60,
+                requiere_medidas: false,
+                requiere_cantidad: false
+              }]
+            };
+          }
+
+          if (toolName === 'guardar_conversacion') {
+            return { conversacion_id: 99999999 };
+          }
+
+          throw new Error(`Unexpected tool: ${toolName}`);
+        }
+      },
+      contextStore: {
+        async find() {
+          return null;
+        },
+        async save() {}
+      }
+    });
+
+    assert.equal(result.herramienta_mcp, 'buscar_servicios');
+    assert.match(result.respuesta, /Diseno web/);
+    assert.equal(calls.some((call) => call.toolName === 'guardar_conversacion'), true);
   });
 
   it('does not reuse the previous service when a price question names a new subject', async () => {

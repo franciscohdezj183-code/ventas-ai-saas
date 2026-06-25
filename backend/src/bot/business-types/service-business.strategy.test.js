@@ -67,6 +67,33 @@ describe('serviceBusinessStrategy catalog routing', () => {
     assert.equal(result.herramienta_mcp, 'buscar_servicios');
   });
 
+  it('routes catalog requests to a generic service search', () => {
+    const result = run('tienen un catalogo de servicios?');
+
+    assert.equal(result.intencion, 'BUSCAR_SERVICIO');
+    assert.equal(result.herramienta_mcp, 'buscar_servicios');
+    assert.equal(result.parametros.texto, '');
+  });
+
+  it('keeps explicit advisor handoff intents from short affirmations', () => {
+    const result = run('si', {
+      ultimo_servicio_id: 42,
+      ultimo_texto_busqueda: 'Diseno web',
+      datos_json: {
+        estado_comercial: 'asesor_ofrecido',
+        servicio: { id: 42, nombre: 'Diseno web', tipo_precio: 'COTIZACION' }
+      }
+    }, {
+      intencion: 'HABLAR_ASESOR',
+      herramienta_mcp: 'crear_lead',
+      parametros: { interes: 'Diseno web', servicio_id: 42 }
+    });
+
+    assert.equal(result.intencion, 'HABLAR_ASESOR');
+    assert.equal(result.herramienta_mcp, 'crear_lead');
+    assert.equal(result.parametros.servicio_id, 42);
+  });
+
   it('recognizes branding, social media and presentation card requests as new service searches', () => {
     for (const message of [
       'hacen branding para negocios',

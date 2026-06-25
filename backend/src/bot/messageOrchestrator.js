@@ -136,11 +136,14 @@ const SERVICE_SEARCH_STOP_WORDS = new Set([
   'servicios',
   'si',
   'saber',
+  'tienes',
   'tienen',
   'una',
   'un',
   'x'
 ]);
+
+const CATALOG_REQUEST_WORDS = /\b(catalogo|catalogos|catalogue|lista|menu|opciones|ofrecen|ofrece|manejan|hacen|servicios|productos)\b/;
 
 function serviceTokenVariants(token) {
   const variants = new Set([token]);
@@ -165,11 +168,19 @@ function serviceSearchTokens(value, synonyms = null) {
     .filter((token) => !SERVICE_SEARCH_STOP_WORDS.has(token));
 }
 
+function hasExplicitServiceSubject(message) {
+  return /\b(lona|lonas|vinil|tarjeta|tarjetas|logotipo|logotipos|logo|logos|branding|identidad|visual|redes|sociales|flyer|flyers|publicidad|marketing|senaletica|textil|promocionales|banner|coroplast|trovicel|dtf|serigrafia|web)\b/i.test(message)
+    || /\b(pagina|sitio)\s+web\b/i.test(message);
+}
+
 function isGenericServiceCatalogRequest(message) {
   const normalized = normalizarTextoBusqueda(message);
   const tokens = serviceSearchTokens(message);
+  const catalogTokens = tokens.filter((token) => !['catalogo', 'catalogos', 'catalogue', 'lista', 'menu', 'opciones'].includes(token));
 
-  return tokens.length === 0 && /\b(servicio|servicios|hacen|ofrecen|manejan|tienen)\b/.test(normalized);
+  return (tokens.length === 0 || catalogTokens.length === 0)
+    && CATALOG_REQUEST_WORDS.test(normalized)
+    && !hasExplicitServiceSubject(normalized);
 }
 
 function rankServicesForMessage(services, message, synonyms = null) {
@@ -1320,6 +1331,34 @@ function hasServiceContext(conversationContext) {
   return activeConversationContextType(conversationContext) === 'service';
 }
 
+function isShortAffirmation(message) {
+  return /^(s[ií]|si|ok|va|dale|claro|perfecto|de acuerdo)$/i.test(String(message ?? '').trim());
+}
+
+function hasPendingAdvisorOffer(conversationContext) {
+  const data = conversationContext?.datos_json ?? {};
+  return data.estado_comercial === 'asesor_ofrecido'
+    || data.asesor_ofrecido === true
+    || String(conversationContext?.ultima_intencion ?? '').toUpperCase() === 'OFERTA_ASESOR';
+}
+
+function buildAdvisorFollowUpIntent(intent, message, conversationContext) {
+  return {
+    ...intent,
+    intencion: 'HABLAR_ASESOR',
+    herramienta_mcp: 'crear_lead',
+    parametros: {
+      ...(intent.parametros ?? {}),
+      interes: intent.parametros?.interes
+        ?? intent.parametros?.texto
+        ?? conversationContext?.ultimo_texto_busqueda
+        ?? message,
+      producto_id: intent.parametros?.producto_id ?? conversationContext?.ultimo_producto_id ?? undefined,
+      servicio_id: intent.parametros?.servicio_id ?? conversationContext?.ultimo_servicio_id ?? undefined
+    }
+  };
+}
+
 function getLastShownProducts(conversationContext) {
   const products =
     conversationContext?.datos_json?.ultima_lista_productos ??
@@ -1434,6 +1473,10 @@ function applyConversationContext(intent, message, conversationContext) {
 
   if (!conversationContext) {
     return nextIntent;
+  }
+
+  if (isShortAffirmation(message) && hasPendingAdvisorOffer(conversationContext)) {
+    return buildAdvisorFollowUpIntent(nextIntent, message, conversationContext);
   }
 
   const lastProductSearch = getLastProductSearch(conversationContext);
@@ -1672,6 +1715,10 @@ function extractContextPatch({ intent, toolResult, message, conversationContext 
         has_more: toolResult?.paginacion?.has_more ?? previousProductSearch?.has_more ?? false
       }
     : null;
+  const leavesAdvisorOffer = ['buscar_servicios', 'obtener_servicio'].includes(intent.herramienta_mcp)
+    && (services.length > 0 || Boolean(service));
+  const clearsAdvisorOffer = ['crear_lead', 'registrar_intencion_compra', 'crear_pedido'].includes(intent.herramienta_mcp)
+    || ['SALUDO', 'DESPEDIDA', 'AGRADECIMIENTO'].includes(intent.intencion);
 
   return {
     ultimaIntencion: intent.intencion,
@@ -1694,6 +1741,14 @@ function extractContextPatch({ intent, toolResult, message, conversationContext 
       productos_mostrados: lastProductList,
       ultima_categoria: lastCategory,
       ultima_busqueda_productos: lastProductSearch,
+      estado_comercial: clearsAdvisorOffer
+        ? null
+        : leavesAdvisorOffer
+          ? 'asesor_ofrecido'
+          : previousData.estado_comercial ?? null,
+      asesor_ofrecido: clearsAdvisorOffer
+        ? false
+        : leavesAdvisorOffer || previousData.asesor_ofrecido === true,
       servicio: service
         ? {
             ...serializeServiceContext(service),
@@ -2319,15 +2374,23 @@ export async function orchestrateIncomingMessage({
   });
 
   if (usageSnapshot) {
-    await registerAIUsage({
-      tenantId: empresaId,
-      userId,
-      conversationId: savedConversation.conversacion_id,
-      tokensInput: usageSnapshot.tokens_input,
-      tokensOutput: usageSnapshot.tokens_output,
-      totalTokens: usageSnapshot.total_tokens,
-      modelUsed: usageSnapshot.modelo_usado
-    });
+    try {
+      await registerAIUsage({
+        tenantId: empresaId,
+        userId,
+        conversationId: savedConversation.conversacion_id,
+        tokensInput: usageSnapshot.tokens_input,
+        tokensOutput: usageSnapshot.tokens_output,
+        totalTokens: usageSnapshot.total_tokens,
+        modelUsed: usageSnapshot.modelo_usado
+      });
+    } catch (error) {
+      logger.error('ai_usage_registration_error', {
+        empresaId,
+        conversationId: savedConversation.conversacion_id ?? null,
+        error
+      });
+    }
   }
 
   if (shouldRequestHuman) {
