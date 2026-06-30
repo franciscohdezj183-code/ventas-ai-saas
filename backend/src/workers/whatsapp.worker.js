@@ -1,15 +1,15 @@
 import { closeDatabase } from '../config/database.js';
 import { logger } from '../utils/logger.js';
-
-// Legacy/deprecated worker.
-// WhatsApp sessions are now owned by backend/src/whatsapp/whatsapp-session.manager.js
-// inside the API process. Keep this file only so old npm scripts do not create
-// duplicate whatsapp-web.js clients or background jobs.
+import {
+  restoreSessionsOnBoot,
+  shutdownWhatsappSessions
+} from '../whatsapp/whatsapp-session.manager.js';
 
 let shuttingDown = false;
 
 async function startWorker() {
-  logger.info('whatsapp_worker_deprecated_noop_started');
+  logger.info('whatsapp_worker_started');
+  await restoreSessionsOnBoot();
 }
 
 async function shutdown(signal) {
@@ -21,6 +21,7 @@ async function shutdown(signal) {
   logger.info('whatsapp_worker_shutdown_started', { signal });
 
   try {
+    await shutdownWhatsappSessions();
     await closeDatabase();
     logger.info('whatsapp_worker_shutdown_completed');
     process.exit(0);

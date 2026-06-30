@@ -31,6 +31,11 @@ import {
   normalizePhoneForWhatsapp
 } from './whatsapp.types.js';
 import {
+  getStoredWhatsappSessionStatus,
+  listStoredWhatsappSessionStatuses,
+  saveWhatsappSessionStatus
+} from './whatsapp-session-status.repository.js';
+import {
   backoffWithJitter,
   isLockedLocalAuthError,
   isTargetClosedError,
@@ -345,7 +350,15 @@ export function resetWhatsappSessionsForTests() {
 }
 
 export async function getSessionStatus(companyId) {
-  return enrichPublicSession(getPublicSession(normalizeCompanyId(companyId)));
+  const id = normalizeCompanyId(companyId);
+  const liveSession = getSession(id);
+
+  if (liveSession) {
+    return enrichPublicSession(getPublicSession(id));
+  }
+
+  const storedSession = await getStoredWhatsappSessionStatus(id);
+  return enrichPublicSession(storedSession ?? getPublicSession(id));
 }
 
 function scheduleReconnect(companyId, client, reason) {
@@ -453,6 +466,9 @@ async function startSessionNow(companyId, requestedGeneration = getOperationGene
     const client = clientFactory(id);
     markStarted(id, client);
     setClient(id, client);
+    saveWhatsappSessionStatus(getPublicSession(id)).catch((error) => {
+      logger.error('whatsapp_status_persist_error', { empresaId: id, error });
+    });
     registerWhatsappClientEvents({
       companyId: id,
       client,
@@ -516,6 +532,9 @@ async function startSessionNow(companyId, requestedGeneration = getOperationGene
             isInitializing: false
           });
           emitWhatsappStatus(id, session);
+          saveWhatsappSessionStatus(getPublicSession(id)).catch((persistError) => {
+            logger.error('whatsapp_status_persist_error', { empresaId: id, error: persistError });
+          });
           logger.warn('whatsapp_initialize_retryable_error', {
             empresaId: id,
             reason: errorMessage,
@@ -535,6 +554,9 @@ async function startSessionNow(companyId, requestedGeneration = getOperationGene
         });
         emitWhatsappError(id, error);
         emitWhatsappStatus(id, session);
+        saveWhatsappSessionStatus(getPublicSession(id)).catch((persistError) => {
+          logger.error('whatsapp_status_persist_error', { empresaId: id, error: persistError });
+        });
       } else {
         logger.info('whatsapp_initialize_error_ignored_for_stale_client', {
           empresaId: id,
@@ -567,12 +589,24 @@ export async function requestStartSession(companyId) {
   const id = normalizeCompanyId(companyId);
   const existing = getSession(id);
 
+  logger.info('whatsapp_manual_start_requested', { empresaId: id, action: 'start' });
+
   if (
     existing
     && ACTIVE_SESSION_STATUSES.has(existing.status)
     && !(existing.status === WHATSAPP_SESSION_STATUSES.INITIALIZING && !existing.client)
   ) {
     return getPublicSession(id);
+  }
+
+  const storedSession = existing ? null : await getStoredWhatsappSessionStatus(id);
+
+  if (storedSession && ACTIVE_SESSION_STATUSES.has(storedSession.status)) {
+    logger.info('whatsapp_manual_start_skipped_existing_active_session', {
+      empresaId: id,
+      status: storedSession.status
+    });
+    return storedSession;
   }
 
   const session = upsertSession(id, {
@@ -586,6 +620,9 @@ export async function requestStartSession(companyId) {
     isInitializing: true
   });
   emitWhatsappStatus(id, session);
+  saveWhatsappSessionStatus(getPublicSession(id)).catch((error) => {
+    logger.error('whatsapp_status_persist_error', { empresaId: id, error });
+  });
 
   startSession(id).catch((error) => {
     logger.error('whatsapp_background_start_error', { empresaId: id, error });
@@ -618,6 +655,9 @@ async function restartSessionNow(companyId, requestedGeneration = getOperationGe
     isInitializing: false
   });
   emitWhatsappStatus(id, session);
+  saveWhatsappSessionStatus(getPublicSession(id)).catch((error) => {
+    logger.error('whatsapp_status_persist_error', { empresaId: id, error });
+  });
 
   return startSessionNow(id, requestedGeneration);
 }
@@ -625,8 +665,22 @@ async function restartSessionNow(companyId, requestedGeneration = getOperationGe
 export async function restartSession(companyId) {
   const id = normalizeCompanyId(companyId);
 
+  logger.info('whatsapp_manual_start_requested', { empresaId: id, action: 'restart' });
+
   if (restartRequests.has(id)) {
     return restartRequests.get(id);
+  }
+
+  const existing = getSession(id);
+  const storedSession = existing ? null : await getStoredWhatsappSessionStatus(id);
+
+  if (storedSession && ACTIVE_SESSION_STATUSES.has(storedSession.status)) {
+    logger.info('whatsapp_manual_start_skipped_existing_active_session', {
+      empresaId: id,
+      action: 'restart',
+      status: storedSession.status
+    });
+    return storedSession;
   }
 
   const requestedGeneration = invalidatePendingOperations(id);
@@ -664,6 +718,9 @@ async function disconnectSessionNow(companyId, { backgroundDestroy = false } = {
     disconnectedAt: new Date().toISOString()
   });
   emitWhatsappStatus(id, session);
+  saveWhatsappSessionStatus(getPublicSession(id)).catch((error) => {
+    logger.error('whatsapp_status_persist_error', { empresaId: id, error });
+  });
 
   if (existing?.client) {
     if (backgroundDestroy) {
@@ -696,6 +753,9 @@ async function destroySessionNow(companyId) {
     disconnectedAt: new Date().toISOString()
   });
   emitWhatsappStatus(id, session);
+  saveWhatsappSessionStatus(getPublicSession(id)).catch((error) => {
+    logger.error('whatsapp_status_persist_error', { empresaId: id, error });
+  });
   return getPublicSession(id);
 }
 
@@ -706,7 +766,11 @@ export async function destroySession(companyId) {
 }
 
 export async function getQr(companyId) {
-  const session = getPublicSession(normalizeCompanyId(companyId));
+  const id = normalizeCompanyId(companyId);
+  const session = getSession(id)
+    ? getPublicSession(id)
+    : (await getStoredWhatsappSessionStatus(id)) ?? getPublicSession(id);
+
   return {
     companyId: session.companyId,
     status: session.status,
@@ -717,7 +781,16 @@ export async function getQr(companyId) {
 }
 
 export async function listSessions() {
-  return listPublicSessions();
+  const liveSessions = new Map(listPublicSessions().map((session) => [session.companyId, session]));
+  const storedSessions = await listStoredWhatsappSessionStatuses();
+
+  for (const storedSession of storedSessions) {
+    if (!liveSessions.has(storedSession.companyId)) {
+      liveSessions.set(storedSession.companyId, storedSession);
+    }
+  }
+
+  return Array.from(liveSessions.values());
 }
 
 export async function sendWhatsappMessage(companyId, phone, message) {
@@ -751,24 +824,31 @@ export async function sendWhatsappMessage(companyId, phone, message) {
 }
 
 export async function restoreSessionsOnBoot() {
-  if (process.env.WHATSAPP_RESTORE_SESSIONS !== 'true') {
-    logger.info('whatsapp_restore_sessions_skipped', { enabled: false });
+  if (env.whatsapp.restoreSessions !== true) {
+    logger.info('whatsapp_restore_skipped', { enabled: false });
     return [];
   }
+
+  logger.info('whatsapp_restore_started');
 
   const [companies] = await query(
     `SELECT e.id
      FROM empresas e
+     INNER JOIN whatsapp_session_status w ON w.empresa_id = e.id
      LEFT JOIN configuracion_empresas ce ON ce.empresa_id = e.id
      WHERE e.activo = 1
        AND e.estado = 'ACTIVA'
        AND COALESCE(ce.activo_whatsapp, 1) = 1
+       AND COALESCE(w.auto_restore, 0) = 1
      ORDER BY e.id ASC`
   );
 
-  return restoreCompanySessions(companies, startSession, {
+  const sessions = await restoreCompanySessions(companies, startSession, {
     keepQrSessions: process.env.WHATSAPP_RESTORE_KEEP_QR_SESSIONS === 'true'
   });
+
+  logger.info('whatsapp_restore_completed', { restored: sessions.length });
+  return sessions;
 }
 
 export async function restoreCompanySessions(companies, starter = startSession, {
@@ -778,7 +858,7 @@ export async function restoreCompanySessions(companies, starter = startSession, 
 
   for (const company of companies) {
     try {
-      logger.info('whatsapp_restore_session_start', { empresaId: company.id });
+      logger.info('whatsapp_restore_started', { empresaId: company.id });
       let session = await starter(company.id);
 
       if (!keepQrSessions && session.status === WHATSAPP_SESSION_STATUSES.QR) {
@@ -790,11 +870,11 @@ export async function restoreCompanySessions(companies, starter = startSession, 
       }
 
       restored.push(session);
-      logger.info('whatsapp_restore_session_completed', {
+      logger.info('whatsapp_restore_completed', {
         empresaId: company.id,
         status: session.status
       });
-      await wait(Number(process.env.WHATSAPP_RESTORE_SESSION_DELAY_MS ?? 2000));
+      await wait(env.whatsapp.restoreSessionDelayMs);
     } catch (error) {
       logger.error('whatsapp_restore_session_error', {
         empresaId: company.id,

@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS whatsapp_session_status (
   qr MEDIUMTEXT NULL,
   qr_image MEDIUMTEXT NULL,
   phone VARCHAR(80) NULL,
+  auto_restore TINYINT(1) NOT NULL DEFAULT 0,
   connected_at DATETIME NULL,
   last_error TEXT NULL,
   reconnect_attempt INT UNSIGNED NOT NULL DEFAULT 0,
@@ -11,6 +12,7 @@ CREATE TABLE IF NOT EXISTS whatsapp_session_status (
   events_json JSON NULL,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (empresa_id),
+  KEY whatsapp_session_status_auto_restore_index (auto_restore),
   KEY whatsapp_session_status_status_index (status),
   KEY whatsapp_session_status_updated_at_index (updated_at),
   CONSTRAINT whatsapp_session_status_empresa_foreign

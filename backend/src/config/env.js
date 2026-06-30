@@ -170,6 +170,8 @@ export const env = {
   },
   whatsapp: {
     sessionPath: process.env.WHATSAPP_SESSION_PATH ?? 'storage/whatsapp',
+    restoreSessions: booleanEnv('WHATSAPP_RESTORE_SESSIONS', false),
+    restoreSessionDelayMs: numberEnv('WHATSAPP_RESTORE_SESSION_DELAY_MS', 2000),
     headless: booleanEnv('WHATSAPP_HEADLESS', true),
     puppeteerExecutablePath: optionalStringEnv('WHATSAPP_PUPPETEER_EXECUTABLE_PATH'),
     puppeteerArgs: listEnv('WHATSAPP_PUPPETEER_ARGS')

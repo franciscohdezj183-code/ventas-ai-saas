@@ -17,6 +17,7 @@ import {
 } from './whatsapp-socket.gateway.js';
 import { WHATSAPP_SESSION_STATUSES, normalizeCompanyId } from './whatsapp.types.js';
 import { isTargetClosedError } from './whatsapp-startup.coordinator.js';
+import { saveWhatsappSessionStatus } from './whatsapp-session-status.repository.js';
 
 const UNREAD_POLL_INTERVAL_MS = Number(process.env.WHATSAPP_UNREAD_POLL_INTERVAL_MS ?? 3000);
 const UNREAD_POLL_MESSAGE_LIMIT = Number(process.env.WHATSAPP_UNREAD_POLL_MESSAGE_LIMIT ?? 5);
@@ -38,6 +39,9 @@ function markClientReady(empresaId, client, source = 'ready') {
     isInitializing: false
   });
   emitWhatsappStatus(empresaId, session);
+  saveWhatsappSessionStatus(session).catch((error) => {
+    logger.error('whatsapp_status_persist_error', { empresaId, error });
+  });
   logger.info('whatsapp_ready', { empresaId, source });
   return session;
 }
@@ -49,6 +53,9 @@ function markClientAuthenticated(empresaId) {
     isInitializing: true
   });
   emitWhatsappStatus(empresaId, session);
+  saveWhatsappSessionStatus(session).catch((error) => {
+    logger.error('whatsapp_status_persist_error', { empresaId, error });
+  });
   logger.info('whatsapp_authenticated_waiting_ready', { empresaId });
   return session;
 }
@@ -93,6 +100,9 @@ function scheduleReadyStateProbe(empresaId, client, onReadyDetected, attemptsLef
       const session = setError(empresaId, 'WhatsApp autentico, pero el cliente web no emitio ready');
       emitWhatsappError(empresaId, session.lastError);
       emitWhatsappStatus(empresaId, session);
+      saveWhatsappSessionStatus(session).catch((persistError) => {
+        logger.error('whatsapp_status_persist_error', { empresaId, error: persistError });
+      });
       logger.error('whatsapp_ready_timeout', {
         empresaId,
         state,
@@ -176,6 +186,9 @@ export function registerWhatsappClientEvents({
     });
     emitWhatsappError(empresaId, reason);
     emitWhatsappStatus(empresaId, session);
+    saveWhatsappSessionStatus(session).catch((persistError) => {
+      logger.error('whatsapp_status_persist_error', { empresaId, error: persistError });
+    });
     logger.error('whatsapp_unread_poll_reconnect_required', {
       empresaId,
       consecutiveFailures: consecutiveUnreadPollFailures,
@@ -365,6 +378,9 @@ export function registerWhatsappClientEvents({
     const session = setQr(empresaId, qr, qrImage);
     emitWhatsappQr(empresaId, { qrText: qr, qrImage, status: session.status });
     emitWhatsappStatus(empresaId, session);
+    saveWhatsappSessionStatus(session).catch((error) => {
+      logger.error('whatsapp_status_persist_error', { empresaId, error });
+    });
     logger.info('whatsapp_qr_ready', { empresaId });
   });
 
@@ -391,6 +407,9 @@ export function registerWhatsappClientEvents({
     const session = setError(empresaId, message || 'Fallo de autenticacion');
     emitWhatsappError(empresaId, message || 'Fallo de autenticacion');
     emitWhatsappStatus(empresaId, session);
+    saveWhatsappSessionStatus(session).catch((error) => {
+      logger.error('whatsapp_status_persist_error', { empresaId, error });
+    });
     logger.error('whatsapp_auth_failure', { empresaId, error: message });
   });
 
@@ -419,6 +438,9 @@ export function registerWhatsappClientEvents({
     });
     emitWhatsappError(empresaId, reason || 'WhatsApp desconectado');
     emitWhatsappStatus(empresaId, session);
+    saveWhatsappSessionStatus(session).catch((error) => {
+      logger.error('whatsapp_status_persist_error', { empresaId, error });
+    });
     logger.info('whatsapp_disconnected', { empresaId, reason });
     onDisconnected?.({ empresaId, client, reason });
   });

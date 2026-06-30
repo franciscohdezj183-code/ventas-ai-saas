@@ -3,10 +3,7 @@ import { app } from './app.js';
 import http from 'node:http';
 import { Server } from 'socket.io';
 import { closeDatabase } from './config/database.js';
-import {
-  restoreSessionsOnBoot,
-  shutdownWhatsappSessions
-} from './whatsapp/whatsapp-session.manager.js';
+import { shutdownWhatsappSessions } from './whatsapp/whatsapp-session.manager.js';
 import { initializeWhatsappSocket } from './whatsapp/whatsapp-socket.gateway.js';
 import {
   startHumanHandoffExpirationJob,
@@ -47,16 +44,6 @@ server.listen(env.port, () => {
 if (process.env.HANDOFF_JOB_ENABLED !== 'false') {
   startHumanHandoffExpirationJob();
 }
-
-restoreSessionsOnBoot()
-  .then((sessions) => {
-    logger.info('whatsapp_restore_sessions_completed', {
-      restored: sessions.length
-    });
-  })
-  .catch((error) => {
-    logger.error('whatsapp_restore_sessions_boot_error', { error });
-  });
 
 let shuttingDown = false;
 
