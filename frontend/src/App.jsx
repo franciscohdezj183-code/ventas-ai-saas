@@ -6,6 +6,7 @@ import {
   ConversationsPage,
   LeadsPage,
   OnboardingPage,
+  NCIEAdminPage,
   OrdersPage,
   OwnerCompanyPage,
   AIUsagePage,
@@ -188,6 +189,16 @@ export function App() {
             <RoleRoute roles={['super_admin']}>
               <PermissionRoute permission="reports.view">
                 <AIUsagePage />
+              </PermissionRoute>
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="ncie"
+          element={
+            <RoleRoute roles={['super_admin']}>
+              <PermissionRoute permission="ai_config.view">
+                <NCIEAdminPage />
               </PermissionRoute>
             </RoleRoute>
           }

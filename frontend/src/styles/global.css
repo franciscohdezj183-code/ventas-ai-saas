@@ -307,6 +307,12 @@ h1 {
   color: var(--color-green-dark);
   font-weight: 800;
 }
+.metrics-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  margin: 1rem 0;
+}
 .stat-card {
   position: relative;
   display: grid;

@@ -17,6 +17,7 @@ import { botPromptsRouter } from '../modules/bot-prompts/bot-prompts.routes.js';
 import { onboardingRouter } from '../modules/onboarding/onboarding.routes.js';
 import { plansRouter } from '../modules/plans/plans.routes.js';
 import { reportsRouter } from '../modules/reports/reports.routes.js';
+import { ncieQualityRouter } from '../modules/ncie/ncie-quality.routes.js';
 
 export const apiRouter = Router();
 
@@ -38,3 +39,4 @@ apiRouter.use('/bot-prompts', botPromptsRouter);
 apiRouter.use('/onboarding', onboardingRouter);
 apiRouter.use('/plans', plansRouter);
 apiRouter.use('/reports', reportsRouter);
+apiRouter.use('/admin/ncie', ncieQualityRouter);
