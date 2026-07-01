@@ -70,6 +70,10 @@ export function detectCommercialGoal({ normalizedMessage, nlu, state, plannerSta
     return COMMERCIAL_PLANNER_GOALS.FOLLOW_UP_CATALOG;
   }
 
+  if (['LISTAR_SERVICIOS', 'LISTAR_PRODUCTOS', 'LISTAR_CATALOGO'].includes(nlu?.intent)) {
+    return COMMERCIAL_PLANNER_GOALS.LIST_CATALOG;
+  }
+
   if (
     nlu?.intent === 'LISTAR_PRODUCTOS' ||
     includesAny(text, ['manejan productos', 'tienen productos', 'que productos', 'productos tienen', 'tambien hacen servicios', 'hacen servicios'])
@@ -101,7 +105,7 @@ export function detectCommercialGoal({ normalizedMessage, nlu, state, plannerSta
     return COMMERCIAL_PLANNER_GOALS.IMPROVE_BUSINESS;
   }
 
-  if (nlu?.intent === 'LISTAR_SERVICIOS' || includesAny(text, ['que servicios', 'servicios tienen', 'que manejan', 'hacen servicios']) || text === 'servicios') {
+  if (includesAny(text, ['que servicios', 'servicios tienen', 'que manejan', 'hacen servicios']) || text === 'servicios') {
     return COMMERCIAL_PLANNER_GOALS.EXPLORE_COMPANY;
   }
 

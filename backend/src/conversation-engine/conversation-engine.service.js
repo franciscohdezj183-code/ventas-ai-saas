@@ -17,6 +17,9 @@ import {
   logPlannerShadowDecision,
   planCommercialConversation
 } from './planner/commercial-conversation-planner.js';
+import { normalizePlannerState } from './planner/commercial-state.schema.js';
+import { currentWaitingField, interpretResponseForWaitingField } from './planner/response-interpreter.js';
+import { planAdvisorNotification } from './advisor-notification.js';
 
 function emptyRetrieval({ commercialReasoning = null } = {}) {
   return {
@@ -39,8 +42,8 @@ function commercialReasoningForPlannerRetrieval(plannerDecision, fallback) {
     ...(fallback ?? {}),
     conversation_goal: plannerDecision.goal,
     conversation_stage: plannerDecision.stage,
-    retrieval_strategy: plannerDecision.responsePlanType === 'business_summary' ? 'business_summary' : 'domain_search',
-    recommended_action: plannerDecision.responsePlanType === 'business_summary' ? 'summarize_business' : 'search_domain',
+    retrieval_strategy: ['business_summary', 'catalog_listing'].includes(plannerDecision.responsePlanType) ? 'business_summary' : 'domain_search',
+    recommended_action: ['business_summary', 'catalog_listing'].includes(plannerDecision.responsePlanType) ? 'summarize_business' : 'search_domain',
     need_clarification: false
   };
 }
@@ -183,7 +186,59 @@ export async function runConversationEngine({
   logger.info('ncie_message_received', { empresaId, phone });
   const normalizedMessage = normalizeIncomingMessage({ message, contactName, phone });
   const state = await loadConversationState({ empresaId, phone, contextStore });
-  const nlu = await interpretNlu({ normalizedMessage, state });
+  logger.info('ncie_conversation_state_loaded', {
+    empresaId,
+    conversationId: whatsappChatId ?? phone,
+    activeFlow: state?.commercial?.plannerState?.activeFlowId ?? null,
+    waitingField: state?.commercial?.plannerState?.waitingField ?? null
+  });
+  const plannerStateForInput = normalizePlannerState({ state, empresaId, conversationId: whatsappChatId ?? phone });
+  logger.info('ncie_state_before', {
+    empresaId,
+    conversationId: whatsappChatId ?? phone,
+    activeFlow: plannerStateForInput.activeFlowId ?? null,
+    selectedService: plannerStateForInput.selectedService?.nombre ?? null,
+    waitingField: plannerStateForInput.waitingField ?? null,
+    currentEstimate: plannerStateForInput.currentEstimate ?? null
+  });
+  const waitingField = currentWaitingField(plannerStateForInput);
+  const contextualResponse = waitingField
+    ? interpretResponseForWaitingField({
+      waitingField,
+      normalizedMessage,
+      plannerState: plannerStateForInput,
+      pendingOptions: state?.commercial?.lastOptionsShown ?? []
+    })
+    : { handled: false };
+  let nlu = null;
+  if (contextualResponse.handled) {
+    logger.info('ncie_waiting_field_detected', { empresaId, waitingField });
+    logger.info('ncie_response_interpreted', {
+      empresaId,
+      waitingField,
+      entities: contextualResponse.entities,
+      confidence: contextualResponse.confidence
+    });
+    nlu = {
+      intent: contextualResponse.entities?.handoffRequested
+        ? 'HABLAR_ASESOR'
+        : contextualResponse.entities?.advisorConfirmation === false
+          ? 'ASESOR_DECLINADO'
+          : contextualResponse.ambiguous ? 'RESPUESTA_AMBIGUA_CONTEXTO' : 'RESPUESTA_CONTEXTO',
+      type: 'unknown',
+      confidence: contextualResponse.confidence,
+      entities: contextualResponse.entities,
+      missing_data: []
+    };
+    if (contextualResponse.entities?.dimensions) {
+      logger.info('ncie_dimension_parsed', {
+        empresaId,
+        dimensions: contextualResponse.entities.dimensions
+      });
+    }
+  } else {
+    nlu = await interpretNlu({ normalizedMessage, state });
+  }
   logger.info('ncie_nlu_result', { empresaId, intent: nlu.intent, type: nlu.type, confidence: nlu.confidence });
   const plannerAuthorityEnabled = isConversationPlannerAuthorityEnabled();
   const plannerShadowEnabled = isConversationPlannerShadowEnabled();
@@ -296,6 +351,25 @@ export async function runConversationEngine({
         mcpClient
       });
       logPlannerAuthorityDecision({ empresaId, decision: plannerAuthorityDecision });
+      if (plannerAuthorityDecision?.detectedDimensions) {
+        logger.info('ncie_dimension_parsed', {
+          empresaId,
+          dimensions: plannerAuthorityDecision.detectedDimensions
+        });
+      }
+      if (plannerAuthorityDecision?.activeFlow?.currentEstimate) {
+        logger.info('ncie_estimate_calculated', {
+          empresaId,
+          estimate: plannerAuthorityDecision.activeFlow.currentEstimate
+        });
+      }
+      const beforeService = plannerStateForInput.selectedService?.nombre ?? null;
+      const afterService = plannerAuthorityDecision?.selectedService?.nombre ?? plannerAuthorityDecision?.activeFlow?.selectedServiceName ?? null;
+      if (beforeService && afterService && beforeService === afterService) {
+        logger.info('ncie_service_preserved', { empresaId, selectedService: afterService });
+      } else if (beforeService && afterService && beforeService !== afterService) {
+        logger.info('ncie_service_changed_explicitly', { empresaId, from: beforeService, to: afterService });
+      }
     } catch (error) {
       plannerAuthorityActive = false;
       plannerAuthorityDecision = null;
@@ -307,10 +381,20 @@ export async function runConversationEngine({
   const responseState = plannerAuthorityActive && plannerDefersToCurrentNcie(plannerAuthorityDecision)
     ? stateWithoutActiveSelection(state)
     : state;
-  const decision = commercialReasoning
+  let decision = commercialReasoning
     ? decisionFromCommercialReasoning({ commercialReasoning, nlu, retrieval, state: responseState })
     : decideNextAction({ nlu, retrieval, state: responseState });
+  if (nlu.intent === 'HABLAR_ASESOR') {
+    decision = {
+      ...decision,
+      action: NCIE_ACTIONS.ESCALATE_HUMAN,
+      shouldCreateLead: true
+    };
+  }
   logger.info('ncie_decision', { empresaId, action: decision.action, selectedType: decision.selectedType });
+  if (decision.action === NCIE_ACTIONS.ESCALATE_HUMAN) {
+    logger.info('ncie_handoff_requested', { empresaId, conversationId: whatsappChatId ?? phone });
+  }
   if (decision.action === NCIE_ACTIONS.ASK_CLARIFYING_QUESTION && nlu.confidence < 0.65) {
     logger.info('ncie_low_confidence_clarification', {
       empresaId,
@@ -355,6 +439,30 @@ export async function runConversationEngine({
   logger.info('ncie_response_planned', { empresaId, type: responsePlan.type });
   const generated = generateResponse({ nlu, retrieval, decision, state: responseState, commercialReasoning, responsePlan });
   logger.info('ncie_response_generated', { empresaId, hasResponse: Boolean(generated.respuesta) });
+  const advisorNotification = planAdvisorNotification({
+    phone,
+    conversationId: whatsappChatId ?? phone,
+    contactName,
+    normalizedMessage,
+    state,
+    nlu,
+    decision,
+    plannerDecision: plannerAuthorityActive ? plannerAuthorityDecision : null,
+    responsePlan
+  });
+  if (advisorNotification.advisorNotificationRequired) {
+    logger.info('ncie_advisor_notification_required', {
+      empresaId,
+      reason: advisorNotification.notificationReason,
+      selectedService: advisorNotification.notificationPayload?.selectedService ?? null,
+      currentEstimate: advisorNotification.notificationPayload?.currentEstimate ?? null
+    });
+  } else if (advisorNotification.skippedDuplicate) {
+    logger.info('ncie_advisor_notification_skipped_duplicate', {
+      empresaId,
+      reason: advisorNotification.notificationReason
+    });
+  }
 
   let savedConversation = null;
   let lead = null;
@@ -395,6 +503,7 @@ export async function runConversationEngine({
       commercialReasoning,
       responsePlan,
       plannerDecision: plannerAuthorityActive ? plannerAuthorityDecision : null,
+      advisorNotification,
       contextStore
     });
     if (plannerAuthorityActive) {
@@ -410,6 +519,14 @@ export async function runConversationEngine({
       activeServiceName: savedState?.datos?.ncie?.active_service_name ?? null,
       activeDomain: savedState?.datos?.ncie?.active_domain ?? null,
       lastBotQuestion: savedState?.datos?.ncie?.last_bot_question ?? null
+    });
+    logger.info('ncie_state_after', {
+      empresaId,
+      conversationId: whatsappChatId ?? phone,
+      activeFlow: savedState?.datos?.ncie?.planner_state?.activeFlowId ?? null,
+      selectedService: savedState?.datos?.ncie?.active_service_name ?? null,
+      waitingField: savedState?.datos?.ncie?.planner_state?.waitingField ?? null,
+      currentEstimate: savedState?.datos?.ncie?.planner_state?.currentEstimate ?? null
     });
     logger.info('ncie_commercial_stage_updated', {
       empresaId,
@@ -433,6 +550,11 @@ export async function runConversationEngine({
       retrieval,
       responsePlan,
       decision,
+      advisorNotificationRequired: advisorNotification.advisorNotificationRequired,
+      notificationReason: advisorNotification.notificationReason,
+      notificationPayload: advisorNotification.notificationPayload,
+      notificationHash: advisorNotification.notificationHash,
+      advisorNotification,
       plannerShadowDecision,
       plannerAuthorityDecision: plannerAuthorityActive ? plannerAuthorityDecision : null
     },

@@ -1,21 +1,10 @@
 import { normalizeForNcie } from '../message-normalizer.js';
 import { COMMERCIAL_PLANNER_STAGES } from './commercial-state.schema.js';
+import { parseDimensions } from './dimensions.parser.js';
 
 export function extractDimensionsFromText(value) {
-  const text = normalizeForNcie(value);
-  const match = text.match(/(\d+(?:[.,]\d+)?)\s*(?:x|por|\*)\s*(\d+(?:[.,]\d+)?)/);
-  if (!match) return null;
-
-  const first = Number(match[1].replace(',', '.'));
-  const second = Number(match[2].replace(',', '.'));
-  if (!Number.isFinite(first) || !Number.isFinite(second)) return null;
-
-  return {
-    alto: first,
-    ancho: second,
-    area: Number((first * second).toFixed(4)),
-    text: `${match[1]}x${match[2]}`
-  };
+  const dimensions = parseDimensions(value);
+  return dimensions?.area ? dimensions : null;
 }
 
 export function detectWebType(value) {
@@ -29,13 +18,13 @@ export function detectWebType(value) {
 export function detectDesignPreference(value) {
   const text = normalizeForNcie(value);
   if (/\b(sin diseno|sin el diseno|no quiero diseno|no necesito diseno|ya tengo diseno|ya tengo el diseno|tengo diseno|tengo el diseno|yo tengo el diseno)\b/.test(text)) return false;
-  if (/\b(con diseno|tambien diseno|tambien el diseno|apoyo con el diseno|ayuda con el diseno|quiero diseno|necesito diseno)\b/.test(text)) return true;
+  if (/\b(con diseno|con el diseno|tambien con el diseno|tambien diseno|tambien el diseno|apoyo con el diseno|ayuda con el diseno|quiero diseno|necesito diseno|no tengo diseno|no tengo el diseno)\b/.test(text)) return true;
   return null;
 }
 
 export function detectInstallationPreference(value) {
   const text = normalizeForNcie(value);
-  if (/\b(sin instalacion|no instalacion|no necesito instalacion|no quiero instalacion)\b/.test(text)) return false;
+  if (/\b(solo impresion|solo la impresion|sin instalacion|no instalacion|no necesito instalacion|no quiero instalacion)\b/.test(text)) return false;
   if (/\b(con instalacion|necesito instalacion|quiero instalacion|tambien instalacion)\b/.test(text)) return true;
   return null;
 }
@@ -44,6 +33,23 @@ function serviceNeedsMeasurements(service = null) {
   const priceType = normalizeForNcie(service?.tipo_precio);
   const unit = normalizeForNcie(service?.unidad_medida);
   return Boolean(service?.requiere_medidas) || priceType.includes('m2') || unit.includes('m2') || priceType.includes('por_m2');
+}
+
+function serviceNeedsQuantity(service = null) {
+  return Boolean(service?.requiere_cantidad);
+}
+
+function serviceNeedsBudget(service = null) {
+  return normalizeForNcie(service?.tipo_precio) === 'cotizacion';
+}
+
+function detectBudget(value, { hasDimensions = false } = {}) {
+  if (hasDimensions) return null;
+  const text = normalizeForNcie(value);
+  const match = text.match(/\$?\s*(\d{2,7}(?:[.,]\d{1,2})?)\s*(?:pesos|mxn)?\b/);
+  if (!match) return null;
+  const budget = Number(match[1].replace(',', '.'));
+  return Number.isFinite(budget) && budget > 0 ? budget : null;
 }
 
 function serviceLooksLikeWeb(service = null) {
@@ -63,21 +69,24 @@ function sameService(flow = null, service = null) {
   return true;
 }
 
-export function detectMissingInformation({ flow = null, selectedService = null, normalizedMessage = null, resetEntities = false, allowInstallationPreference = true } = {}) {
+export function detectMissingInformation({ flow = null, selectedService = null, normalizedMessage = null, resetEntities = false, allowInstallationPreference = true, interpretedEntities = null } = {}) {
   const service = selectedService ?? {
     id: flow?.selectedServiceId,
     nombre: flow?.selectedServiceName,
     categoria: flow?.selectedCategory,
     tipo_precio: flow?.servicePriceType,
-    requiere_medidas: flow?.requiresMeasurements
+    requiere_medidas: flow?.requiresMeasurements,
+    requiere_cantidad: flow?.requiresQuantity
   };
   const entities = !resetEntities && sameService(flow, service) ? { ...(flow?.entities ?? {}) } : {};
-  const detectedDimensions = extractDimensionsFromText(normalizedMessage?.normalized ?? normalizedMessage?.raw ?? '');
+  const messageText = normalizedMessage?.original ?? normalizedMessage?.raw ?? normalizedMessage?.normalized ?? '';
+  const detectedDimensions = extractDimensionsFromText(messageText);
   const detectedWebType = detectWebType(normalizedMessage?.normalized ?? normalizedMessage?.raw ?? '');
   const detectedDesignPreference = detectDesignPreference(normalizedMessage?.normalized ?? normalizedMessage?.raw ?? '');
   const detectedInstallationPreference = allowInstallationPreference
     ? detectInstallationPreference(normalizedMessage?.normalized ?? normalizedMessage?.raw ?? '')
     : null;
+  const detectedBudget = detectBudget(messageText, { hasDimensions: Boolean(detectedDimensions) });
   const webService = serviceLooksLikeWeb(service);
 
   if (detectedDimensions) entities.dimensions = detectedDimensions;
@@ -87,15 +96,25 @@ export function detectMissingInformation({ flow = null, selectedService = null, 
     entities.designSupport = detectedDesignPreference;
   }
   if (detectedInstallationPreference !== null) entities.installation = detectedInstallationPreference;
+  if (detectedBudget !== null) entities.budget = detectedBudget;
+  if (interpretedEntities && typeof interpretedEntities === 'object') {
+    Object.assign(entities, interpretedEntities);
+  }
   if (!serviceNeedsMeasurements(service) && !detectedDimensions) delete entities.dimensions;
   if (!webService) delete entities.webType;
 
   const missing = [];
-  if (serviceNeedsMeasurements(service) && !entities.dimensions) missing.push('medidas');
+  if (serviceNeedsMeasurements(service) && (!entities.dimensions || entities.dimensions?.incomplete)) missing.push('medidas');
+  if (serviceNeedsQuantity(service) && !entities.quantity) missing.push('cantidad');
+  if (serviceNeedsBudget(service) && !serviceNeedsMeasurements(service) && !entities.budget) missing.push('presupuesto');
   if (webService && !entities.webType) missing.push('tipo_web');
 
   const stage = missing.includes('medidas')
     ? COMMERCIAL_PLANNER_STAGES.WAITING_MEASUREMENTS
+    : missing.includes('cantidad')
+      ? COMMERCIAL_PLANNER_STAGES.WAITING_QUANTITY
+    : missing.includes('presupuesto')
+      ? COMMERCIAL_PLANNER_STAGES.WAITING_BUDGET
     : missing.includes('tipo_web')
       ? COMMERCIAL_PLANNER_STAGES.WAITING_WEB_TYPE
       : service?.id || service?.nombre
@@ -109,6 +128,7 @@ export function detectMissingInformation({ flow = null, selectedService = null, 
     detectedDimensions,
     detectedWebType: webService ? detectedWebType : null,
     detectedDesignPreference,
-    detectedInstallationPreference
+    detectedInstallationPreference,
+    detectedBudget
   };
 }

@@ -7,12 +7,14 @@ import {
   COMMERCIAL_PLANNER_STAGES,
   emptyPlannerState,
   flowSummary,
-  normalizePlannerState
+  normalizePlannerState,
+  waitingFieldFromMissing
 } from './commercial-state.schema.js';
 import { detectCommercialGoal } from './commercial-goal.detector.js';
 import { detectMissingInformation } from './missing-information.detector.js';
 import { detectTopicSwitch } from './topic-switch.detector.js';
 import { planRetrievalPolicy } from './retrieval-policy.js';
+import { currentWaitingField, interpretResponseForWaitingField } from './response-interpreter.js';
 
 function booleanEnv(name, fallback = false) {
   const value = process.env[name];
@@ -34,7 +36,25 @@ function flowIdForService(service) {
   return `flow_service_${service?.id ?? String(service?.nombre ?? 'unknown').toLowerCase().replace(/\s+/g, '_')}`;
 }
 
-function selectedServiceFrom({ flow = null, retrieval = null } = {}) {
+function selectedServiceFrom({ flow = null, retrieval = null, catalogSelection = null, explicitServiceName = null } = {}) {
+  if (catalogSelection?.selectedService) return catalogSelection.selectedService;
+  const explicit = normalizeForNcie(explicitServiceName ?? '');
+  if (explicit && retrieval?.services?.length) {
+    const exact = retrieval.services.find((service) => {
+      const name = normalizeForNcie(service?.nombre ?? '');
+      return name && (name.includes(explicit) || explicit.includes(name));
+    });
+    if (exact) return exact;
+
+    const explicitTokens = explicit
+      .split(/\s+/)
+      .filter((token) => token.length > 3 && !['diseno', 'impresion', 'servicio'].includes(token));
+    const categorical = retrieval.services.find((service) => {
+      const haystack = normalizeForNcie(`${service?.nombre ?? ''} ${service?.categoria ?? ''} ${service?.descripcion ?? ''}`);
+      return explicitTokens.length > 0 && explicitTokens.every((token) => haystack.includes(token));
+    });
+    if (categorical) return categorical;
+  }
   const top = retrieval?.services?.[0] ?? null;
   if (top && Number(top.score ?? 0) > 0) return top;
   if (flow?.selectedServiceId || flow?.selectedServiceName) {
@@ -124,6 +144,57 @@ function containsDimensionValue(normalizedMessage = null) {
   return /\b\d+(?:[.,]\d+)?\s*(?:x|por|\*)\s*\d+(?:[.,]\d+)?\b/.test(text);
 }
 
+function quantityFromMessage(normalizedMessage = null) {
+  const text = textFromMessage(normalizedMessage);
+  const digit = text.match(/\b(\d{1,6})\b/);
+  if (digit) {
+    const value = Number(digit[1]);
+    return Number.isFinite(value) && value > 0 ? value : null;
+  }
+  const numberWords = new Map([
+    ['un', 1],
+    ['una', 1],
+    ['uno', 1],
+    ['dos', 2],
+    ['tres', 3],
+    ['cuatro', 4],
+    ['cinco', 5],
+    ['seis', 6],
+    ['siete', 7],
+    ['ocho', 8],
+    ['nueve', 9],
+    ['diez', 10],
+    ['once', 11],
+    ['doce', 12],
+    ['quince', 15],
+    ['veinte', 20],
+    ['treinta', 30],
+    ['cuarenta', 40],
+    ['cincuenta', 50],
+    ['cien', 100]
+  ]);
+  for (const token of text.split(/\s+/)) {
+    if (numberWords.has(token)) return numberWords.get(token);
+  }
+  return null;
+}
+
+function isQuantityQuestion(question) {
+  return /\b(cantidad|cuantas|cuantos|piezas|pzs|unidades)\b/.test(question);
+}
+
+function usageFromMessage(normalizedMessage = null) {
+  const text = textFromMessage(normalizedMessage);
+  if (/\b(interior|interiores|adentro|dentro)\b/.test(text)) return 'interior';
+  if (/\b(exterior|exteriores|afuera|intemperie)\b/.test(text)) return 'exterior';
+  if (/\b(evento|eventos|expo|exposicion|feria)\b/.test(text)) return 'evento';
+  return null;
+}
+
+function isUsageQuestion(question) {
+  return /\b(interior|exterior|evento|uso|donde|ubicacion)\b/.test(question);
+}
+
 function isConsultativeGuidanceRequest(normalizedMessage = null) {
   const text = textFromMessage(normalizedMessage);
   return /\b(que me recomiendas|que recomiendas|recomiendame|me recomiendas|alguna recomendacion|algo economico|opcion economica|mas economico)\b/.test(text);
@@ -145,6 +216,11 @@ function isConsultativeDiagnosisRequest(normalizedMessage = null) {
   return /\b(no se que necesito|no se que me conviene|que me recomiendas|que recomiendas|recomiendame|me recomiendas|quiero vender mas|quiero atraer clientes|atraer clientes|atraer mas clientes|presencia en redes|quiero mejorar mi presencia|quiero mejorar mi negocio|necesito publicidad|quiero publicidad|quiero promocionar mi negocio|quiero anunciar mi negocio|promocionar mi negocio|anunciar mi negocio)\b/.test(text);
 }
 
+function hasConcreteServiceSignal(normalizedMessage = null) {
+  const text = textFromMessage(normalizedMessage);
+  return /\b(lona|lonas|vinil|viniles|senal[eé]tica|senaletica|banner|arana|rotulacion|rotular|impresion gran formato|logotipo|logo|diseno de logo|diseno de logotipo|pagina web|sitio web|tarjeta|tarjetas)\b/.test(text);
+}
+
 function isLowSignalUnknownRequest({ normalizedMessage = null, nlu = null } = {}) {
   const text = textFromMessage(normalizedMessage);
   if (nlu?.intent !== 'MENSAJE_GENERAL' || nlu?.type !== 'unknown') return false;
@@ -158,7 +234,8 @@ function isLowSignalUnknownRequest({ normalizedMessage = null, nlu = null } = {}
 
 function isGreetingRequest(normalizedMessage = null) {
   const text = textFromMessage(normalizedMessage);
-  return /^(hola|buen dia|buenos dias|buenas tardes|buenas noches|hey|hello|que tal|buenas)$/.test(text);
+  if (/^(hola|buen dia|buenos dias|buena tarde|buenas tardes|buenas noches|hey|hello|que tal|buenas)$/.test(text)) return true;
+  return /^(hola\s+)?(buen dia|buenos dias|buena tarde|buenas tardes|buenas noches|buenas|que tal)(\s+hola)?$/.test(text);
 }
 
 function neutralMessageType(normalizedMessage = null) {
@@ -218,6 +295,12 @@ function isDiagnosisFollowupAnswer({ normalizedMessage = null, currentQuestion =
 }
 
 function serviceSupportsInstallation(serviceOrFlow = null) {
+  const excludes = normalizeForNcie([
+    serviceOrFlow?.no_incluye,
+    serviceOrFlow?.excludes
+  ].filter(Boolean).join(' '));
+  if (/\binstalacion\b/.test(excludes)) return false;
+
   const text = normalizeForNcie([
     serviceOrFlow?.nombre,
     serviceOrFlow?.selectedServiceName,
@@ -225,21 +308,19 @@ function serviceSupportsInstallation(serviceOrFlow = null) {
     serviceOrFlow?.selectedCategory,
     serviceOrFlow?.categoria,
     serviceOrFlow?.incluye,
-    serviceOrFlow?.includes,
-    serviceOrFlow?.no_incluye,
-    serviceOrFlow?.excludes
+    serviceOrFlow?.includes
   ].filter(Boolean).join(' '));
   return /\b(lona|vinil|viniles|senal[eé]tica|senaletica|banner|arana|rotulacion|impresion gran formato)\b/.test(text);
 }
 
 function looksLikeDesignModifier(normalizedMessage = null) {
   const text = textFromMessage(normalizedMessage);
-  return /\b(con diseno|sin diseno|tambien diseno|apoyo con el diseno|ayuda con el diseno|ya tengo diseno|ya tengo el diseno|tengo diseno|no necesito diseno|quiero diseno|necesito diseno)\b/.test(text);
+  return /\b(con diseno|con el diseno|sin diseno|tambien con el diseno|tambien diseno|apoyo con el diseno|ayuda con el diseno|ya tengo diseno|ya tengo el diseno|tengo diseno|no tengo diseno|no tengo el diseno|no necesito diseno|quiero diseno|necesito diseno)\b/.test(text);
 }
 
 function looksLikeInstallationModifier(normalizedMessage = null) {
   const text = textFromMessage(normalizedMessage);
-  return /\b(sin instalacion|con instalacion|no necesito instalacion|no quiero instalacion|quiero instalacion|necesito instalacion)\b/.test(text);
+  return /\b(solo impresion|solo la impresion|sin instalacion|con instalacion|no necesito instalacion|no quiero instalacion|quiero instalacion|necesito instalacion)\b/.test(text);
 }
 
 function explicitServiceMention(normalizedMessage = null) {
@@ -247,6 +328,9 @@ function explicitServiceMention(normalizedMessage = null) {
   if (/\b(marketing digital|redes sociales|publicidad digital|campanas digitales|anuncios digitales)\b/.test(text)) return 'Marketing digital';
   if (/\b(pagina web|paginas web|sitio web|web|landing|ecommerce|tienda en linea)\b/.test(text)) return 'Diseno web';
   if (/\b(lona|lonas|impresion de lona)\b/.test(text)) return 'Impresion de lona';
+  if (/\b(vinil impreso|vinil|viniles)\b/.test(text)) return 'Vinil impreso';
+  if (/\b(rotulacion|rotular)\b/.test(text)) return 'Vinil de rotulacion de color';
+  if (/\b(logotipo|logo|diseno de logo|diseno de logotipo)\b/.test(text)) return 'Diseno de logotipo';
   if (/\b(tarjeta|tarjetas|tarjetas digitales)\b/.test(text)) return 'Tarjetas digitales';
   return null;
 }
@@ -263,7 +347,8 @@ function answersLastQuestion({ normalizedMessage, plannerState, state, currentFl
   const question = lastQuestionText({ plannerState, state, currentFlow });
   if (!question) return false;
   if (containsDimensionValue(normalizedMessage) && currentFlow?.requiresMeasurements) return true;
-  if (looksLikeDesignModifier(normalizedMessage)) return isDesignQuestion(question);
+  if (/\b\d{2,7}\s*(?:pesos|mxn)?\b/.test(text) && /\b(presupuesto|invertir|precio|cotizacion|cotizar)\b/.test(question)) return true;
+  if (looksLikeDesignModifier(normalizedMessage)) return isDesignQuestion(question) || Boolean(currentFlow?.currentEstimate);
   if (looksLikeInstallationModifier(normalizedMessage)) {
     return isInstallationQuestion(question) || serviceSupportsInstallation(currentFlow);
   }
@@ -299,7 +384,7 @@ function inferContextualAnswerFromLastQuestion({ normalizedMessage, plannerState
   const result = inferShortAnswerFromLastQuestion({ normalizedMessage, plannerState, state, currentFlow });
 
   if (isDesignQuestion(question)) {
-    if (/^si$/.test(text) || /\b(con diseno|tambien diseno|si necesito diseno|apoyo con el diseno|ayuda con el diseno|quiero diseno|necesito diseno)\b/.test(text)) {
+    if (/^si$/.test(text) || /\b(con diseno|con el diseno|tambien con el diseno|tambien diseno|si necesito diseno|apoyo con el diseno|ayuda con el diseno|quiero diseno|necesito diseno|no tengo diseno|no tengo el diseno)\b/.test(text)) {
       result.detectedDesignPreference = true;
     }
     if (/^no$/.test(text) || /\b(sin diseno|ya tengo diseno|ya tengo el diseno|tengo diseno|tengo el diseno|no quiero diseno|no necesito diseno)\b/.test(text)) {
@@ -307,11 +392,20 @@ function inferContextualAnswerFromLastQuestion({ normalizedMessage, plannerState
     }
   }
 
+  if (!isDesignQuestion(question) && currentFlow?.currentEstimate && looksLikeDesignModifier(normalizedMessage)) {
+    if (/\b(con diseno|con el diseno|tambien con el diseno|tambien diseno|si necesito diseno|apoyo con el diseno|ayuda con el diseno|quiero diseno|necesito diseno|no tengo diseno|no tengo el diseno)\b/.test(text)) {
+      result.detectedDesignPreference = true;
+    }
+    if (/\b(sin diseno|ya tengo diseno|ya tengo el diseno|tengo diseno|tengo el diseno|no quiero diseno|no necesito diseno)\b/.test(text)) {
+      result.detectedDesignPreference = false;
+    }
+  }
+
   if (isInstallationQuestion(question) || serviceSupportsInstallation(currentFlow)) {
-    if (/^si$/.test(text) || /\b(con instalacion|necesito instalacion|quiero instalacion|tambien instalacion)\b/.test(text)) {
+    if (/^si$/.test(text) || (isInstallationQuestion(question) && /^instalacion$/.test(text)) || /\b(con instalacion|necesito instalacion|quiero instalacion|tambien instalacion)\b/.test(text)) {
       result.detectedInstallationPreference = true;
     }
-    if (/^no$/.test(text) || /\b(sin instalacion|no instalacion|no necesito instalacion|no quiero instalacion)\b/.test(text)) {
+    if (/^no$/.test(text) || /\b(solo impresion|solo la impresion|sin instalacion|no instalacion|no necesito instalacion|no quiero instalacion)\b/.test(text)) {
       result.detectedInstallationPreference = false;
     }
   }
@@ -347,6 +441,7 @@ function isExplicitTopicChange({ goal, nlu, normalizedMessage, currentFlow, plan
 
 function isCatalogGoal(goal) {
   return goal === COMMERCIAL_PLANNER_GOALS.FOLLOW_UP_CATALOG ||
+    goal === COMMERCIAL_PLANNER_GOALS.LIST_CATALOG ||
     goal === COMMERCIAL_PLANNER_GOALS.EXPLORE_COMPANY ||
     goal === COMMERCIAL_PLANNER_GOALS.KNOW_COMPANY;
 }
@@ -359,6 +454,7 @@ function shouldDeferToCurrentNcie({ goal, nlu }) {
 
 function responsePlanTypeFor({ goal, selectedService, missing, nextAction, topicSwitch, deferToNcie, explicitTopicChange }) {
   if (deferToNcie) return 'defer_to_ncie';
+  if (goal === COMMERCIAL_PLANNER_GOALS.LIST_CATALOG || goal === COMMERCIAL_PLANNER_GOALS.FOLLOW_UP_CATALOG) return 'catalog_listing';
   if (isCatalogGoal(goal)) return 'business_summary';
   if (topicSwitch?.resumeFlow) return 'resume_flow';
   if (selectedService && missing.includes('medidas')) return 'ask_measurements';
@@ -370,6 +466,26 @@ function responsePlanTypeFor({ goal, selectedService, missing, nextAction, topic
 
 function markFlowPaused(flow) {
   return flow ? { ...flow, status: 'paused' } : flow;
+}
+
+function estimateForService(service = null, entities = {}, previous = null) {
+  const dimensions = entities?.dimensions;
+  const price = Number(service?.precio ?? service?.servicePrice);
+  const priceType = String(service?.tipo_precio ?? service?.servicePriceType ?? '').toUpperCase();
+  const unit = normalizeForNcie(service?.unidad_medida ?? service?.unitMeasure ?? '');
+  if (dimensions?.area && Number.isFinite(price) && (priceType === 'POR_M2' || unit.includes('m2'))) {
+    const total = Number((dimensions.area * price).toFixed(2));
+    return {
+      serviceId: service?.id ?? service?.selectedServiceId ?? null,
+      serviceName: service?.nombre ?? service?.selectedServiceName ?? null,
+      dimensions,
+      area: dimensions.area,
+      unitPrice: price,
+      total,
+      currency: 'MXN'
+    };
+  }
+  return previous ?? null;
 }
 
 function previewStateUpdate({ plannerState, goal, stage, selectedService, missing, entities, topicSwitch, normalizedMessage, suspendActiveFlow = false, resetEntities = false }) {
@@ -407,6 +523,11 @@ function previewStateUpdate({ plannerState, goal, stage, selectedService, missin
   if (next.activeFlowId && next.activeFlowId !== id) {
     next.flows = next.flows.map((flow) => flow.id === next.activeFlowId ? markFlowPaused(flow) : flow);
   }
+  const mergedEntities = {
+    ...(resetEntities ? {} : previous.entities ?? {}),
+    ...(entities ?? {})
+  };
+  const currentEstimate = estimateForService(selectedService, mergedEntities, resetEntities ? null : previous.currentEstimate ?? null);
   const flow = {
     ...previous,
     id,
@@ -424,11 +545,23 @@ function previewStateUpdate({ plannerState, goal, stage, selectedService, missin
     excludes: selectedService.no_incluye ?? previous.excludes ?? null,
     quoteNotes: selectedService.notas_cotizacion ?? previous.quoteNotes ?? null,
     minimumPrice: selectedService.precio_minimo ?? previous.minimumPrice ?? null,
-    entities: {
-      ...(resetEntities ? {} : previous.entities ?? {}),
-      ...(entities ?? {})
-    },
+    entities: mergedEntities,
     missing,
+    waitingField: waitingFieldFromMissing(missing),
+    quotationDraft: currentEstimate
+      ? {
+        service_id: selectedService.id ?? previous.selectedServiceId ?? null,
+        service_name: selectedService.nombre ?? previous.selectedServiceName ?? null,
+        dimensions: currentEstimate.dimensions,
+        unit_price: currentEstimate.unitPrice,
+        total: currentEstimate.total
+      }
+      : resetEntities ? null : previous.quotationDraft ?? null,
+    currentEstimate,
+    installationRequested: mergedEntities.installation ?? previous.installationRequested ?? null,
+    designIncluded: mergedEntities.designSupport ?? mergedEntities.design ?? previous.designIncluded ?? null,
+    needsAdvisor: previous.needsAdvisor ?? false,
+    catalogShown: previous.catalogShown ?? false,
     lastUserMessage: normalizedMessage?.raw ?? null,
     status: 'active'
   };
@@ -439,6 +572,34 @@ function previewStateUpdate({ plannerState, goal, stage, selectedService, missin
     next.flows.push(flow);
   }
   next.activeFlowId = id;
+  next.goal = goal;
+  next.currentStage = stage;
+  next.waitingField = flow.waitingField;
+  next.selectedCategory = flow.selectedCategory ?? null;
+  next.selectedService = {
+    id: flow.selectedServiceId ?? null,
+    nombre: flow.selectedServiceName ?? null,
+    categoria: flow.selectedCategory ?? null
+  };
+  next.collectedEntities = flow.entities ?? {};
+  next.missingEntities = missing ?? [];
+  next.quotationDraft = flow.quotationDraft ?? null;
+  next.currentEstimate = flow.currentEstimate ?? null;
+  next.installationRequested = flow.installationRequested ?? null;
+  next.designIncluded = flow.designIncluded ?? null;
+  next.needsAdvisor = flow.needsAdvisor ?? false;
+  next.catalogShown = flow.catalogShown ?? false;
+  next.lastInteraction = new Date().toISOString();
+  next.contextHistory = [
+    ...(next.contextHistory ?? []),
+    {
+      role: 'user',
+      text: normalizedMessage?.original ?? normalizedMessage?.raw ?? normalizedMessage?.normalized ?? '',
+      activeFlowId: id,
+      waitingField: flow.waitingField,
+      at: next.lastInteraction
+    }
+  ].slice(-12);
   return next;
 }
 
@@ -453,16 +614,54 @@ export function planCommercialConversation({
 } = {}) {
   const plannerState = normalizePlannerState({ state, empresaId, conversationId });
   const currentFlow = activeFlow(plannerState);
-  const goal = detectCommercialGoal({ normalizedMessage, nlu, state, plannerState });
+  logger.info('ncie_conversation_state_loaded', {
+    empresaId,
+    conversationId,
+    activeFlow: flowSummary(currentFlow),
+    waitingField: currentWaitingField(plannerState)
+  });
+  const waitingField = currentWaitingField(plannerState);
+  const interpretedResponse = waitingField
+    ? interpretResponseForWaitingField({
+      waitingField,
+      normalizedMessage,
+      plannerState,
+      pendingOptions: state?.commercial?.lastOptionsShown ?? []
+    })
+    : { handled: false, entities: {}, confidence: 0 };
+  if (waitingField) {
+    logger.info('ncie_waiting_field_detected', {
+      empresaId,
+      phase,
+      waitingField,
+      activeFlow: flowSummary(currentFlow)
+    });
+  }
+  if (interpretedResponse.handled) {
+    logger.info('ncie_response_interpreted', {
+      empresaId,
+      phase,
+      waitingField,
+      ambiguous: Boolean(interpretedResponse.ambiguous),
+      entities: interpretedResponse.entities,
+      confidence: interpretedResponse.confidence
+    });
+  }
+  let goal = detectCommercialGoal({ normalizedMessage, nlu, state, plannerState });
+  const catalogSelection = interpretedResponse.entities?.catalogSelection ?? null;
+  if (catalogSelection?.selectedService) {
+    goal = COMMERCIAL_PLANNER_GOALS.QUOTE;
+  }
   const catalogGoal = isCatalogGoal(goal);
-  const directAnswer = answersLastQuestion({ normalizedMessage, plannerState, state, currentFlow });
+  const directAnswer = interpretedResponse.handled || answersLastQuestion({ normalizedMessage, plannerState, state, currentFlow });
   const genericPriceRequest = !directAnswer && isGenericPriceRequest(normalizedMessage);
   const diagnosisFollowup = directAnswer && isDiagnosisFollowupAnswer({
     normalizedMessage,
     currentQuestion: lastQuestionText({ plannerState, state, currentFlow })
   });
-  const consultativeDiagnosis = !directAnswer && !genericPriceRequest && isConsultativeDiagnosisRequest(normalizedMessage);
-  const consultativeGuidance = isConsultativeGuidanceRequest(normalizedMessage);
+  const concreteServiceSignal = hasConcreteServiceSignal(normalizedMessage) || Boolean(explicitServiceMention(normalizedMessage));
+  const consultativeDiagnosis = !concreteServiceSignal && !directAnswer && !genericPriceRequest && isConsultativeDiagnosisRequest(normalizedMessage);
+  const consultativeGuidance = !concreteServiceSignal && isConsultativeGuidanceRequest(normalizedMessage);
   const neutralType = directAnswer ? null : neutralMessageType(normalizedMessage);
   const neutralMessage = Boolean(neutralType);
   const freshServiceRequest = !directAnswer && isFreshServiceRequest(normalizedMessage, currentFlow);
@@ -486,7 +685,8 @@ export function planCommercialConversation({
     flow: flowForPlanning,
     normalizedMessage,
     resetEntities: freshServiceRequest,
-    allowInstallationPreference: allowPreliminaryInstallation
+    allowInstallationPreference: allowPreliminaryInstallation,
+    interpretedEntities: directAnswer ? interpretedResponse.entities : null
   });
   const policy = directAnswer
     ? {
@@ -533,7 +733,7 @@ export function planCommercialConversation({
       : planRetrievalPolicy({ goal, activeFlow: flowForPlanning, missing: preliminaryMissing.missing, nlu, normalizedMessage });
   const selectedService = catalogGoal || deferToNcie || consultativeGuidance || consultativeDiagnosis || neutralMessage || lowSignalUnknown
     ? null
-    : selectedServiceFrom({ flow: flowForPlanning, retrieval });
+    : selectedServiceFrom({ flow: flowForPlanning, retrieval, catalogSelection, explicitServiceName: explicitlyMentionedService });
   const topicSwitch = retrieval && !catalogGoal && !deferToNcie && !consultativeGuidance && !consultativeDiagnosis && !neutralMessage && !lowSignalUnknown && !genericPriceRequest
     ? detectTopicSwitch({ normalizedMessage, plannerState, retrieval })
     : { changed: false, resumeFlow: null, newService: null };
@@ -554,23 +754,30 @@ export function planCommercialConversation({
     }
     : topicSwitch?.newService ?? selectedService;
   const effectiveService = withExplicitServiceName(baseEffectiveService, explicitlyMentionedService);
-  const allowEffectiveInstallation = isInstallationQuestion(currentQuestion) || serviceSupportsInstallation(effectiveService);
+  const allowEffectiveInstallation = isInstallationQuestion(currentQuestion);
   const missingInfo = detectMissingInformation({
     flow: topicSwitch?.resumeFlow ?? (topicSwitch?.newService ? null : flowForPlanning),
     selectedService: effectiveService,
     normalizedMessage,
     resetEntities: freshServiceRequest || Boolean(topicSwitch?.newService),
-    allowInstallationPreference: allowEffectiveInstallation
+    allowInstallationPreference: allowEffectiveInstallation,
+    interpretedEntities: directAnswer ? interpretedResponse.entities : null
   });
   const inferredAnswer = inferContextualAnswerFromLastQuestion({ normalizedMessage, plannerState, state, currentFlow });
   const detectedWebType = missingInfo.detectedWebType ?? inferredAnswer.detectedWebType;
   const detectedDesignPreference = missingInfo.detectedDesignPreference ?? inferredAnswer.detectedDesignPreference;
   const detectedInstallationPreference = missingInfo.detectedInstallationPreference ?? inferredAnswer.detectedInstallationPreference;
   const detectedMarketingGoal = inferredAnswer.detectedMarketingGoal ?? null;
+  const budgetAllowed = waitingField === 'budget' || String(effectiveService?.tipo_precio ?? '').toUpperCase() === 'COTIZACION';
+  const detectedBudget = budgetAllowed
+    ? interpretedResponse.entities?.budget ?? missingInfo.detectedBudget ?? nlu?.entities?.budget ?? null
+    : null;
   const entities = {
     ...missingInfo.entities,
+    ...(directAnswer ? interpretedResponse.entities : {}),
     ...(detectedWebType ? { webType: detectedWebType } : {}),
     ...(detectedMarketingGoal ? { marketingGoal: detectedMarketingGoal } : {}),
+    ...(detectedBudget ? { budget: detectedBudget } : {}),
     ...(detectedDesignPreference !== null && detectedDesignPreference !== undefined ? { design: detectedDesignPreference, designSupport: detectedDesignPreference } : {}),
     ...(detectedInstallationPreference !== null && detectedInstallationPreference !== undefined ? { installation: detectedInstallationPreference } : {})
   };
@@ -593,6 +800,8 @@ export function planCommercialConversation({
     : Boolean(policy.retrievalNeeded && !effectiveService);
   const responsePlanType = neutralMessage
     ? 'neutral_message'
+    : interpretedResponse.ambiguous
+      ? 'clarify_pending_options'
     : detectedMarketingGoal && effectiveService
       ? 'marketing_goal_followup'
     : genericPriceRequest && !effectiveService
@@ -622,6 +831,21 @@ export function planCommercialConversation({
     suspendActiveFlow,
     resetEntities: freshServiceRequest || Boolean(topicSwitch?.newService)
   });
+  if (goal === COMMERCIAL_PLANNER_GOALS.LIST_CATALOG || goal === COMMERCIAL_PLANNER_GOALS.FOLLOW_UP_CATALOG) {
+    statePreview.activeFlowId = null;
+    statePreview.goal = goal;
+    statePreview.currentStage = COMMERCIAL_PLANNER_STAGES.VIEWING_CATALOG;
+    statePreview.waitingField = 'catalog_selection';
+    statePreview.selectedCategory = null;
+    statePreview.selectedService = null;
+    statePreview.collectedEntities = {};
+    statePreview.missingEntities = ['catalogo'];
+  }
+  statePreview.lastUserIntent = nlu?.intent ?? null;
+  statePreview.confidence = interpretedResponse.handled ? interpretedResponse.confidence : nlu?.confidence ?? null;
+  statePreview.followUpCounter = missingInfo.missing.length > 0
+    ? Number(plannerState.followUpCounter ?? 0) + 1
+    : 0;
 
   if (directAnswer) {
     logger.info('ncie_planner_last_question_matched', {
@@ -632,6 +856,31 @@ export function planCommercialConversation({
       activeFlow: flowSummary(currentFlow)
     });
   }
+  if (entities && Object.keys(entities).length > 0) {
+    logger.info('ncie_entity_extracted', {
+      empresaId,
+      phase,
+      entities
+    });
+  }
+  logger.info('ncie_planner_transition', {
+    empresaId,
+    phase,
+    from: currentFlow?.stage ?? plannerState.currentStage ?? null,
+    to: stage,
+    nextAction,
+    activeFlow: flowSummary(activeFlow(statePreview))
+  });
+  logger.info('ncie_missing_entities', {
+    empresaId,
+    phase,
+    missing: missingInfo.missing
+  });
+  logger.info('ncie_next_question', {
+    empresaId,
+    phase,
+    waitingField: statePreview.waitingField ?? waitingFieldFromMissing(missingInfo.missing)
+  });
   if (neutralMessage) {
     logger.info('ncie_planner_neutral_message_detected', {
       empresaId,
@@ -767,6 +1016,9 @@ export function planCommercialConversation({
     detectedMarketingGoal,
     detectedDesignPreference,
     detectedInstallationPreference,
+    detectedBudget,
+    waitingField: statePreview.waitingField ?? waitingFieldFromMissing(missingInfo.missing),
+    interpretedResponse,
     nextAction,
     retrievalNeeded,
     retrievalPolicy: {

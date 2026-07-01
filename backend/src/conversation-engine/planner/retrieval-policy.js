@@ -24,10 +24,10 @@ function looksLikeSpecificCommercialRequest(normalizedMessage) {
 export function planRetrievalPolicy({ goal, activeFlow = null, missing = [], nlu = null, normalizedMessage = null } = {}) {
   const hasSelectedService = Boolean(activeFlow?.selectedServiceId || activeFlow?.selectedServiceName);
 
-  if (goal === COMMERCIAL_PLANNER_GOALS.FOLLOW_UP_CATALOG) {
+  if (goal === COMMERCIAL_PLANNER_GOALS.FOLLOW_UP_CATALOG || goal === COMMERCIAL_PLANNER_GOALS.LIST_CATALOG) {
     return {
       retrievalNeeded: true,
-      reason: 'customer_asked_catalog_follow_up',
+      reason: goal === COMMERCIAL_PLANNER_GOALS.LIST_CATALOG ? 'customer_requested_full_catalog' : 'customer_asked_catalog_follow_up',
       nextAction: COMMERCIAL_NEXT_ACTIONS.FOLLOW_UP_CATALOG
     };
   }

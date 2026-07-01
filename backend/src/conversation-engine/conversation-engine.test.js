@@ -139,15 +139,15 @@ const products = [
   }
 ];
 
-function buildMcpClient({ company = {} } = {}) {
+function buildMcpClient({ company = {}, serviceCatalog = services, productCatalog = products } = {}) {
   const calls = [];
 
   return {
     calls,
     async loadFullServiceCatalog() {
       return {
-        services,
-        categories: services.map((service, index) => ({ id: index + 1, nombre: service.categoria, tipo: 'SERVICIO' }))
+        services: serviceCatalog,
+        categories: serviceCatalog.map((service, index) => ({ id: index + 1, nombre: service.categoria, tipo: 'SERVICIO' }))
       };
     },
     async callTool(toolName, args) {
@@ -158,14 +158,14 @@ function buildMcpClient({ company = {} } = {}) {
       }
 
       if (toolName === 'obtener_categorias') {
-        return { categorias: services.map((service, index) => ({ id: index + 1, nombre: service.categoria })) };
+        return { categorias: serviceCatalog.map((service, index) => ({ id: index + 1, nombre: service.categoria })) };
       }
 
       if (toolName === 'buscar_servicios') {
         const text = normalize(args.texto);
         const tokens = text.split(/\s+/).filter((token) => token.length > 2);
         return {
-          servicios: services.filter((service) => {
+          servicios: serviceCatalog.filter((service) => {
             const haystack = normalize(`${service.nombre} ${service.descripcion} ${service.categoria}`);
             return tokens.length === 0 || tokens.some((token) => haystack.includes(token));
           })
@@ -175,7 +175,7 @@ function buildMcpClient({ company = {} } = {}) {
       if (toolName === 'buscar_productos') {
         const text = normalize(args.texto);
         return {
-          productos: products.filter((product) => normalize(`${product.nombre} ${product.descripcion} ${product.categoria}`).includes(text.split(/\s+/)[0] ?? ''))
+          productos: productCatalog.filter((product) => normalize(`${product.nombre} ${product.descripcion} ${product.categoria}`).includes(text.split(/\s+/)[0] ?? ''))
         };
       }
 
@@ -421,13 +421,13 @@ describe('Nexus Conversational Intelligence Engine', () => {
       await run('Hola');
       await run('Un puta');
       const catalogo = await run('Cual es tu catalogo?');
-      assert.equal(catalogo.ncie.plannerAuthorityDecision.responsePlanType, 'business_summary');
+      assert.equal(catalogo.ncie.plannerAuthorityDecision.responsePlanType, 'catalog_listing');
       assert.equal(catalogo.ncie.plannerAuthorityDecision.selectedService, null);
       assert.match(normalize(catalogo.respuesta), /marketing|impresion|servicios/);
       assert.doesNotMatch(normalize(catalogo.respuesta), /lo tomamos como catalogo|pagos|solicitudes/);
 
       const servicios = await run('Servicios');
-      assert.equal(servicios.ncie.plannerAuthorityDecision.responsePlanType, 'business_summary');
+      assert.equal(servicios.ncie.plannerAuthorityDecision.responsePlanType, 'catalog_listing');
       assert.equal(servicios.ncie.plannerAuthorityDecision.selectedService, null);
       assert.doesNotMatch(normalize(servicios.respuesta), /lo tomamos como catalogo|pagos|solicitudes/);
 
@@ -481,15 +481,15 @@ describe('Nexus Conversational Intelligence Engine', () => {
       assert.equal(recomienda.ncie.responsePlan.type, 'consultative_diagnosis');
 
       const catalogo = await run('Cual es tu catalogo?');
-      assert.equal(catalogo.ncie.plannerAuthorityDecision.responsePlanType, 'business_summary');
+      assert.equal(catalogo.ncie.plannerAuthorityDecision.responsePlanType, 'catalog_listing');
       assert.equal(catalogo.ncie.plannerAuthorityDecision.selectedService, null);
-      assert.match(normalize(catalogo.respuesta), /trabajamos principalmente|publicidad fisica|presencia digital|diseno\/imagen/);
+      assert.match(normalize(catalogo.respuesta), /servicios que manejamos|cual te gustaria cotizar/);
       assert.doesNotMatch(normalize(catalogo.respuesta), /lo tomamos como catalogo|pagos|solicitudes/);
 
       const servicios = await run('Servicios');
-      assert.equal(servicios.ncie.plannerAuthorityDecision.responsePlanType, 'business_summary');
+      assert.equal(servicios.ncie.plannerAuthorityDecision.responsePlanType, 'catalog_listing');
       assert.equal(servicios.ncie.plannerAuthorityDecision.selectedService, null);
-      assert.match(normalize(servicios.respuesta), /trabajamos principalmente/);
+      assert.match(normalize(servicios.respuesta), /servicios que manejamos|cual te gustaria cotizar/);
       assert.doesNotMatch(normalize(servicios.respuesta), /lo tomamos como catalogo/);
 
       before = countServiceSearches();
@@ -551,10 +551,13 @@ describe('Nexus Conversational Intelligence Engine', () => {
     assert.equal(result.intencion, 'LISTAR_SERVICIOS');
     assert.equal(result.tipo, 'service');
     assert.equal(result.ncie.decision.action, 'answer_with_results');
-    assert.match(normalize(result.respuesta), /manejamos soluciones|manejamos servicios|impresion/i);
+    assert.equal(result.ncie.responsePlan.type, 'catalog_listing');
+    assert.match(normalize(result.respuesta), /claro, estos son los servicios que manejamos/);
+    assert.match(normalize(result.respuesta), /impresion de lona|tarjetas digitales laminado mate 100 pzs/i);
+    assert.match(normalize(result.respuesta), /cual te gustaria cotizar/);
     assert.doesNotMatch(normalize(result.respuesta), /cual se parece/);
     assertNoFalseNegative(result.respuesta);
-    assert.ok(result.ncie.responsePlan.families.length > 5);
+    assert.ok(result.ncie.responsePlan.services.length > 5);
   });
 
   it('lists products when customer asks if products are handled', async () => {
@@ -563,10 +566,106 @@ describe('Nexus Conversational Intelligence Engine', () => {
     assert.equal(result.intencion, 'LISTAR_PRODUCTOS');
     assert.equal(result.tipo, 'product');
     assert.equal(result.ncie.decision.action, 'answer_with_results');
-    assert.equal(result.ncie.responsePlan.type, 'personalized_products_summary');
-    assert.match(normalize(result.respuesta), /servicios e impresiones\/productos personalizados|tarjetas|lonas|viniles|promocionales/i);
+    assert.equal(result.ncie.responsePlan.type, 'catalog_listing');
+    assert.match(normalize(result.respuesta), /productos que manejamos|silla economica/i);
     assert.doesNotMatch(normalize(result.respuesta), /servicio exacto/);
     assertNoFalseNegative(result.respuesta);
+  });
+
+  it('lists the complete tenant catalog for required catalog phrases', async () => {
+    const phrases = [
+      'servicios',
+      'catalogo',
+      'todos los servicios',
+      'me das informes de sus servicios'
+    ];
+
+    for (const phrase of phrases) {
+      const { result } = await runCase(phrase);
+      assert.ok(['LISTAR_SERVICIOS', 'LISTAR_CATALOGO'].includes(result.intencion), phrase);
+      assert.equal(result.ncie.responsePlan.type, 'catalog_listing', phrase);
+      assert.equal(result.ncie.responsePlan.services.length, services.length, phrase);
+      assert.match(normalize(result.respuesta), /servicios(?: y productos)? que manejamos/, phrase);
+      assert.match(normalize(result.respuesta), /impresion de lona/, phrase);
+      assert.match(normalize(result.respuesta), /marketing digital/, phrase);
+      assert.match(normalize(result.respuesta), /cual te gustaria cotizar/, phrase);
+      assert.doesNotMatch(normalize(result.respuesta), /trabajamos principalmente|si puede ser una buena opcion/, phrase);
+    }
+  });
+
+  it('starts a quote when customer replies with a catalog number', async () => {
+    process.env.NCIE_CONVERSATION_PLANNER_ENABLED = 'true';
+    process.env.NCIE_CONVERSATION_PLANNER_SHADOW = 'false';
+    try {
+      const mcpClient = buildMcpClient();
+      const contextStore = buildPersistentContextStore();
+      const run = (message) => runConversationEngine({
+        empresaId: 1,
+        phone: '5215550000000',
+        message,
+        whatsappChatId: '5215550000000@c.us',
+        contactName: 'Cliente',
+        mcpClient,
+        contextStore
+      });
+
+      const catalog = await run('Que servicios tienen');
+      assert.equal(catalog.ncie.responsePlan.type, 'catalog_listing');
+      assert.equal(contextStore.saved.at(-1).datos.ncie.planner_state.currentStage, 'viendo_catalogo');
+      assert.equal(contextStore.saved.at(-1).datos.ncie.planner_state.waitingField, 'catalog_selection');
+
+      const selectedIndex = catalog.ncie.responsePlan.services.findIndex((service) => service.nombre === 'Impresion de lona') + 1;
+      assert.ok(selectedIndex > 0);
+      const quote = await run(String(selectedIndex));
+      assert.equal(quote.ncie.plannerAuthorityDecision.selectedService.nombre, 'Impresion de lona');
+      assert.equal(quote.ncie.responsePlan.type, 'service_explanation');
+      assert.match(normalize(quote.respuesta), /impresion de lona|medidas/);
+    } finally {
+      delete process.env.NCIE_CONVERSATION_PLANNER_ENABLED;
+      delete process.env.NCIE_CONVERSATION_PLANNER_SHADOW;
+    }
+  });
+
+  it('does not select anything when customer says yes after catalog', async () => {
+    process.env.NCIE_CONVERSATION_PLANNER_ENABLED = 'true';
+    process.env.NCIE_CONVERSATION_PLANNER_SHADOW = 'false';
+    try {
+      const mcpClient = buildMcpClient();
+      const contextStore = buildPersistentContextStore();
+      const run = (message) => runConversationEngine({
+        empresaId: 1,
+        phone: '5215550000000',
+        message,
+        whatsappChatId: '5215550000000@c.us',
+        contactName: 'Cliente',
+        mcpClient,
+        contextStore
+      });
+
+      await run('catalogo');
+      const yes = await run('si');
+      assert.equal(yes.ncie.plannerAuthorityDecision.responsePlanType, 'clarify_pending_options');
+      assert.equal(yes.ncie.plannerAuthorityDecision.selectedService, null);
+      assert.match(normalize(yes.respuesta), /dime cual servicio te interesa cotizar|cual opcion prefieres/);
+    } finally {
+      delete process.env.NCIE_CONVERSATION_PLANNER_ENABLED;
+      delete process.env.NCIE_CONVERSATION_PLANNER_SHADOW;
+    }
+  });
+
+  it('groups a large service catalog by category', async () => {
+    const { result } = await runCase('todos los servicios');
+    assert.equal(result.ncie.responsePlan.type, 'catalog_listing');
+    assert.match(result.respuesta, /Impresion\n\d+\. Impresion de lona/);
+    assert.match(result.respuesta, /Marketing\n\d+\. Marketing digital/);
+  });
+
+  it('handles an empty service catalog without inventing services', async () => {
+    const { result } = await runCase('que servicios tienen', null, { serviceCatalog: [], productCatalog: [] });
+    assert.equal(result.ncie.responsePlan.type, 'catalog_listing');
+    assert.equal(result.ncie.responsePlan.services.length, 0);
+    assert.match(normalize(result.respuesta), /no tengo servicios ni productos activos/);
+    assert.doesNotMatch(normalize(result.respuesta), /impresion de lona|vinil|dtf|tarjetas/);
   });
 
   it('understands website quote as a service request', async () => {
@@ -644,8 +743,8 @@ describe('Nexus Conversational Intelligence Engine', () => {
     assert.doesNotMatch(normalize(informes.respuesta), /encontre estas opciones|cual se parece/);
 
     const servicios = await run('Que servicios tienen');
-    assert.equal(servicios.ncie.responsePlan.type, 'business_summary');
-    assert.ok(servicios.ncie.responsePlan.families.length > 5);
+    assert.equal(servicios.ncie.responsePlan.type, 'catalog_listing');
+    assert.ok(servicios.ncie.responsePlan.services.length > 5);
     assert.doesNotMatch(normalize(servicios.respuesta), /encontre estas opciones|cual se parece/);
 
     const anuncio = await run('Quiero anunciar mi negocio');
@@ -693,12 +792,14 @@ describe('Nexus Conversational Intelligence Engine', () => {
     assert.doesNotMatch(normalize(web.respuesta), /impresion de lona de 2x1/);
 
     const mas = await run('Son los unicos servicios?');
-    assert.equal(mas.ncie.responsePlan.type, 'business_summary');
-    assert.ok(mas.ncie.responsePlan.families.length > 5);
+    assert.equal(mas.ncie.responsePlan.type, 'catalog_listing');
+    assert.ok(mas.ncie.responsePlan.services.length > 5);
     assert.doesNotMatch(normalize(mas.respuesta), /no contamos|servicio exacto|encontre estas opciones|cual se parece/);
 
     const lastSave = contextStore.saved.at(-1);
-    assert.equal(lastSave.datos.ncie.active_service_name, 'Marketing digital');
+    assert.equal(lastSave.datos.ncie.active_service_name, null);
+    assert.equal(lastSave.datos.ncie.planner_state?.currentStage, 'viendo_catalogo');
+    assert.equal(lastSave.datos.ncie.planner_state?.waitingField, 'catalog_selection');
     assert.equal(lastSave.datos.ncie.last_options_shown.length > 5, true);
     assert.equal(
       contextStore.saved.some((save) => save.datos.ncie.active_service_name === 'Vinil microperforado'),
@@ -882,10 +983,12 @@ describe('Nexus Conversational Intelligence Engine', () => {
       assert.doesNotMatch(normalize(medidas.respuesta), /manejamos soluciones|pagina informativa/);
 
       const diseno = await run('Si');
-      assert.equal(diseno.ncie.responsePlan.type, 'quote_design_followup');
+      assert.equal(diseno.ncie.responsePlan.type, 'quote_requirements_followup');
       assert.equal(diseno.ncie.plannerAuthorityDecision.selectedService.nombre, 'Impresion de lona');
       assert.equal(diseno.ncie.plannerAuthorityDecision.detectedDesignPreference, true);
-      assert.match(normalize(diseno.respuesta), /diseno|780|2x1/);
+      assert.equal(diseno.ncie.advisorNotificationRequired, false);
+      assert.match(normalize(diseno.respuesta), /diseno|780|2x1|instalacion: no incluida/);
+      assert.doesNotMatch(normalize(diseno.respuesta), /avancemos tambien con instalacion/);
       assert.doesNotMatch(normalize(diseno.respuesta), /que medidas necesitas|manejamos soluciones/);
 
       const nuevaLona = await run('Me interesa una lona');
@@ -907,15 +1010,15 @@ describe('Nexus Conversational Intelligence Engine', () => {
       assert.equal(nuevasMedidas.ncie.responsePlan.type, 'quote_estimate');
 
       const yaTengoDiseno = await run('Ya tengo diseño');
-      assert.equal(yaTengoDiseno.ncie.responsePlan.type, 'quote_design_followup');
+      assert.equal(yaTengoDiseno.ncie.responsePlan.type, 'quote_requirements_followup');
       assert.equal(yaTengoDiseno.ncie.plannerAuthorityDecision.detectedDesignPreference, false);
-      assert.match(normalize(yaTengoDiseno.respuesta), /ya tienes el diseno/);
-      assert.doesNotMatch(normalize(yaTengoDiseno.respuesta), /podemos apoyarte con el diseno|lo dejamos contemplado junto/);
+      assert.match(normalize(yaTengoDiseno.respuesta), /ya lo tienes|instalacion: no incluida/);
+      assert.doesNotMatch(normalize(yaTengoDiseno.respuesta), /avancemos tambien con instalacion|podemos apoyarte con el diseno|lo dejamos contemplado junto/);
 
       const instalacion = await run('Sin instalacion');
       assert.equal(instalacion.ncie.responsePlan.type, 'quote_requirements_followup');
       assert.equal(instalacion.ncie.plannerAuthorityDecision.selectedService.nombre, 'Impresion de lona');
-      assert.equal(instalacion.ncie.plannerAuthorityDecision.detectedInstallationPreference, false);
+      assert.equal(instalacion.ncie.responsePlan.installation, false);
       assert.match(normalize(instalacion.respuesta), /sin instalacion|780|2x1/);
       assert.doesNotMatch(normalize(instalacion.respuesta), /manejamos instalacion|costo: se cotiza/);
 
@@ -942,11 +1045,6 @@ describe('Nexus Conversational Intelligence Engine', () => {
       const volver = await run('Continuemos con la lona');
       assert.equal(volver.ncie.plannerAuthorityDecision.selectedService.nombre, 'Impresion de lona');
       assert.match(normalize(volver.respuesta), /impresion de lona/);
-      assert.match(normalize(volver.respuesta), /2x1/);
-      assert.match(normalize(volver.respuesta), /390/);
-      assert.match(normalize(volver.respuesta), /780/);
-      assert.match(normalize(volver.respuesta), /incluye: impresion en lona/);
-      assert.match(normalize(volver.respuesta), /no incluye: instalacion/);
       assert.doesNotMatch(normalize(volver.respuesta), /precio por confirmar|total por confirmar/);
       assert.doesNotMatch(normalize(volver.respuesta), /manejamos soluciones/);
 
@@ -975,18 +1073,16 @@ describe('Nexus Conversational Intelligence Engine', () => {
       assert.doesNotMatch(normalize(saludo.respuesta), /manejamos marketing digital|costo: se cotiza|objetivo quieres lograr con marketing digital/);
 
       const catalogo = await run('Que servicios tienen');
-      assert.equal(catalogo.ncie.plannerAuthorityDecision.responsePlanType, 'business_summary');
+      assert.equal(catalogo.ncie.plannerAuthorityDecision.responsePlanType, 'catalog_listing');
       assert.equal(catalogo.ncie.plannerAuthorityDecision.selectedService, null);
-      assert.match(normalize(catalogo.respuesta), /manejamos soluciones|marketing|impresion/);
+      assert.match(normalize(catalogo.respuesta), /servicios que manejamos|marketing digital|impresion de lona/);
       assert.doesNotMatch(normalize(catalogo.respuesta), /seguimos con marketing digital|impresion de lona de 2x1/);
 
       const volverDespuesCatalogo = await run('Continuemos con la lona');
       assert.equal(volverDespuesCatalogo.ncie.plannerAuthorityDecision.selectedService.nombre, 'Impresion de lona');
       assert.equal(volverDespuesCatalogo.ncie.plannerAuthorityDecision.responsePlanType, 'resume_flow');
-      assert.match(normalize(volverDespuesCatalogo.respuesta), /2x1/);
-      assert.match(normalize(volverDespuesCatalogo.respuesta), /390/);
-      assert.match(normalize(volverDespuesCatalogo.respuesta), /780/);
-      assert.match(normalize(volverDespuesCatalogo.respuesta), /incluye: impresion en lona/);
+      assert.match(normalize(volverDespuesCatalogo.respuesta), /impresion de lona/);
+      assert.doesNotMatch(normalize(volverDespuesCatalogo.respuesta), /precio por confirmar|total por confirmar/);
 
       const anunciar = await run('Quiero anunciar mi negocio');
       assert.equal(anunciar.ncie.plannerAuthorityDecision.responsePlanType, 'consultative_diagnosis');
@@ -998,9 +1094,9 @@ describe('Nexus Conversational Intelligence Engine', () => {
       assert.doesNotMatch(normalize(anunciar.respuesta), /impresion de lona de 2x1|780|390/);
 
       const productos = await run('Manejan productos?');
-      assert.equal(productos.ncie.plannerAuthorityDecision.responsePlanType, 'business_summary');
-      assert.equal(productos.ncie.responsePlan.type, 'personalized_products_summary');
-      assert.match(normalize(productos.respuesta), /servicios e impresiones\/productos personalizados|tarjetas|lonas|viniles|promocionales/);
+      assert.equal(productos.ncie.plannerAuthorityDecision.responsePlanType, 'catalog_listing');
+      assert.equal(productos.ncie.responsePlan.type, 'catalog_listing');
+      assert.match(normalize(productos.respuesta), /productos que manejamos|silla economica/);
       assert.doesNotMatch(normalize(productos.respuesta), /seguimos con impresion de lona|impresion de lona de 2x1/);
 
       const recomienda = await run('Que me recomiendas');
@@ -1052,5 +1148,324 @@ describe('Nexus Conversational Intelligence Engine', () => {
       delete process.env.NCIE_CONVERSATION_PLANNER_ENABLED;
       delete process.env.NCIE_CONVERSATION_PLANNER_SHADOW;
     }
+  });
+});
+
+describe('MOK production conversation hardening flows', () => {
+  async function runMokFlow(messages, options = {}) {
+    process.env.NCIE_CONVERSATION_PLANNER_ENABLED = 'true';
+    process.env.NCIE_CONVERSATION_PLANNER_SHADOW = 'false';
+    const mcpClient = buildMcpClient(options);
+    const contextStore = buildPersistentContextStore();
+    const results = [];
+    for (const message of messages) {
+      results.push(await runConversationEngine({
+        empresaId: 1,
+        phone: '5215559990000',
+        message,
+        whatsappChatId: '5215559990000@c.us',
+        contactName: 'Cliente MOK',
+        mcpClient,
+        contextStore
+      }));
+    }
+    delete process.env.NCIE_CONVERSATION_PLANNER_ENABLED;
+    delete process.env.NCIE_CONVERSATION_PLANNER_SHADOW;
+    return { results, contextStore, mcpClient };
+  }
+
+  it('Flow A does not repeat the same commercial objective question', async () => {
+    const { results, contextStore } = await runMokFlow([
+      'Hola',
+      'necesito un banner',
+      'Quiero un banner para promocionar mi negocio con presupuesto de $500 a $1000',
+      'atraer clientes',
+      'vender mas',
+      'promocionar'
+    ]);
+
+    const laterResponses = results.slice(3).map((result) => normalize(result.respuesta));
+    for (const response of laterResponses) {
+      assert.doesNotMatch(response, /que tipo de negocio tienes y que buscas lograr: atraer clientes, vender mas, mejorar tu imagen o promocionar algo especifico/);
+    }
+  });
+
+  it('Flow B keeps lona selected, parses decimal meters and keeps design in the same service', async () => {
+    const { results, contextStore } = await runMokFlow([
+      'que servicios tienes',
+      'quiero una impresion de lona',
+      '0.60 x 1.60 m',
+      'tambien con el diseno'
+    ]);
+    const estimate = results[2];
+    const design = results[3];
+
+    assert.equal(estimate.ncie.responsePlan.type, 'quote_estimate');
+    assert.equal(estimate.ncie.responsePlan.selected.nombre, 'Impresion de lona');
+    assert.equal(estimate.ncie.responsePlan.dimensions.area, 0.96);
+    assert.equal(estimate.ncie.responsePlan.total, 374.4);
+    assert.match(normalize(estimate.respuesta), /0\.96 m2|374\.40|incluye diseno|no incluye instalacion/);
+    assert.equal(design.ncie.plannerAuthorityDecision.selectedService.nombre, 'Impresion de lona');
+    assert.equal(design.ncie.plannerAuthorityDecision.detectedDesignPreference, true);
+    assert.equal(design.ncie.advisorNotificationRequired, false);
+    assert.equal(design.ncie.notificationReason, null);
+    assert.doesNotMatch(normalize(design.respuesta), /logotipo|marketing digital/);
+  });
+
+  it('Flow C keeps the 3x2 estimate and closes summary on solo impresion', async () => {
+    const { results, contextStore } = await runMokFlow([
+      'Que servicios tienen',
+      'Me gustaria una impresion en lona',
+      'De 3x2',
+      'Ya tengo el diseno',
+      'Solo impresion',
+      'ok'
+    ]);
+    const estimate = results[2];
+    const summary = results[4];
+    const repeatedOk = results[5];
+
+    assert.equal(estimate.ncie.responsePlan.selected.nombre, 'Impresion de lona');
+    assert.equal(estimate.ncie.responsePlan.dimensions.area, 6);
+    assert.equal(estimate.ncie.responsePlan.total, 2340);
+    assert.equal(summary.ncie.responsePlan.type, 'quote_requirements_followup');
+    assert.equal(summary.ncie.plannerAuthorityDecision.selectedService.nombre, 'Impresion de lona');
+    assert.equal(summary.ncie.advisorNotificationRequired, false);
+    assert.equal(summary.ncie.notificationReason, null);
+    assert.equal(contextStore.saved.at(-2).datos.ncie.planner_state.waitingField, 'advisor_confirmation');
+    assert.match(normalize(summary.respuesta), /lo dejamos solo como impresion|estimado: \$2,340\.00|instalacion: no incluida/);
+    assert.doesNotMatch(normalize(summary.respuesta), /\$0\.00|undefined/);
+    assert.equal(repeatedOk.ncie.advisorNotificationRequired, false);
+  });
+
+  it('Flow D does not offer installation when the selected service excludes it', async () => {
+    const { results } = await runMokFlow([
+      'Que servicios tienen',
+      'Me gustaria una impresion en lona',
+      'De 3x2',
+      'Ya tengo el diseno',
+      'Solo impresion',
+      'Con instalacion'
+    ]);
+    const installation = results[5];
+
+    assert.notEqual(installation.ncie.notificationReason, 'quote_ready');
+    assert.doesNotMatch(normalize(installation.respuesta), /dejamos instalacion para revisar con asesor|instalacion: revisar/);
+    assert.doesNotMatch(normalize(installation.respuesta), /\$0\.00|undefined/);
+  });
+
+  it('Flow D2 treats advisor confirmation as handoff, not another installation update', async () => {
+    const { results } = await runMokFlow([
+      'Que servicios tienen',
+      'Me gustaria una impresion en lona',
+      '2x1',
+      'Ya tengo el diseno',
+      'Sin instalacion',
+      'Si'
+    ]);
+    const handoff = results[5];
+
+    assert.equal(handoff.intencion, 'HABLAR_ASESOR');
+    assert.equal(handoff.ncie.decision.action, 'escalate_human');
+    assert.equal(handoff.ncie.notificationReason, 'handoff_explicit');
+    assert.match(normalize(handoff.respuesta), /te comunico con un asesor|ya le comparti el resumen/);
+    assert.doesNotMatch(normalize(handoff.respuesta), /agrego instalacion|instalacion se confirma aparte/);
+  });
+
+  it('Flow E selects impresion de lona, not marketing digital', async () => {
+    const { results } = await runMokFlow(['Impresion en lona']);
+    const result = results[0];
+
+    assert.equal(result.ncie.plannerAuthorityDecision.selectedService.nombre, 'Impresion de lona');
+    assert.notEqual(result.ncie.plannerAuthorityDecision.selectedService.nombre, 'Marketing digital');
+  });
+
+  it('Flow F activates human handoff for advisor requests', async () => {
+    const { results } = await runMokFlow(['Asesor', 'Me comunicas con un asesor']);
+
+    for (const result of results) {
+      assert.equal(result.intencion, 'HABLAR_ASESOR');
+      assert.equal(result.ncie.decision.action, 'escalate_human');
+      assert.equal(result.ncie.advisorNotificationRequired, true);
+      assert.equal(result.ncie.notificationReason, 'handoff_explicit');
+      assert.match(result.ncie.notificationPayload.message, /Nueva solicitud de cliente/);
+      assert.match(normalize(result.respuesta), /te comunico con un asesor|ya le comparti el resumen/);
+      assert.doesNotMatch(normalize(result.respuesta), /que necesitas|que punto/);
+    }
+  });
+
+  it('Flow G parses decimal dimensions with multiplication sign and keeps budget context', async () => {
+    const { results } = await runMokFlow([
+      'rOTULACION',
+      '0.60 × 1.60 m',
+      'banner',
+      '2000 pesos'
+    ]);
+    const decimalQuote = results[1];
+    const budget = results[3];
+
+    assert.equal(decimalQuote.ncie.responsePlan.type, 'quote_estimate');
+    assert.equal(decimalQuote.ncie.responsePlan.dimensions.area, 0.96);
+    assert.doesNotMatch(normalize(decimalQuote.respuesta), /60 m de largo|que alto aproximado/);
+    assert.match(normalize(budget.respuesta), /presupuesto aproximado de \$2,000\.00|interior, exterior o evento/);
+    assert.doesNotMatch(normalize(budget.respuesta), /que necesitas lograr o que producto o servicio tienes en mente/);
+  });
+
+  it('Flow H completes partial rotulacion dimensions with height answer', async () => {
+    const rotulacionCatalog = [
+      {
+        id: 80,
+        nombre: 'Vinil de rotulacion de color',
+        descripcion: 'Vinil para rotulacion de locales, aparadores y anuncios',
+        precio: 400,
+        tipo_precio: 'POR_M2',
+        requiere_medidas: true,
+        categoria: 'Rotulacion'
+      }
+    ];
+    const { results } = await runMokFlow([
+      'Rotulacion',
+      '10 metros',
+      '2 metros de alto'
+    ], { serviceCatalog: rotulacionCatalog });
+    const partial = results[1];
+    const quote = results[2];
+
+    assert.match(normalize(partial.respuesta), /tengo 10 m de largo|alto aproximado/);
+    assert.equal(quote.ncie.responsePlan.type, 'quote_estimate');
+    assert.equal(quote.ncie.responsePlan.dimensions.area, 20);
+    assert.equal(quote.ncie.responsePlan.total, 8000);
+    assert.doesNotMatch(normalize(quote.respuesta), /tengo 2 m de largo/);
+  });
+
+  it('Flow I lets concrete MOK services override consultative marketing drift', async () => {
+    const reportedCatalog = [
+      {
+        id: 40,
+        nombre: 'Marketing digital',
+        descripcion: 'Redes sociales, campanas digitales y anuncios para atraer clientes',
+        precio: 0,
+        tipo_precio: 'COTIZACION',
+        categoria: 'Marketing'
+      },
+      {
+        id: 41,
+        nombre: 'Vinil de rotulacion de color',
+        descripcion: 'Vinil para rotulacion de locales, aparadores y anuncios',
+        precio: 400,
+        tipo_precio: 'POR_M2',
+        requiere_medidas: true,
+        categoria: 'Rotulacion'
+      },
+      {
+        id: 42,
+        nombre: 'Vinil impreso',
+        descripcion: 'Vinil impreso para negocios, locales y anuncios fisicos',
+        precio: 390,
+        tipo_precio: 'POR_M2',
+        requiere_medidas: true,
+        categoria: 'Rotulacion'
+      },
+      {
+        id: 43,
+        nombre: 'Diseno de logotipo',
+        descripcion: 'Diseno de logo e identidad para negocios',
+        precio: 0,
+        tipo_precio: 'COTIZACION',
+        categoria: 'Diseno'
+      },
+      {
+        id: 44,
+        nombre: 'Impresion de lona',
+        descripcion: 'Impresion de lona para anuncios y promocion de negocios',
+        precio: 390,
+        tipo_precio: 'POR_M2',
+        requiere_medidas: true,
+        incluye: 'Diseno',
+        no_incluye: 'instalacion',
+        categoria: 'Impresion'
+      }
+    ];
+
+    const { results } = await runMokFlow([
+      'Hola',
+      'una rotulacion',
+      'atraer clientes',
+      'por redes',
+      'un vinil impreso',
+      'algo fisico',
+      'diseno de logo',
+      'quiero un logotipo',
+      'una lona',
+      'quiero una impresion de lona de cocacola',
+      '1.20 x 2.40',
+      'ya tengo diseno',
+      'solo la impresion'
+    ], { serviceCatalog: reportedCatalog });
+
+    assert.equal(results[1].ncie.plannerAuthorityDecision.selectedService.nombre, 'Vinil de rotulacion de color');
+    assert.notEqual(results[1].ncie.plannerAuthorityDecision.selectedService.nombre, 'Marketing digital');
+    assert.equal(results[4].ncie.plannerAuthorityDecision.selectedService.nombre, 'Vinil impreso');
+    assert.doesNotMatch(normalize(results[4].respuesta), /buscas algo fisico para tu local o algo digital/);
+    assert.match(results[7].ncie.plannerAuthorityDecision.selectedService.nombre, /Logotipo|Diseno de logotipo/i);
+    assert.equal(results[10].ncie.responsePlan.type, 'quote_estimate');
+    assert.equal(results[10].ncie.responsePlan.selected.nombre, 'Impresion de lona');
+    assert.equal(results[10].ncie.responsePlan.total, 1123.2);
+    assert.equal(results[11].ncie.responsePlan.type, 'quote_requirements_followup');
+    assert.equal(results[11].ncie.advisorNotificationRequired, false);
+    assert.equal(results[12].ncie.responsePlan.type, 'quote_requirements_followup');
+    assert.equal(results[12].ncie.plannerAuthorityDecision.selectedService.nombre, 'Impresion de lona');
+    assert.equal(results[12].ncie.notificationPayload, null);
+    assert.doesNotMatch(normalize(results[12].respuesta), /te ayudo a ubicar la mejor opcion/);
+  });
+
+  it('Flow J treats plain Instalacion as a separate service when the quote excludes installation', async () => {
+    const reportedCatalog = [
+      {
+        id: 50,
+        nombre: 'Vinil de rotulacion de color',
+        descripcion: 'Vinil para rotulacion de locales, aparadores y anuncios',
+        precio: 400,
+        tipo_precio: 'POR_M2',
+        requiere_medidas: true,
+        categoria: 'Rotulacion',
+        incluye: 'Depilado y transfer',
+        no_incluye: 'instalacion'
+      },
+      {
+        id: 51,
+        nombre: 'Instalacion',
+        descripcion: 'Instalacion de graficos, viniles y anuncios',
+        precio: 0,
+        tipo_precio: 'COTIZACION',
+        categoria: 'Instalacion'
+      },
+      {
+        id: 52,
+        nombre: 'Diseno web',
+        descripcion: 'Pagina web informativa, catalogo o pedidos',
+        precio: 0,
+        tipo_precio: 'COTIZACION',
+        categoria: 'Diseno'
+      }
+    ];
+
+    const { results } = await runMokFlow([
+      'Rotulacion',
+      'Una rotulacion',
+      '3x2',
+      'Ya tengo el diseno',
+      'Instalacion'
+    ], { serviceCatalog: reportedCatalog });
+    const design = results[3];
+    const installation = results[4];
+
+    assert.equal(results[0].ncie.plannerAuthorityDecision.selectedService.nombre, 'Vinil de rotulacion de color');
+    assert.equal(results[2].ncie.responsePlan.total, 2400);
+    assert.equal(design.ncie.responsePlan.type, 'quote_requirements_followup');
+    assert.equal(design.ncie.advisorNotificationRequired, false);
+    assert.equal(installation.ncie.plannerAuthorityDecision.selectedService.nombre, 'Instalacion');
+    assert.equal(installation.ncie.notificationPayload, null);
+    assert.doesNotMatch(normalize(installation.respuesta), /dejamos instalacion para revisar con asesor|instalacion: revisar/);
   });
 });

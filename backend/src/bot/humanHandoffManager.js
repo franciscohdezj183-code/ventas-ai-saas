@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+﻿import { randomBytes } from 'node:crypto';
 import { query } from '../config/database.js';
 import { mcpClient } from '../mcp/mcpClient.js';
 import { getBotResponseProfile } from '../modules/bot-prompts/bot-prompts.service.js';
@@ -81,7 +81,7 @@ function normalizeText(value) {
 function ownerResponseKind(message) {
   const text = normalizeText(message);
 
-  if (['1', 'si', 'sí', 'yo lo atiendo', 'yo atiendo', 'lo atiendo'].includes(text)) {
+  if (['1', 'si', 'sÃ­', 'yo lo atiendo', 'yo atiendo', 'lo atiendo'].includes(text)) {
     return 'ACCEPT';
   }
 
@@ -211,7 +211,8 @@ async function notifyOwnerForHandoff({
   botResponse = null,
   attendedByBot = false,
   handoffCode = null,
-  timeoutMinutes = null
+  timeoutMinutes = null,
+  ownerNotificationPayload = null
 }) {
   if (!ownerPhone) {
     logger.info('human_handoff_owner_notification_omitted', {
@@ -223,16 +224,18 @@ async function notifyOwnerForHandoff({
     return { estado: 'OMITIDA', motivo: 'telefono_dueno no configurado' };
   }
 
-  const message = buildOwnerNotification({
-    customerPhone,
-    companyName,
-    productOrService,
-    customerMessage,
-    botResponse,
-    attendedByBot,
-    handoffCode,
-    timeoutMinutes
-  });
+  const message = ownerNotificationPayload
+    ? buildCompactCommercialOwnerNotification({ companyName, customerPhone, payload: ownerNotificationPayload, handoffCode })
+    : buildOwnerNotification({
+      customerPhone,
+      companyName,
+      productOrService,
+      customerMessage,
+      botResponse,
+      attendedByBot,
+      handoffCode,
+      timeoutMinutes
+    });
 
   try {
     await sendWhatsappText(empresaId, ownerPhone, message);
@@ -300,6 +303,29 @@ function buildOwnerNotification({
   });
 }
 
+function buildCompactCommercialOwnerNotification({
+  companyName,
+  customerPhone,
+  payload = {},
+  handoffCode = null
+}) {
+  const code = normalizeHandoffCode(handoffCode);
+  return [
+    `Nueva solicitud - ${companyName ?? 'Empresa'}`,
+    '',
+    code ? `Codigo: ${code}` : null,
+    `Cliente: ${payload.customer ?? customerPhone}`,
+    `Servicio: ${payload.selectedService ?? 'pendiente'}`,
+    `Medidas/cantidad: ${payload.dimensionsOrQuantity ?? 'pendiente'}`,
+    `Estimado: ${payload.currentEstimate ?? 'pendiente'}`,
+    `Diseno: ${payload.ownerDesignStatus ?? payload.designStatus ?? 'pendiente'}`,
+    `Instalacion: ${payload.ownerInstallationStatus ?? payload.installationStatus ?? 'pendiente'}`,
+    payload.lastUserMessage ? `Mensaje: "${payload.lastUserMessage}"` : null,
+    '',
+    'Accion: contactar para confirmar precio y tiempos.',
+    code ? `Responder: si ${code} / no ${code}` : null
+  ].filter((line) => line !== null).join('\n');
+}
 async function findActiveHandoff({ empresaId, phone }) {
   await ensureHumanHandoffTable();
   const cleanPhone = normalizePhone(phone);
@@ -328,6 +354,7 @@ export async function requestHandoff({
   whatsapp_chat_id: whatsappChatId = null,
   mensaje_cliente: mensajeCliente,
   resumen_solicitud: resumenSolicitud = null,
+  owner_notification_payload: ownerNotificationPayload = null,
   respuesta_bot: respuestaBot = null,
   atendido_por_bot: atendidoPorBot = false,
   producto_id: productoId = null,
@@ -353,33 +380,11 @@ export async function requestHandoff({
            whatsapp_chat_id = COALESCE(?, whatsapp_chat_id),
            telefono_dueno = COALESCE(telefono_dueno, ?),
            codigo = COALESCE(codigo, ?)
-       WHERE id = ?`,
+      WHERE id = ?`,
       [mensajeCliente ?? null, whatsappChatId ?? null, ownerPhone || null, handoffCode, activeHandoff.id]
     );
-    const ownerNotification = await notifyOwnerForHandoff({
-      empresaId,
-      handoffId: activeHandoff.id,
-      ownerPhone,
-      customerPhone,
-      companyName: company.nombre,
-      productOrService: resumenSolicitud ?? mensajeCliente,
-      customerMessage: mensajeCliente,
-      botResponse: respuestaBot,
-      attendedByBot: atendidoPorBot,
-      handoffCode,
-      timeoutMinutes: handoffConfig.timeoutMinutes
-    });
-
-    if (ownerNotification.estado !== 'ENVIADA') {
-      logger.error('human_handoff_duplicate_owner_notification_not_sent', {
-        empresaId,
-        telefonoCliente: customerPhone,
-        handoffId: activeHandoff.id,
-        ownerNotification
-      });
-    }
-
-    const nextStatus = ownerNotification.estado === 'ENVIADA' ? activeHandoff.estado : 'ERROR';
+    const ownerNotification = { estado: 'OMITIDA', motivo: 'handoff_activo_ya_notificado' };
+    const nextStatus = activeHandoff.estado;
 
     logger.info('human_handoff_duplicate_processed', {
       empresaId,
@@ -437,7 +442,8 @@ export async function requestHandoff({
     botResponse: respuestaBot,
     attendedByBot: atendidoPorBot,
     handoffCode,
-    timeoutMinutes: handoffConfig.timeoutMinutes
+    timeoutMinutes: handoffConfig.timeoutMinutes,
+    ownerNotificationPayload
   });
 
   if (ownerNotification.estado !== 'ENVIADA') {
@@ -574,7 +580,7 @@ export async function handleOwnerResponse({ empresa_id: empresaId, telefono_duen
       whatsapp_chat_id: handoff.whatsapp_chat_id,
       mensaje_cliente: handoffConfig.mensajeDeclinar,
       telefono_dueno: ownerPhone,
-      mensaje_dueno: 'Entiendo, seguiré por mi cuenta.'
+      mensaje_dueno: 'Entiendo, seguirÃ© por mi cuenta.'
     };
   }
 
@@ -712,7 +718,7 @@ export async function expirePendingHandoffs() {
     await sendWhatsappText(
       handoff.empresa_id,
       handoff.telefono_dueno,
-      'Entiendo, seguiré por mi cuenta.'
+      'Entiendo, seguirÃ© por mi cuenta.'
     ).catch((error) => logger.error('human_handoff_pending_expire_owner_message_error', { error, handoffId: handoff.id }));
 
     logger.info('human_handoff_pending_expired', {
@@ -791,3 +797,4 @@ export function stopHumanHandoffExpirationJob() {
 }
 
 export const humanHandoffActiveStates = ACTIVE_STATES;
+

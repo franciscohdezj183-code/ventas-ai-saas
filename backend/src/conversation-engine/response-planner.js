@@ -1,4 +1,4 @@
-import { NCIE_TYPES } from './conversation-engine.types.js';
+import { NCIE_ACTIONS, NCIE_TYPES } from './conversation-engine.types.js';
 import { COMMERCIAL_ACTIONS, COMMERCIAL_GOALS } from './commercial-reasoner.js';
 
 function money(value) {
@@ -42,6 +42,10 @@ function serviceFamilies(services) {
     category,
     examples: unique(names).slice(0, 4)
   }));
+}
+
+function catalogItems(items) {
+  return (items ?? []).filter((item) => item?.nombre);
 }
 
 function serviceQuestion(service, commercialReasoning) {
@@ -90,13 +94,18 @@ function canQuoteByArea(service) {
   return String(service?.tipo_precio ?? '').toUpperCase() === 'POR_M2' || service?.unidad_medida === 'm2';
 }
 
+function serviceOffersInstallation(service) {
+  const text = stripAccents(`${service?.no_incluye ?? ''} ${service?.excludes ?? ''}`).toLowerCase();
+  return !/\binstalacion\b/.test(text);
+}
+
 function selectedServiceFromPlanner(plannerDecision) {
   return plannerDecision?.selectedServiceItem ?? plannerDecision?.selectedService ?? null;
 }
 
 function dimensionsFromPlanner(plannerDecision) {
   const dimensions = plannerDecision?.detectedDimensions ?? plannerDecision?.activeFlow?.entities?.dimensions ?? null;
-  if (!dimensions) return null;
+  if (!dimensions || dimensions.incomplete || !dimensions.area) return null;
   return {
     width: dimensions.ancho ?? dimensions.width ?? null,
     height: dimensions.alto ?? dimensions.height ?? null,
@@ -107,6 +116,17 @@ function dimensionsFromPlanner(plannerDecision) {
 
 function plannerQuoteContext(plannerDecision, selected) {
   const dimensions = dimensionsFromPlanner(plannerDecision);
+  const existingEstimate = plannerDecision?.activeFlow?.currentEstimate ?? plannerDecision?.stateUpdatePreview?.currentEstimate ?? null;
+  if (!dimensions && existingEstimate) {
+    return {
+      service_id: selected?.id ?? existingEstimate.serviceId ?? null,
+      service_name: selected?.nombre ?? existingEstimate.serviceName ?? null,
+      dimensions: existingEstimate.dimensions ?? null,
+      unit_price: existingEstimate.unitPrice ?? null,
+      total: existingEstimate.total ?? null,
+      designSupport: plannerDecision?.activeFlow?.entities?.designSupport ?? plannerDecision?.activeFlow?.entities?.design ?? null
+    };
+  }
   const unitPrice = Number(selected?.precio);
   const total = dimensions && Number.isFinite(unitPrice) ? unitPrice * dimensions.area : null;
   return {
@@ -114,12 +134,18 @@ function plannerQuoteContext(plannerDecision, selected) {
     service_name: selected?.nombre ?? null,
     dimensions,
     unit_price: Number.isFinite(unitPrice) ? unitPrice : null,
-    total
+    total,
+    designSupport: plannerDecision?.activeFlow?.entities?.designSupport ?? plannerDecision?.activeFlow?.entities?.design ?? null
   };
 }
 
 function questionForPlannerMissing(plannerDecision, selected) {
-  if ((plannerDecision?.missing ?? []).includes('medidas')) return '?Me compartes las medidas aproximadas?';
+  if ((plannerDecision?.missing ?? []).includes('medidas')) {
+    const partial = plannerDecision?.activeFlow?.entities?.dimensions ?? plannerDecision?.interpretedResponse?.entities?.dimensions ?? null;
+    if (partial?.incomplete && partial.length) return `Perfecto, tengo ${partial.length} m de largo. Que alto aproximado tendra?`;
+    return '?Me compartes las medidas aproximadas?';
+  }
+  if ((plannerDecision?.missing ?? []).includes('cantidad')) return '?Cuantas piezas necesitas?';
   if ((plannerDecision?.missing ?? []).includes('tipo_web')) {
     return '?Sera una pagina informativa, catalogo o para recibir pedidos/cotizaciones?';
   }
@@ -185,6 +211,14 @@ function planFromPlannerDecision({ plannerDecision, retrieval, commercialReasoni
   if (
     plannerDecision.responsePlanType === 'consultative_diagnosis'
   ) {
+    if (isCommercialObjectiveAnswer(normalizedMessage)) {
+      return {
+        type: 'clarify_need',
+        summary: plannerDecision.goal ?? commercialReasoning?.customer_need ?? 'Objetivo comercial',
+        discovery: 'commercial_objective_answer',
+        question: 'Perfecto. El banner seria para interior, exterior o evento?'
+      };
+    }
     return {
       type: 'consultative_diagnosis',
       summary: plannerDecision.goal ?? commercialReasoning?.customer_need ?? 'Diagnostico comercial',
@@ -214,6 +248,18 @@ function planFromPlannerDecision({ plannerDecision, retrieval, commercialReasoni
     };
   }
 
+  if (plannerDecision.responsePlanType === 'clarify_pending_options') {
+    return {
+      type: 'clarify_need',
+      summary: 'Respuesta ambigua',
+      question: plannerDecision.interpretedResponse?.reason === 'catalog_confirmation_without_selection'
+        ? '?Perfecto, dime cual servicio te interesa cotizar.'
+        : plannerDecision.activeFlow?.lastQuestion ??
+        plannerDecision.neutralContext?.lastQuestion ??
+        '?Cual opcion prefieres que revisemos?'
+    };
+  }
+
   if (plannerDecision.responsePlanType === 'business_summary') {
     return {
       type: 'business_summary',
@@ -223,6 +269,18 @@ function planFromPlannerDecision({ plannerDecision, retrieval, commercialReasoni
       summary: 'Catalogo de servicios',
       fullCatalog: isFullCatalogRequest(normalizedMessage),
       question: '?Que objetivo quieres lograr o que opcion te interesa revisar?'
+    };
+  }
+
+  if (plannerDecision.responsePlanType === 'catalog_listing') {
+    return {
+      type: 'catalog_listing',
+      selectedType: NCIE_TYPES.SERVICE,
+      services: catalogItems(retrieval?.services ?? []),
+      products: catalogItems(retrieval?.products ?? []),
+      categories: retrieval?.categories ?? [],
+      summary: 'Catalogo completo',
+      question: '?Cual te gustaria cotizar?'
     };
   }
 
@@ -262,6 +320,17 @@ function planFromPlannerDecision({ plannerDecision, retrieval, commercialReasoni
   }
 
   if (plannerDecision.detectedDesignPreference !== null && plannerDecision.detectedDesignPreference !== undefined) {
+    if (!serviceOffersInstallation(selected)) {
+      return {
+        type: 'quote_requirements_followup',
+        selectedType: NCIE_TYPES.SERVICE,
+        selected,
+        quoteContext: plannerQuoteContext(plannerDecision, selected),
+        installation: false,
+        summary: selected.nombre,
+        question: '¿Quieres que te comunique con un asesor para confirmar disponibilidad y tiempos?'
+      };
+    }
     return {
       type: 'quote_design_followup',
       selectedType: NCIE_TYPES.SERVICE,
@@ -270,7 +339,7 @@ function planFromPlannerDecision({ plannerDecision, retrieval, commercialReasoni
       summary: selected.nombre,
       customerAnswer: plannerDecision.detectedDesignPreference ? 'requiere_apoyo_diseno' : 'ya_tiene_diseno',
       isShortAnswer: false,
-      question: '?Quieres que avancemos tambien con instalacion o solo impresion?'
+      question: '¿Quieres que avancemos tambien con instalacion o solo impresion?'
     };
   }
 
@@ -282,7 +351,47 @@ function planFromPlannerDecision({ plannerDecision, retrieval, commercialReasoni
       quoteContext: plannerQuoteContext(plannerDecision, selected),
       installation: plannerDecision.detectedInstallationPreference,
       summary: selected.nombre,
-      question: '?Hay algun otro detalle que quieras agregar a la cotizacion?'
+      question: '?Quieres que te comunique con un asesor para confirmar disponibilidad y tiempos?'
+    };
+  }
+
+  if (plannerDecision.detectedBudget && selected) {
+    const budget = Number(plannerDecision.detectedBudget).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
+    return {
+      type: 'budget_followup',
+      selectedType: NCIE_TYPES.SERVICE,
+      selected,
+      summary: selected.nombre,
+      budget,
+      question: `Perfecto, con presupuesto aproximado de ${budget}. ?Lo quieres para interior, exterior o evento?`
+    };
+  }
+
+  const explicitInstallationPreference = installationPreferenceFromMessage(normalizedMessage);
+  if (plannerDecision.activeFlow?.currentEstimate && explicitInstallationPreference === false) {
+    return {
+      type: 'quote_requirements_followup',
+      selectedType: NCIE_TYPES.SERVICE,
+      selected,
+      quoteContext: plannerQuoteContext(plannerDecision, selected),
+      installation: false,
+      summary: selected.nombre,
+      question: '?Quieres que te comunique con un asesor para confirmar disponibilidad y tiempos?'
+    };
+  }
+
+  if (
+    plannerDecision.activeFlow?.currentEstimate &&
+    !plannerDecision.detectedDimensions &&
+    !plannerDecision.interpretedResponse?.entities?.dimensions &&
+    ['service_explanation', 'resume_flow'].includes(plannerDecision.responsePlanType)
+  ) {
+    return {
+      type: 'quote_from_memory',
+      selectedType: NCIE_TYPES.SERVICE,
+      selected,
+      summary: selected.nombre,
+      question: `Seguimos con ${selected.nombre}. ¿Qué ajuste necesitas hacer?`
     };
   }
 
@@ -365,6 +474,17 @@ function mentionsDesign(normalizedMessage, state) {
     return false;
   }
   return text.includes('diseno') || (question.includes('diseno') && isShortAnswer(normalizedMessage));
+}
+
+function installationPreferenceFromMessage(normalizedMessage) {
+  const text = stripAccents(normalizedMessage?.normalized).toLowerCase();
+  if (/\b(solo impresion|solo la impresion|sin instalacion|no instalacion|no necesito instalacion|no quiero instalacion)\b/.test(text)) {
+    return false;
+  }
+  if (/\b(con instalacion|necesito instalacion|quiero instalacion|tambien instalacion)\b/.test(text)) {
+    return true;
+  }
+  return null;
 }
 
 function isBroadCommercialNeed({ nlu, retrieval }) {
@@ -515,9 +635,48 @@ function isGoalOrientedCommercialNeed(normalizedMessage) {
   return hasObjective && !hasSpecificItem;
 }
 
+function isCommercialObjectiveAnswer(normalizedMessage) {
+  const text = normalizedText(normalizedMessage);
+  if (/\b(quiero|necesito|busco)\b/.test(text)) return false;
+  return /\b(atraer clientes|atraer mas clientes|vender mas|promocionar|promocionarlo|promocionar algo|promocionar mi negocio)\b/.test(text);
+}
+
 export function planResponse({ nlu, retrieval, decision, state, commercialReasoning, normalizedMessage = null, plannerDecision = null }) {
   const businessContext = currentBusinessContext(state);
   const capturedBusinessContext = extractBusinessContext(normalizedMessage);
+  const isCatalogIntent = ['LISTAR_SERVICIOS', 'LISTAR_PRODUCTOS', 'LISTAR_CATALOGO'].includes(nlu?.intent) ||
+    plannerDecision?.responsePlanType === 'catalog_listing';
+
+  if (decision?.action === NCIE_ACTIONS.ESCALATE_HUMAN || commercialReasoning.recommended_action === COMMERCIAL_ACTIONS.ESCALATE_HUMAN) {
+    return {
+      type: 'escalate',
+      summary: commercialReasoning.customer_need,
+      question: null
+    };
+  }
+
+  if (nlu?.intent === 'ASESOR_DECLINADO') {
+    return {
+      type: 'advisor_declined',
+      summary: 'Asesor declinado',
+      question: null
+    };
+  }
+
+  const earlyCatalogPlan = planFromPlannerDecision({ plannerDecision, retrieval, commercialReasoning, normalizedMessage });
+  if (earlyCatalogPlan?.type === 'catalog_listing') return earlyCatalogPlan;
+
+  if (isCatalogIntent) {
+    return {
+      type: 'catalog_listing',
+      selectedType: nlu?.intent === 'LISTAR_PRODUCTOS' ? NCIE_TYPES.PRODUCT : NCIE_TYPES.SERVICE,
+      services: nlu?.intent === 'LISTAR_PRODUCTOS' ? [] : catalogItems(retrieval?.services ?? []),
+      products: nlu?.intent === 'LISTAR_SERVICIOS' ? [] : catalogItems(retrieval?.products ?? []),
+      categories: retrieval?.categories ?? [],
+      summary: 'Catalogo completo',
+      question: '?Cual te gustaria cotizar?'
+    };
+  }
 
   if (capturedBusinessContext) {
     return {
@@ -529,7 +688,7 @@ export function planResponse({ nlu, retrieval, decision, state, commercialReason
     };
   }
 
-  if (asksBusinessCatalog(normalizedMessage) && ((retrieval?.services?.length ?? 0) > 0 || (retrieval?.categories?.length ?? 0) > 0)) {
+  if (!isCatalogIntent && asksBusinessCatalog(normalizedMessage) && ((retrieval?.services?.length ?? 0) > 0 || (retrieval?.categories?.length ?? 0) > 0)) {
     return {
       type: 'business_summary',
       company: retrieval.company,
@@ -560,7 +719,7 @@ export function planResponse({ nlu, retrieval, decision, state, commercialReason
     };
   }
 
-  if (asksAboutProducts(normalizedMessage)) {
+  if (!isCatalogIntent && asksAboutProducts(normalizedMessage)) {
     return {
       type: 'personalized_products_summary',
       summary: 'Productos personalizados',
@@ -641,11 +800,16 @@ export function planResponse({ nlu, retrieval, decision, state, commercialReason
     };
   }
 
-  if (commercialReasoning.recommended_action === COMMERCIAL_ACTIONS.ESCALATE_HUMAN) {
+  const installationPreference = installationPreferenceFromMessage(normalizedMessage);
+  if (state?.lastService && state?.commercial?.lastQuoteContext && installationPreference === false) {
     return {
-      type: 'escalate',
-      summary: commercialReasoning.customer_need,
-      question: '?Que punto quieres que revise el asesor?'
+      type: 'quote_requirements_followup',
+      selectedType: NCIE_TYPES.SERVICE,
+      selected: state.lastService,
+      quoteContext: state.commercial.lastQuoteContext,
+      installation: false,
+      summary: state.lastService.nombre,
+      question: '?Quieres que te comunique con un asesor para confirmar disponibilidad y tiempos?'
     };
   }
 

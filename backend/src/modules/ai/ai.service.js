@@ -3,6 +3,7 @@ import { interpretIntentDetailed } from '../../ai/intentInterpreter.js';
 import { buildSafeConversationContext } from '../../ai/conversation-context.builder.js';
 import { orchestrateIncomingMessage } from '../../bot/messageOrchestrator.js';
 import { runConversationEngine } from '../../conversation-engine/conversation-engine.service.js';
+import { executeAdvisorNotification } from '../../conversation-engine/advisor-notification.js';
 import { runNcieShadowComparison } from '../../conversation-engine/shadow-evaluation.service.js';
 import {
   assessNcieRisk,
@@ -18,6 +19,7 @@ import { isPlanLimitAvailable } from '../plans/plan-limits.service.js';
 import { registerAIUsage } from '../ai-usage/ai-usage.service.js';
 import { normalizeMexicanPhoneNumber } from '../../whatsapp/whatsapp-number.helper.js';
 import { logger } from '../../utils/logger.js';
+import { requestHandoff } from '../../bot/humanHandoffManager.js';
 import {
   classifyOpenAIError,
   getOpenAIHealthSnapshot
@@ -202,6 +204,45 @@ export async function generateCompanyReply({
           contactName,
           incomingMedia
         });
+        if (ncieResult?.ncie?.advisorNotificationRequired) {
+          try {
+            const notificationResult = await executeAdvisorNotification({
+              empresaId,
+              phone: normalizePhone(phone),
+              whatsappChatId,
+              conversationId: ncieResult.conversacion_id ?? null,
+              response: ncieResult.respuesta,
+              advisorNotification: ncieResult.ncie.advisorNotification,
+              handoffManager: { request: requestHandoff }
+            });
+            ncieResult.notificacion = notificationResult;
+            logger.info('ncie_advisor_notification_sent', {
+              empresaId,
+              conversationId: ncieResult.conversacion_id ?? null,
+              reason: ncieResult.ncie.notificationReason
+            });
+            if (ncieResult.ncie.notificationReason === 'handoff_explicit') {
+              logger.info('ncie_handoff_enabled', {
+                empresaId,
+                conversationId: ncieResult.conversacion_id ?? null
+              });
+            }
+          } catch (error) {
+            ncieResult.notificacion = {
+              estado: 'ERROR',
+              error: error?.message ?? 'advisor_notification_failed'
+            };
+            logger.error('ncie_handoff_failed', {
+              empresaId,
+              conversationId: ncieResult.conversacion_id ?? null,
+              reason: ncieResult.ncie.notificationReason,
+              error: {
+                name: error?.name,
+                message: error?.message
+              }
+            });
+          }
+        }
         const risk = assessNcieRisk({ config: selection.config, ncieResult });
 
         await persistNcieEngineEventAndRollback({

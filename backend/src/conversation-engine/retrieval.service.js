@@ -287,6 +287,7 @@ export async function retrieveConversationData({
   const shouldSearchProducts = nlu.type === NCIE_TYPES.PRODUCT || nlu.type === NCIE_TYPES.UNKNOWN;
   const isServiceCatalog = nlu.intent === 'LISTAR_SERVICIOS';
   const isProductCatalog = nlu.intent === 'LISTAR_PRODUCTOS';
+  const isFullCatalog = nlu.intent === 'LISTAR_CATALOGO';
   const isBusinessSummary = commercialReasoning?.retrieval_strategy === 'business_summary';
   const isMemoryOnly = commercialReasoning?.retrieval_strategy === 'memory';
   const isNoRetrieval = commercialReasoning?.retrieval_strategy === 'none';
@@ -297,10 +298,14 @@ export async function retrieveConversationData({
 
   company = (await safeCallTool(mcpClient, 'obtener_configuracion_empresa', { empresa_id: empresaId }))?.empresa ?? null;
 
-  const effectiveSearchServices = isBusinessSummary || shouldSearchServices || commercialReasoning?.conversation_goal === 'find_solution';
-  const effectiveSearchProducts = !isBusinessSummary && shouldSearchProducts;
+  const effectiveSearchServices = isFullCatalog ||
+    isServiceCatalog ||
+    (isBusinessSummary && !isProductCatalog) ||
+    shouldSearchServices ||
+    commercialReasoning?.conversation_goal === 'find_solution';
+  const effectiveSearchProducts = isFullCatalog || isProductCatalog || (!isBusinessSummary && shouldSearchProducts);
 
-  if (!isNoRetrieval && !isMemoryOnly && isBusinessSummary) {
+  if (!isNoRetrieval && !isMemoryOnly && isBusinessSummary && !isProductCatalog) {
     const fullCatalog = await loadFullServiceCatalog({ empresaId, mcpClient });
     if (fullCatalog) {
       services.push(...(fullCatalog.services ?? []));
@@ -320,7 +325,7 @@ export async function retrieveConversationData({
   }
 
   if (!isNoRetrieval && !isMemoryOnly && effectiveSearchProducts) {
-    const productQueries = isProductCatalog ? [''] : queries.slice(0, 4);
+    const productQueries = isProductCatalog || isFullCatalog ? [''] : queries.slice(0, 4);
     for (const query of productQueries) {
       const result = await safeCallTool(mcpClient, 'buscar_productos', {
         empresa_id: empresaId,
@@ -337,6 +342,20 @@ export async function retrieveConversationData({
       texto: ''
     });
     services.push(...(result?.servicios ?? []));
+  }
+
+  if (!isNoRetrieval && !isMemoryOnly && effectiveSearchServices && services.length === 0) {
+    const fullCatalog = await loadFullServiceCatalog({ empresaId, mcpClient });
+    if (fullCatalog?.services?.length) {
+      services.push(...fullCatalog.services);
+      categories = fullCatalog.categories?.length ? fullCatalog.categories : categories;
+      logger.info('ncie_retrieval_full_catalog_fallback', {
+        empresaId,
+        reason: 'service_search_returned_zero',
+        services: services.length,
+        categories: categories.length
+      });
+    }
   }
 
   if (!isNoRetrieval && !isMemoryOnly && !isBusinessSummary && effectiveSearchProducts && products.length === 0 && commercialReasoning?.retrieval_strategy === 'domain_search') {
@@ -383,10 +402,10 @@ export async function retrieveConversationData({
   }
   const result = {
     company,
-    services: isBusinessSummary || (nlu.type === NCIE_TYPES.UNKNOWN && Number(rankedServices[0]?.score ?? 0) === 0)
+    services: isBusinessSummary || isServiceCatalog || isFullCatalog || (nlu.type === NCIE_TYPES.UNKNOWN && Number(rankedServices[0]?.score ?? 0) === 0)
       ? rankedServices
       : rankedServices.slice(0, 5),
-    products: rankedProducts.slice(0, 5),
+    products: isProductCatalog || isFullCatalog ? rankedProducts : rankedProducts.slice(0, 5),
     categories,
     queries,
     semantic,
@@ -401,8 +420,13 @@ export async function retrieveConversationData({
 
   logger.info('ncie_retrieval_scored', {
     empresaId,
+    rawServices: services.length,
+    rawProducts: products.length,
+    categories: categories.length,
     topServiceScore: result.services[0]?.score ?? 0,
-    topProductScore: result.products[0]?.score ?? 0
+    topProductScore: result.products[0]?.score ?? 0,
+    returnedServices: result.services.length,
+    returnedProducts: result.products.length
   });
 
   return result;

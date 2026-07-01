@@ -39,6 +39,17 @@ const marketing = {
   score: 34
 };
 
+const tarjetas = {
+  id: 22,
+  nombre: 'Tarjetas de presentacion',
+  descripcion: 'Tarjetas impresas para negocios',
+  precio: 297,
+  tipo_precio: 'POR_UNIDAD',
+  requiere_cantidad: true,
+  categoria: 'Impresion',
+  score: 30
+};
+
 const emptyNlu = {
   intent: 'MENSAJE_GENERAL',
   type: 'unknown',
@@ -145,7 +156,8 @@ describe('Commercial Conversation Planner shadow v2', () => {
 
     assert.equal(decision.selectedService.nombre, 'Diseno web');
     assert.equal(decision.detectedWebType, 'pedidos');
-    assert.deepEqual(decision.missing, []);
+    assert.deepEqual(decision.missing, ['presupuesto']);
+    assert.equal(decision.waitingField, 'budget');
     assert.notEqual(decision.responsePlanType, 'ask_web_type');
     assert.equal(decision.retrievalNeeded, false);
   });
@@ -164,7 +176,8 @@ describe('Commercial Conversation Planner shadow v2', () => {
 
     assert.equal(decision.selectedService.nombre, 'Diseno web');
     assert.equal(decision.detectedWebType, 'catalogo');
-    assert.deepEqual(decision.missing, []);
+    assert.deepEqual(decision.missing, ['presupuesto']);
+    assert.equal(decision.waitingField, 'budget');
     assert.notEqual(decision.responsePlanType, 'ask_web_type');
   });
 
@@ -180,7 +193,7 @@ describe('Commercial Conversation Planner shadow v2', () => {
 
     assert.equal(decision.goal, COMMERCIAL_PLANNER_GOALS.FOLLOW_UP_CATALOG);
     assert.equal(decision.nextAction, COMMERCIAL_NEXT_ACTIONS.FOLLOW_UP_CATALOG);
-    assert.equal(decision.responsePlanType, 'business_summary');
+    assert.equal(decision.responsePlanType, 'catalog_listing');
   });
 
   it('does not let active web flow hijack company information requests', () => {
@@ -449,6 +462,119 @@ describe('Commercial Conversation Planner shadow v2', () => {
     assert.equal(decision.selectedService, null);
     assert.equal(decision.retrievalNeeded, true);
     assert.equal(decision.responsePlanType, 'business_summary');
+  });
+
+  it('recognizes compound greetings without clearing the active flow', () => {
+    const plannerState = {
+      version: 2,
+      empresaId: 1,
+      conversationId: 'chat-1',
+      activeFlowId: 'flow_service_7',
+      lastBotQuestion: 'Que medidas necesitas?',
+      waitingField: 'dimensions',
+      flows: [
+        {
+          id: 'flow_service_7',
+          goal: 'cotizar',
+          stage: 'esperando_medidas',
+          selectedServiceId: 7,
+          selectedServiceName: 'Impresion de lona',
+          selectedCategory: 'Impresion',
+          servicePriceType: 'POR_M2',
+          servicePrice: 390,
+          requiresMeasurements: true,
+          entities: {},
+          missing: ['medidas'],
+          waitingField: 'dimensions',
+          status: 'active'
+        }
+      ]
+    };
+
+    const decision = planCommercialConversation({
+      empresaId: 1,
+      normalizedMessage: normalized('Hola buenas tardes'),
+      nlu: { ...emptyNlu, intent: 'MENSAJE_GENERAL', type: 'unknown', confidence: 0.35 },
+      state: { commercial: { plannerState } },
+      phase: 'post_retrieval'
+    });
+
+    assert.equal(decision.neutralMessageType, 'greeting');
+    assert.equal(decision.responsePlanType, 'neutral_message');
+    assert.equal(decision.activeFlow.selectedServiceName, 'Impresion de lona');
+    assert.equal(decision.activeFlow.waitingField, 'dimensions');
+  });
+
+  it('uses waitingField to interpret quantity without reclassifying the message', () => {
+    const plannerState = {
+      version: 2,
+      empresaId: 1,
+      conversationId: 'chat-1',
+      activeFlowId: 'flow_service_22',
+      lastBotQuestion: 'Cuantas piezas necesitas?',
+      waitingField: 'quantity',
+      flows: [
+        {
+          id: 'flow_service_22',
+          goal: 'cotizar',
+          stage: 'esperando_cantidad',
+          selectedServiceId: 22,
+          selectedServiceName: 'Tarjetas de presentacion',
+          selectedCategory: 'Impresion',
+          servicePriceType: 'POR_UNIDAD',
+          servicePrice: 297,
+          requiresQuantity: true,
+          entities: {},
+          missing: ['cantidad'],
+          waitingField: 'quantity',
+          lastQuestion: 'Cuantas piezas necesitas?',
+          status: 'active'
+        }
+      ]
+    };
+
+    const decision = planCommercialConversation({
+      empresaId: 1,
+      normalizedMessage: normalized('3'),
+      nlu: { ...emptyNlu, intent: 'RESPUESTA_CONTEXTO', confidence: 0.98, entities: { quantity: 3 } },
+      state: { commercial: { plannerState } },
+      phase: 'post_retrieval'
+    });
+
+    assert.equal(decision.selectedService.nombre, 'Tarjetas de presentacion');
+    assert.equal(decision.interpretedResponse.handled, true);
+    assert.equal(decision.activeFlow.entities.quantity, 3);
+    assert.deepEqual(decision.missing, []);
+    assert.equal(decision.activeFlow.waitingField, null);
+  });
+
+  it('keeps single yes ambiguous when several pending options exist', () => {
+    const plannerState = {
+      version: 2,
+      empresaId: 1,
+      conversationId: 'chat-1',
+      activeFlowId: null,
+      waitingField: 'option',
+      lastBotQuestion: 'Quieres publicidad fisica, diseno o marketing digital?',
+      flows: []
+    };
+
+    const decision = planCommercialConversation({
+      empresaId: 1,
+      normalizedMessage: normalized('Si'),
+      nlu: { ...emptyNlu, intent: 'RESPUESTA_AMBIGUA_CONTEXTO', confidence: 0.2 },
+      state: {
+        commercial: {
+          plannerState,
+          lastOptionsShown: ['Publicidad fisica', 'Diseno', 'Marketing digital']
+        }
+      },
+      phase: 'post_retrieval'
+    });
+
+    assert.equal(decision.interpretedResponse.ambiguous, true);
+    assert.equal(decision.responsePlanType, 'clarify_pending_options');
+    assert.equal(decision.selectedService, null);
   });
 
   it('keeps design and installation answers inside the active lona flow', () => {

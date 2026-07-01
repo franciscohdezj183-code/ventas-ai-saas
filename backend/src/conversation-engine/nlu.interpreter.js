@@ -45,7 +45,7 @@ const SERVICE_PROBLEM_PATTERNS = [
   }
 ];
 
-const HUMAN_PATTERN = /\b(asesor|humano|persona|vendedor|ejecutivo|atiendeme|atiendame)\b/;
+const HUMAN_PATTERN = /\b(asesor|humano|persona|vendedor|ejecutivo|atiendeme|atiendame|atencion humana|atencion personalizada|quiero hablar con alguien|hablar con alguien|me comunicas con un asesor|comunicas con un asesor|cotizar con asesor)\b/;
 const PURCHASE_PATTERN = /\b(me interesa|lo quiero|la quiero|quiero comprar|contratar|agendar|apartar|me lo llevo|ese|esa|la segunda opcion|el segundo|la segunda)\b/;
 const PRICE_PATTERN = /\b(cuanto sale|cuanto cuesta|cuanto cobran|cuanto seria|precio|costo|vale|cotizar\w*|cotizame|cotizacion|presupuesto)\b/;
 const PAYMENT_PATTERN = /\b(pago|pagos|tarjeta|transferencia|efectivo|deposito)\b/;
@@ -55,8 +55,9 @@ const FRUSTRATION_PATTERN = /\b(no entendiste|no me entendiste|estas mal|eso no|
 const URGENCY_PATTERN = /\b(urgente|hoy|ahorita|emergencia|rapido|rápido)\b/;
 const AVAILABILITY_PATTERN = /\b(disponible|disponibilidad|stock|existencia|lo tienen)\b/;
 const PRODUCT_SEARCH_PATTERN = /\b(comedor|comedores|silla|sillas|mesa|mesas|regalo|producto|productos|parecido|similar)\b/;
-const SERVICE_CATALOG_PATTERN = /\b(que servicios|servicios tienes|servicios manejas|que manejan|que ofrecen|informes de tus servicios|informacion de tus servicios|cual es tu catalogo|tu catalogo|catalogo de servicios|lista de servicios|que mas servicios)\b|^(catalogo|servicios)$/;
-const PRODUCT_CATALOG_PATTERN = /\b(manejas productos|tienes productos|venden productos|que productos|productos manejas|catalogo de productos|lista de productos)\b|^productos$/;
+const SERVICE_CATALOG_PATTERN = /\b(que servicios|qué servicios|servicios tienen|servicios tienes|servicios manejas|que servicios tienen|qué servicios tienen|me das informes de sus servicios|informes de sus servicios|informes de tus servicios|informacion de sus servicios|informacion de tus servicios|todos los servicios|son los unicos servicios|son los únicos servicios|unicos servicios|únicos servicios|otros servicios|mas servicios|más servicios|lista de servicios|menu de servicios|menú de servicios|catalogo de servicios|catálogo de servicios|que mas servicios|opciones de servicios)\b|^(servicios|todos los servicios)$/;
+const PRODUCT_CATALOG_PATTERN = /\b(manejas productos|manejan productos|tienes productos|tienen productos|venden productos|que productos|qué productos|productos manejas|productos manejan|todos los productos|catalogo de productos|catálogo de productos|lista de productos|menu de productos|menú de productos)\b|^(productos|todos los productos)$/;
+const GENERAL_CATALOG_PATTERN = /\b(cual es tu catalogo|cuál es tu catálogo|tu catalogo|tu catálogo|ver catalogo|ver catálogo|mandame catalogo|mándame catálogo|lista completa|todo el catalogo|todo el catálogo|opciones|menu|menú)\b|^(catalogo|catálogo|opciones|menu|menú)$/;
 const WEBSITE_SERVICE_PATTERN = /\b(pagina web|paginas web|sitio web|web|landing|landing page|ecommerce|tienda en linea|tienda online|desarrollo web|diseno web)\b/;
 const PRINT_SERVICE_PATTERN = /\b(lona|lonas|vinil|viniles|banner|banners|tarjeta|tarjetas|senaletica|rotulacion|impresion gran formato)\b/;
 
@@ -85,6 +86,23 @@ export async function interpretNlu({ normalizedMessage, state = null } = {}) {
   result.entities.urgency = URGENCY_PATTERN.test(text) ? 'alta' : null;
 
   const serviceProblem = detectServiceProblem(text);
+  const lastQuestion = String(
+    state?.commercial?.lastBotQuestion
+      ?? state?.commercial?.lastQuestion
+      ?? state?.lastBotQuestion
+      ?? ''
+  ).toLowerCase();
+
+  if (/^(si|s[ií]|claro|adelante|por favor)$/.test(text) && /\b(asesor|comunic|contactar|seguimiento)\b/.test(lastQuestion)) {
+    return {
+      ...result,
+      intent: 'HABLAR_ASESOR',
+      type: NCIE_TYPES.HUMAN,
+      confidence: 0.95,
+      recommended_action: NCIE_ACTIONS.ESCALATE_HUMAN,
+      reasoning_summary: 'El cliente confirmo que quiere comunicarse con un asesor.'
+    };
+  }
 
   if (FRUSTRATION_PATTERN.test(text)) {
     return {
@@ -187,6 +205,22 @@ export async function interpretNlu({ normalizedMessage, state = null } = {}) {
       },
       recommended_action: NCIE_ACTIONS.ANSWER_WITH_RESULTS,
       reasoning_summary: 'El cliente pide conocer los productos disponibles.'
+    };
+  }
+
+  if (GENERAL_CATALOG_PATTERN.test(text)) {
+    return {
+      ...result,
+      intent: 'LISTAR_CATALOGO',
+      type: NCIE_TYPES.UNKNOWN,
+      confidence: 0.9,
+      entities: {
+        ...result.entities,
+        service: '',
+        product: ''
+      },
+      recommended_action: NCIE_ACTIONS.ANSWER_WITH_RESULTS,
+      reasoning_summary: 'El cliente pidio ver el catalogo completo.'
     };
   }
 
