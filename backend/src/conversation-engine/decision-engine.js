@@ -1,4 +1,10 @@
 import { NCIE_ACTIONS, NCIE_FUNNEL_STAGES, NCIE_TYPES } from './conversation-engine.types.js';
+import { logLegacyDecisionDetected } from './legacy-decision-warning.js';
+
+/**
+ * @deprecated LegacyOnly: action selection authority moved to Unified Planner ExecutionPlan.
+ * Keep temporarily for legacy engine rollback and non-canary companies only.
+ */
 
 function hasResults(retrieval, type) {
   if (type === NCIE_TYPES.SERVICE) return (retrieval?.services?.length ?? 0) > 0;
@@ -24,8 +30,15 @@ export function decideNextAction({ nlu, retrieval, state }) {
   const selectedType = selectedTypeFromResults(nlu, retrieval, state);
   const missingData = [...(nlu.missing_data ?? [])];
   const score = topScore(retrieval, selectedType);
+  const decisionContext = {
+    module: 'decision-engine',
+    responsibility: 'next_action_selection',
+    empresaId: state?.empresaId ?? null,
+    conversationId: state?.conversationId ?? null
+  };
 
   if (nlu.type === NCIE_TYPES.HUMAN) {
+    logLegacyDecisionDetected({ ...decisionContext, decision: NCIE_ACTIONS.ESCALATE_HUMAN, reason: 'human_type' });
     return {
       action: NCIE_ACTIONS.ESCALATE_HUMAN,
       selectedType,
@@ -38,6 +51,7 @@ export function decideNextAction({ nlu, retrieval, state }) {
   }
 
   if (nlu.intent === 'INTENCION_COMPRA' && (state?.lastProductId || state?.lastServiceId)) {
+    logLegacyDecisionDetected({ ...decisionContext, decision: NCIE_ACTIONS.CREATE_LEAD, reason: 'purchase_with_active_memory' });
     return {
       action: NCIE_ACTIONS.CREATE_LEAD,
       selectedType: state.lastServiceId ? NCIE_TYPES.SERVICE : NCIE_TYPES.PRODUCT,
@@ -50,6 +64,7 @@ export function decideNextAction({ nlu, retrieval, state }) {
   }
 
   if ((nlu.intent === 'LISTAR_SERVICIOS' || nlu.intent === 'LISTAR_PRODUCTOS') && hasResults(retrieval, selectedType)) {
+    logLegacyDecisionDetected({ ...decisionContext, decision: NCIE_ACTIONS.ANSWER_WITH_RESULTS, reason: 'list_intent_with_results' });
     return {
       action: NCIE_ACTIONS.ANSWER_WITH_RESULTS,
       selectedType,
@@ -83,6 +98,7 @@ export function decideNextAction({ nlu, retrieval, state }) {
       : score >= 7
         ? NCIE_ACTIONS.OFFER_SIMILAR_OPTIONS
         : NCIE_ACTIONS.ASK_CLARIFYING_QUESTION;
+    logLegacyDecisionDetected({ ...decisionContext, decision: action, reason: 'retrieval_results_scored' });
     return {
       action: nlu.confidence < 0.55 && action === NCIE_ACTIONS.ANSWER_WITH_RESULTS
         ? NCIE_ACTIONS.OFFER_SIMILAR_OPTIONS
@@ -107,6 +123,7 @@ export function decideNextAction({ nlu, retrieval, state }) {
     || nlu.entities?.symptom
     || missingData.length > 0
   ) {
+    logLegacyDecisionDetected({ ...decisionContext, decision: NCIE_ACTIONS.ASK_CLARIFYING_QUESTION, reason: 'low_confidence_or_missing_data' });
     return {
       action: NCIE_ACTIONS.ASK_CLARIFYING_QUESTION,
       selectedType,
@@ -120,6 +137,7 @@ export function decideNextAction({ nlu, retrieval, state }) {
     };
   }
 
+  logLegacyDecisionDetected({ ...decisionContext, decision: NCIE_ACTIONS.GENERAL_REPLY, reason: 'default_general_reply' });
   return {
     action: NCIE_ACTIONS.GENERAL_REPLY,
     selectedType,

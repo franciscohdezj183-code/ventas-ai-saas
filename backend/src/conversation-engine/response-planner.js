@@ -1,5 +1,11 @@
-import { NCIE_ACTIONS, NCIE_TYPES } from './conversation-engine.types.js';
+﻿import { NCIE_ACTIONS, NCIE_TYPES } from './conversation-engine.types.js';
 import { COMMERCIAL_ACTIONS, COMMERCIAL_GOALS } from './commercial-reasoner.js';
+import { logLegacyDecisionDetected } from './legacy-decision-warning.js';
+
+/**
+ * @deprecated LegacyOnly: response planning authority moved to Unified Planner responsePlan.
+ * Keep temporarily for legacy engine rollback and non-canary companies only.
+ */
 
 function money(value) {
   const number = Number(value);
@@ -49,15 +55,15 @@ function catalogItems(items) {
 }
 
 function serviceQuestion(service, commercialReasoning) {
-  if (service?.requiere_medidas) return '?Me compartes las medidas aproximadas?';
-  if (service?.requiere_cantidad) return '?Cuantas piezas necesitas?';
+  if (service?.requiere_medidas) return '¿Me compartes las medidas aproximadas?';
+  if (service?.requiere_cantidad) return '¿Cuantas piezas necesitas?';
   if (commercialReasoning?.domain === 'pagina_web') {
     return '?Sera una pagina informativa, catalogo o para recibir pedidos/cotizaciones?';
   }
   if (commercialReasoning?.conversation_stage === 'cotizacion') {
-    return '?Que resultado quieres lograr y con que presupuesto aproximado quieres empezar?';
+    return '¿Que resultado quieres lograr y con que presupuesto aproximado quieres empezar?';
   }
-  return '?Que necesitas lograr con este proyecto?';
+  return '¿Que necesitas lograr con este proyecto?';
 }
 
 function hasStrongService(retrieval) {
@@ -143,17 +149,17 @@ function questionForPlannerMissing(plannerDecision, selected) {
   if ((plannerDecision?.missing ?? []).includes('medidas')) {
     const partial = plannerDecision?.activeFlow?.entities?.dimensions ?? plannerDecision?.interpretedResponse?.entities?.dimensions ?? null;
     if (partial?.incomplete && partial.length) return `Perfecto, tengo ${partial.length} m de largo. Que alto aproximado tendra?`;
-    return '?Me compartes las medidas aproximadas?';
+    return '¿Me compartes las medidas aproximadas?';
   }
-  if ((plannerDecision?.missing ?? []).includes('cantidad')) return '?Cuantas piezas necesitas?';
+  if ((plannerDecision?.missing ?? []).includes('cantidad')) return '¿Cuantas piezas necesitas?';
   if ((plannerDecision?.missing ?? []).includes('tipo_web')) {
     return '?Sera una pagina informativa, catalogo o para recibir pedidos/cotizaciones?';
   }
   if (/\bmarketing digital\b/i.test(String(selected?.nombre ?? ''))) {
-    return '?Que quieres lograr primero: atraer clientes, vender mas o mejorar tu presencia en redes?';
+    return '¿Que quieres lograr primero: atraer clientes, vender mas o mejorar tu presencia en redes?';
   }
-  if (selected?.requiere_cantidad) return '?Cuantas piezas necesitas?';
-  return '?Que resultado quieres lograr y con que presupuesto aproximado quieres empezar?';
+  if (selected?.requiere_cantidad) return '¿Cuantas piezas necesitas?';
+  return '¿Que resultado quieres lograr y con que presupuesto aproximado quieres empezar?';
 }
 
 function isFullCatalogRequest(normalizedMessage) {
@@ -184,14 +190,14 @@ function planFromPlannerDecision({ plannerDecision, retrieval, commercialReasoni
         type: 'neutral_greeting',
         summary: 'Saludo',
         greetingText: configuredGreeting(retrieval),
-        question: '?Que necesitas revisar?'
+        question: '¿Que necesitas revisar?'
       };
     }
     if (plannerDecision.neutralMessageType === 'thanks') {
       return {
         type: 'neutral_thanks',
         summary: 'Agradecimiento',
-        question: contextServiceName ? `?Seguimos con ${contextServiceName} o revisamos algo distinto?` : '?Hay algo mas que quieras revisar?'
+        question: contextServiceName ? `¿Seguimos con ${contextServiceName} o revisamos algo distinto?` : '?Hay algo mas que quieras revisar?'
       };
     }
     if (plannerDecision.neutralMessageType === 'ping') {
@@ -199,13 +205,13 @@ function planFromPlannerDecision({ plannerDecision, retrieval, commercialReasoni
         type: 'neutral_resume',
         summary: contextServiceName ?? 'Contexto disponible',
         contextServiceName,
-        question: contextServiceName ? `?Seguimos con eso o revisamos algo distinto?` : '?Que necesitas resolver?'
+        question: contextServiceName ? `¿Seguimos con eso o revisamos algo distinto?` : '¿Que necesitas resolver?'
       };
     }
     return {
       type: 'neutral_ack',
       summary: 'Mensaje neutral',
-      question: contextServiceName ? `?Seguimos con ${contextServiceName} o revisamos otra cosa?` : '?Que necesitas resolver?'
+      question: contextServiceName ? `¿Seguimos con ${contextServiceName} o revisamos otra cosa?` : '¿Que necesitas resolver?'
     };
   }
   if (
@@ -244,7 +250,7 @@ function planFromPlannerDecision({ plannerDecision, retrieval, commercialReasoni
     return {
       type: 'generic_price_question',
       summary: 'Consulta de precios',
-      question: '?Que quieres cotizar: lona, tarjetas, pagina web, marketing digital u otro servicio?'
+      question: '¿Que quieres cotizar: lona, tarjetas, pagina web, marketing digital u otro servicio?'
     };
   }
 
@@ -256,7 +262,7 @@ function planFromPlannerDecision({ plannerDecision, retrieval, commercialReasoni
         ? '?Perfecto, dime cual servicio te interesa cotizar.'
         : plannerDecision.activeFlow?.lastQuestion ??
         plannerDecision.neutralContext?.lastQuestion ??
-        '?Cual opcion prefieres que revisemos?'
+        '¿Cual opcion prefieres que revisemos?'
     };
   }
 
@@ -268,7 +274,7 @@ function planFromPlannerDecision({ plannerDecision, retrieval, commercialReasoni
       categories: retrieval?.categories ?? [],
       summary: 'Catalogo de servicios',
       fullCatalog: isFullCatalogRequest(normalizedMessage),
-      question: '?Que objetivo quieres lograr o que opcion te interesa revisar?'
+      question: '¿Que objetivo quieres lograr o que opcion te interesa revisar?'
     };
   }
 
@@ -280,7 +286,7 @@ function planFromPlannerDecision({ plannerDecision, retrieval, commercialReasoni
       products: catalogItems(retrieval?.products ?? []),
       categories: retrieval?.categories ?? [],
       summary: 'Catalogo completo',
-      question: '?Cual te gustaria cotizar?'
+      question: '¿Cual te gustaria cotizar?'
     };
   }
 
@@ -289,7 +295,7 @@ function planFromPlannerDecision({ plannerDecision, retrieval, commercialReasoni
     return {
       type: 'clarify_need',
       summary: plannerDecision.goal,
-      question: '?Que necesitas lograr o que producto o servicio tienes en mente?'
+      question: '¿Que necesitas lograr o que producto o servicio tienes en mente?'
     };
   }
 
@@ -315,7 +321,7 @@ function planFromPlannerDecision({ plannerDecision, retrieval, commercialReasoni
       selectedType: NCIE_TYPES.SERVICE,
       selected,
       summary: selected.nombre,
-      question: `Lo tomamos como ${webTypeText}. ?Quieres que tambien permita pagos o solo levantar solicitudes?`
+      question: `Lo tomamos como ${webTypeText}. ¿Quieres que tambien permita pagos o solo levantar solicitudes?`
     };
   }
 
@@ -351,7 +357,7 @@ function planFromPlannerDecision({ plannerDecision, retrieval, commercialReasoni
       quoteContext: plannerQuoteContext(plannerDecision, selected),
       installation: plannerDecision.detectedInstallationPreference,
       summary: selected.nombre,
-      question: '?Quieres que te comunique con un asesor para confirmar disponibilidad y tiempos?'
+      question: '¿Quieres que te comunique con un asesor para confirmar disponibilidad y tiempos?'
     };
   }
 
@@ -376,7 +382,7 @@ function planFromPlannerDecision({ plannerDecision, retrieval, commercialReasoni
       quoteContext: plannerQuoteContext(plannerDecision, selected),
       installation: false,
       summary: selected.nombre,
-      question: '?Quieres que te comunique con un asesor para confirmar disponibilidad y tiempos?'
+      question: '¿Quieres que te comunique con un asesor para confirmar disponibilidad y tiempos?'
     };
   }
 
@@ -642,6 +648,14 @@ function isCommercialObjectiveAnswer(normalizedMessage) {
 }
 
 export function planResponse({ nlu, retrieval, decision, state, commercialReasoning, normalizedMessage = null, plannerDecision = null }) {
+  logLegacyDecisionDetected({
+    module: 'response-planner',
+    responsibility: 'response_plan_selection',
+    decision: decision?.action ?? plannerDecision?.responsePlanType ?? null,
+    empresaId: state?.empresaId ?? null,
+    conversationId: state?.conversationId ?? null,
+    reason: 'legacy_response_planner_invoked'
+  });
   const businessContext = currentBusinessContext(state);
   const capturedBusinessContext = extractBusinessContext(normalizedMessage);
   const isCatalogIntent = ['LISTAR_SERVICIOS', 'LISTAR_PRODUCTOS', 'LISTAR_CATALOGO'].includes(nlu?.intent) ||
@@ -674,7 +688,7 @@ export function planResponse({ nlu, retrieval, decision, state, commercialReason
       products: nlu?.intent === 'LISTAR_SERVICIOS' ? [] : catalogItems(retrieval?.products ?? []),
       categories: retrieval?.categories ?? [],
       summary: 'Catalogo completo',
-      question: '?Cual te gustaria cotizar?'
+      question: '¿Cual te gustaria cotizar?'
     };
   }
 
@@ -684,7 +698,7 @@ export function planResponse({ nlu, retrieval, decision, state, commercialReason
       summary: `Negocio: ${capturedBusinessContext}`,
       businessContext: capturedBusinessContext,
       discovery: 'business_context',
-      question: '?Que quieres conseguir ahora: atraer mas clientes, mejorar tu imagen o vender mas?'
+      question: '¿Que quieres conseguir ahora: atraer mas clientes, mejorar tu imagen o vender mas?'
     };
   }
 
@@ -695,7 +709,7 @@ export function planResponse({ nlu, retrieval, decision, state, commercialReason
       families: serviceFamilies(retrieval.services),
       categories: retrieval.categories ?? [],
       summary: 'Catalogo de servicios',
-      question: '?Que objetivo quieres lograr o que opcion te interesa revisar?'
+      question: '¿Que objetivo quieres lograr o que opcion te interesa revisar?'
     };
   }
 
@@ -723,7 +737,7 @@ export function planResponse({ nlu, retrieval, decision, state, commercialReason
     return {
       type: 'personalized_products_summary',
       summary: 'Productos personalizados',
-      question: '?Que te interesa revisar?'
+      question: '¿Que te interesa revisar?'
     };
   }
 
@@ -748,7 +762,7 @@ export function planResponse({ nlu, retrieval, decision, state, commercialReason
       discovery: businessContext ? 'known_business' : 'unknown_business',
       question: businessContext
         ? `?Para ${businessContext} buscas atraer clientes, vender mas o mejorar tu imagen?`
-        : '?Que vendes o que servicio ofreces?'
+        : '¿Que vendes o que servicio ofreces?'
     };
   }
 
@@ -783,7 +797,7 @@ export function planResponse({ nlu, retrieval, decision, state, commercialReason
     return {
       type: 'repair',
       summary: commercialReasoning.customer_need,
-      question: '?Que necesitas resolver o que estabas buscando exactamente?'
+      question: '¿Que necesitas resolver o que estabas buscando exactamente?'
     };
   }
 
@@ -796,7 +810,7 @@ export function planResponse({ nlu, retrieval, decision, state, commercialReason
       summary: state.lastService.nombre,
       customerAnswer: normalizedMessage?.normalized ?? null,
       isShortAnswer: isShortAnswer(normalizedMessage),
-      question: '?Quieres que lo dejemos contemplado con apoyo de diseno?'
+      question: '¿Quieres que lo dejemos contemplado con apoyo de diseno?'
     };
   }
 
@@ -809,7 +823,7 @@ export function planResponse({ nlu, retrieval, decision, state, commercialReason
       quoteContext: state.commercial.lastQuoteContext,
       installation: false,
       summary: state.lastService.nombre,
-      question: '?Quieres que te comunique con un asesor para confirmar disponibilidad y tiempos?'
+      question: '¿Quieres que te comunique con un asesor para confirmar disponibilidad y tiempos?'
     };
   }
 
@@ -841,7 +855,7 @@ export function planResponse({ nlu, retrieval, decision, state, commercialReason
         summary: selected.nombre,
         customerAnswer: normalizedMessage?.normalized ?? null,
         isShortAnswer: isShortAnswer(normalizedMessage),
-        question: '?Quieres que lo dejemos contemplado con apoyo de diseno?'
+        question: '¿Quieres que lo dejemos contemplado con apoyo de diseno?'
       };
     }
 
@@ -850,7 +864,7 @@ export function planResponse({ nlu, retrieval, decision, state, commercialReason
       selectedType: state?.lastService ? NCIE_TYPES.SERVICE : state?.lastProduct ? NCIE_TYPES.PRODUCT : decision.selectedType,
       selected,
       summary: selected?.nombre ?? commercialReasoning.customer_need,
-      question: state?.lastService ? serviceQuestion(state.lastService, commercialReasoning) : '?Que cantidad o variante necesitas?'
+      question: state?.lastService ? serviceQuestion(state.lastService, commercialReasoning) : '¿Que cantidad o variante necesitas?'
     };
   }
 
@@ -858,7 +872,7 @@ export function planResponse({ nlu, retrieval, decision, state, commercialReason
     return {
       type: 'conversation',
       summary: state?.needSummary ?? null,
-      question: '?Que te gustaria revisar o cotizar?'
+      question: '¿Que te gustaria revisar o cotizar?'
     };
   }
 
@@ -870,7 +884,7 @@ export function planResponse({ nlu, retrieval, decision, state, commercialReason
         options: options.slice(0, 4),
         selectedType: state?.lastServices?.length ? NCIE_TYPES.SERVICE : NCIE_TYPES.PRODUCT,
         summary: commercialReasoning.customer_need,
-        question: '?Quieres que comparemos por precio, alcance o disponibilidad?'
+        question: '¿Quieres que comparemos por precio, alcance o disponibilidad?'
       };
     }
   }
@@ -913,7 +927,7 @@ export function planResponse({ nlu, retrieval, decision, state, commercialReason
       families: serviceFamilies(retrieval.services),
       categories: retrieval.categories ?? [],
       summary: 'Catalogo de servicios',
-      question: '?Que objetivo quieres lograr o que opcion te interesa revisar?'
+      question: '¿Que objetivo quieres lograr o que opcion te interesa revisar?'
     };
   }
 
@@ -930,7 +944,7 @@ export function planResponse({ nlu, retrieval, decision, state, commercialReason
       families: serviceFamilies(retrieval.services),
       categories: retrieval.categories ?? [],
       summary: 'Resumen del negocio',
-      question: '?Que area te interesa revisar primero?'
+      question: '¿Que area te interesa revisar primero?'
     };
   }
 
@@ -954,7 +968,7 @@ export function planResponse({ nlu, retrieval, decision, state, commercialReason
       selected: product,
       priceText: productPrice(product),
       summary: product.nombre,
-      question: '?Quieres que te comparta disponibilidad o alguna alternativa?'
+      question: '¿Quieres que te comparta disponibilidad o alguna alternativa?'
     };
   }
 
@@ -964,7 +978,7 @@ export function planResponse({ nlu, retrieval, decision, state, commercialReason
       summary: commercialReasoning.customer_need,
       question: nlu.intent === 'CONSULTAR_PRECIO'
         ? '?De que producto o servicio quieres que lo revise?'
-        : '?Que producto, servicio o categoria tienes en mente para orientarte mejor?'
+        : '¿Que producto, servicio o categoria tienes en mente para orientarte mejor?'
     };
   }
 
@@ -978,13 +992,15 @@ export function planResponse({ nlu, retrieval, decision, state, commercialReason
       options,
       selectedType: retrieval.services.length > 0 ? NCIE_TYPES.SERVICE : NCIE_TYPES.PRODUCT,
       summary: commercialReasoning.customer_need,
-      question: '?Cual de estas opciones se acerca mas a lo que necesitas?'
+      question: '¿Cual de estas opciones se acerca mas a lo que necesitas?'
     };
   }
 
   return {
     type: 'clarify_need',
     summary: commercialReasoning.customer_need,
-    question: '?Me cuentas que necesitas lograr para orientarte mejor?'
+    question: '¿Me cuentas que necesitas lograr para orientarte mejor?'
   };
 }
+
+

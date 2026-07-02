@@ -1,4 +1,10 @@
 import { NCIE_ACTIONS, NCIE_FUNNEL_STAGES, NCIE_TYPES } from './conversation-engine.types.js';
+import { logLegacyDecisionDetected } from './legacy-decision-warning.js';
+
+/**
+ * @deprecated LegacyOnly: commercial goal/action authority moved to Unified Planner.
+ * Keep temporarily for legacy engine rollback and non-canary companies only.
+ */
 
 export const COMMERCIAL_GOALS = Object.freeze({
   EXPLORE_COMPANY: 'explore_company',
@@ -142,6 +148,15 @@ export function reasonCommercially({ nlu, normalizedMessage, state }) {
     || state?.probableProduct
     || null;
 
+  logLegacyDecisionDetected({
+    module: 'commercial-reasoner',
+    responsibility: 'commercial_goal_and_action',
+    decision: recommendedAction,
+    empresaId: state?.empresaId ?? null,
+    conversationId: state?.conversationId ?? null,
+    reason: conversationGoal
+  });
+
   return {
     conversation_goal: conversationGoal,
     conversation_stage: stageForGoal(conversationGoal, nlu, state),
@@ -164,6 +179,14 @@ export function reasonCommercially({ nlu, normalizedMessage, state }) {
 
 export function decisionFromCommercialReasoning({ commercialReasoning, nlu, retrieval, state }) {
   if (commercialReasoning.recommended_action === COMMERCIAL_ACTIONS.ESCALATE_HUMAN) {
+    logLegacyDecisionDetected({
+      module: 'commercial-reasoner',
+      responsibility: 'decision_from_commercial_reasoning',
+      decision: NCIE_ACTIONS.ESCALATE_HUMAN,
+      empresaId: state?.empresaId ?? null,
+      conversationId: state?.conversationId ?? null,
+      reason: commercialReasoning.recommended_action
+    });
     return {
       action: NCIE_ACTIONS.ESCALATE_HUMAN,
       selectedType: nlu.type,
@@ -177,6 +200,14 @@ export function decisionFromCommercialReasoning({ commercialReasoning, nlu, retr
   }
 
   if (commercialReasoning.recommended_action === COMMERCIAL_ACTIONS.USE_MEMORY && (state?.lastServiceId || state?.lastProductId)) {
+    logLegacyDecisionDetected({
+      module: 'commercial-reasoner',
+      responsibility: 'decision_from_commercial_reasoning',
+      decision: NCIE_ACTIONS.ASK_CLARIFYING_QUESTION,
+      empresaId: state?.empresaId ?? null,
+      conversationId: state?.conversationId ?? null,
+      reason: 'use_memory'
+    });
     return {
       action: NCIE_ACTIONS.ASK_CLARIFYING_QUESTION,
       selectedType: state.lastServiceId ? NCIE_TYPES.SERVICE : NCIE_TYPES.PRODUCT,
@@ -198,14 +229,24 @@ export function decisionFromCommercialReasoning({ commercialReasoning, nlu, retr
       ? NCIE_TYPES.PRODUCT
       : commercialReasoning.target_type ?? NCIE_TYPES.UNKNOWN;
 
-  return {
-    action: (nlu.missing_data ?? []).length > 0 && topScore < 8
+  const action = (nlu.missing_data ?? []).length > 0 && topScore < 8
       ? NCIE_ACTIONS.ASK_CLARIFYING_QUESTION
       : commercialReasoning.recommended_action === COMMERCIAL_ACTIONS.SUMMARIZE_BUSINESS
       ? NCIE_ACTIONS.ANSWER_WITH_RESULTS
       : commercialReasoning.need_clarification
         ? NCIE_ACTIONS.ASK_CLARIFYING_QUESTION
-        : NCIE_ACTIONS.ANSWER_WITH_RESULTS,
+        : NCIE_ACTIONS.ANSWER_WITH_RESULTS;
+  logLegacyDecisionDetected({
+    module: 'commercial-reasoner',
+    responsibility: 'decision_from_commercial_reasoning',
+    decision: action,
+    empresaId: state?.empresaId ?? null,
+    conversationId: state?.conversationId ?? null,
+    reason: commercialReasoning.recommended_action
+  });
+
+  return {
+    action,
     selectedType,
     missingData: commercialReasoning.need_clarification ? ['detalle'] : [],
     funnelStage: commercialReasoning.conversation_stage,

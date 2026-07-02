@@ -1,7 +1,9 @@
-import { logger } from '../utils/logger.js';
+﻿import { logger } from '../utils/logger.js';
 import { normalizeForNcie } from './message-normalizer.js';
+import { logLegacyDecisionDetected } from './legacy-decision-warning.js';
 import { NCIE_ACTIONS, NCIE_FUNNEL_STAGES, NCIE_TYPES } from './conversation-engine.types.js';
 import { loadFullServiceCatalog } from './retrieval.service.js';
+import { directCatalogMatcher } from './direct-catalog-matcher.js';
 import {
   COMMERCIAL_NEXT_ACTIONS,
   COMMERCIAL_PLANNER_GOALS,
@@ -14,6 +16,11 @@ import {
 import { parseDimensions } from './planner/dimensions.parser.js';
 import { currentWaitingField, interpretResponseForWaitingField } from './planner/response-interpreter.js';
 import { detectDesignPreference, detectInstallationPreference } from './planner/missing-information.detector.js';
+
+/**
+ * @deprecated LegacyOnly: message interpretation and service/state authority moved to Unified Planner.
+ * Keep temporarily as dispatcher for legacy rollback and non-canary companies only.
+ */
 
 function money(value) {
   const number = Number(value);
@@ -70,6 +77,30 @@ function isServiceCatalogRequest(text, { waitingField = null, hasShownOptions = 
   if (/^(catalogo|menu|opciones|servicios)$/.test(normalized)) return true;
   if (/\binformes\b/.test(normalized) && /\b(servicio|servicios)\b/.test(normalized)) return true;
   return /^(quiero informes|informes|informacion)$/.test(normalized) && (waitingField === 'catalog_selection' || hasShownOptions);
+}
+
+function isAdvisorRequest(text) {
+  const normalized = normalizeForNcie(text);
+  return /\b(asesor|ejecutivo|vendedor)\b/.test(normalized)
+    || /\b(me comunicas|me conectas|pasame|pasarme|comunicarme|quiero hablar)\b.*\b(asesor|alguien|persona|humano|ejecutivo|vendedor)\b/.test(normalized)
+    || /\b(atencion humana|atencion personal|hablar con alguien|hablar con una persona)\b/.test(normalized);
+}
+
+function isValidFlow(flow = null) {
+  if (!flow) return false;
+  if (['completed', 'cancelled', 'rejected'].includes(String(flow.status ?? '').toLowerCase())) return false;
+  return Boolean(flow.selectedServiceId || flow.selectedServiceName);
+}
+
+function logRouterPriority({ empresaId, conversationId = null, priority, reason, waitingField = null, selectedService = null }) {
+  logger.info('router_priority_selected', {
+    empresaId,
+    conversationId,
+    priority,
+    reason,
+    waitingField,
+    selectedService
+  });
 }
 
 function objectiveFromText(text) {
@@ -259,6 +290,13 @@ function quoteContextFromEntities(service, entities = {}) {
 }
 
 function makeResolved({ empresaId, reason, nlu, decision, responsePlan, plannerDecision, retrieval = null }) {
+  logLegacyDecisionDetected({
+    module: 'conversation-router',
+    responsibility: 'message_route_resolution',
+    decision: responsePlan?.type ?? decision?.action ?? null,
+    empresaId,
+    reason
+  });
   logger.info('routeMessage_resolved', {
     empresaId,
     routeMessage_resolved: true,
@@ -267,6 +305,21 @@ function makeResolved({ empresaId, reason, nlu, decision, responsePlan, plannerD
     waitingField: plannerDecision?.waitingField ?? null,
     selectedService: plannerDecision?.selectedService?.nombre ?? null
   });
+  logger.info('conversation_router_handled', {
+    empresaId,
+    reason,
+    responsePlanType: responsePlan?.type ?? null,
+    waitingField: plannerDecision?.waitingField ?? null,
+    selectedService: plannerDecision?.selectedService?.nombre ?? null
+  });
+  if (String(reason ?? '').startsWith('waiting_field_') || reason === 'catalog_selection') {
+    logger.info('waiting_field_resolved', {
+      empresaId,
+      reason,
+      waitingField: plannerDecision?.waitingField ?? null,
+      selectedService: plannerDecision?.selectedService?.nombre ?? null
+    });
+  }
   return {
     resolved: true,
     reason,
@@ -441,25 +494,6 @@ function findCategoryServices(services, category) {
   return (services ?? []).filter((service) => categoryName(service.categoria).includes(normalizedCategory));
 }
 
-function exactServiceForText(text, services = []) {
-  const normalized = normalizeForNcie(text);
-  const priority = [
-    { when: /\bpromocionales?\b.*\b(corte de vinil|vinil)\b|\bcorte de vinil\b.*\bpromocionales?\b/, name: 'Promocionales con corte de vinil' },
-    { when: /\bvinil impreso\b/, name: 'Vinil impreso' },
-    { when: /\brotulacion|rotular\b/, name: 'Vinil de rotulacion de color' },
-    { when: /\blona|impresion de lona\b/, name: 'Impresion de lona' },
-    { when: /\blogotipo|logo|diseno de logo|diseno de logotipo\b/, name: 'Diseno de logotipo' }
-  ];
-  for (const rule of priority) {
-    if (!rule.when.test(normalized)) continue;
-    const target = normalizeForNcie(rule.name);
-    const found = services.find((service) => normalizeForNcie(service.nombre) === target) ??
-      services.find((service) => normalizeForNcie(service.nombre).includes(target) || target.includes(normalizeForNcie(service.nombre)));
-    if (found) return found;
-  }
-  return null;
-}
-
 function renderCategoryOptions(category, services) {
   const lines = services.map((service, index) => `${index + 1}. ${service.nombre}`);
   return `Claro, en ${category.toLowerCase()} manejamos:\n${lines.join('\n')}\n¿Cuál te interesa cotizar?`;
@@ -593,16 +627,22 @@ function renderSummary(service, entities = {}) {
   return `Perfecto, dejo el resumen:\n${lines.join('\n')}\n\n¿Quieres que te comunique con un asesor para confirmar tiempo y precio final?`;
 }
 
-async function catalog(empresaId, mcpClient) {
-  return await loadFullServiceCatalog({ empresaId, mcpClient }) ?? { services: [], categories: [] };
+async function catalog(empresaId, mcpClient, providedCatalog = null) {
+  return providedCatalog ?? await loadFullServiceCatalog({ empresaId, mcpClient }) ?? { services: [], products: [], categories: [] };
 }
 
-export async function routeMessage({ empresaId, conversationId, state, normalizedMessage, mcpClient }) {
+export async function routeMessage({ empresaId, conversationId, state, normalizedMessage, mcpClient, catalog: providedCatalog = null }) {
   const text = normalizedText(normalizedMessage);
   const plannerState = normalizePlannerState({ state, empresaId, conversationId });
   const flow = activeFlow(plannerState);
   const waitingField = currentWaitingField(plannerState);
   const serviceFromState = serviceFromFlow(flow);
+  logger.info('conversation_router_started', {
+    empresaId,
+    conversationId,
+    activeFlow: flow?.id ?? null,
+    waitingField: waitingField ?? null
+  });
   const hasShownOptions = Boolean(
     (state?.commercial?.lastOptionsShown ?? []).length ||
     (state?.commercial?.lastShownList ?? []).length ||
@@ -610,8 +650,85 @@ export async function routeMessage({ empresaId, conversationId, state, normalize
     /cotizar|catalogo|servicios que manejamos/i.test(String(state?.commercial?.lastBotQuestion ?? state?.lastBotQuestion ?? ''))
   );
 
+  if (isAdvisorRequest(text)) {
+    const hasRealFlowService = isValidFlow(flow);
+    const service = hasRealFlowService ? serviceFromState : null;
+    const responseText = 'Claro, te comunico con un asesor. Ya le compartí tu solicitud.';
+    logRouterPriority({
+      empresaId,
+      conversationId,
+      priority: 'ADVISOR_REQUEST',
+      reason: hasRealFlowService ? 'advisor_request_active_flow' : 'advisor_request_no_active_flow',
+      waitingField,
+      selectedService: service?.nombre ?? null
+    });
+    logger.info('advisor_request_detected', {
+      empresaId,
+      conversationId,
+      activeFlow: flow?.id ?? null,
+      waitingField: waitingField ?? null,
+      selectedService: service?.nombre ?? null
+    });
+    if (!service) {
+      logger.info('advisor_request_no_service_selected', {
+        empresaId,
+        conversationId,
+        activeFlow: flow?.id ?? null,
+        waitingField: waitingField ?? null
+      });
+    }
+    const entities = {
+      ...(service ? flow?.entities ?? {} : {}),
+      advisorConfirmation: true,
+      handoffRequested: true
+    };
+    const stateUpdatePreview = service
+      ? makePlannerState({
+        state,
+        empresaId,
+        conversationId,
+        service,
+        previousFlow: flow,
+        entities,
+        waitingField: 'advisor_confirmation',
+        lastQuestion: responseText
+      })
+      : {
+        ...plannerState,
+        activeFlowId: null,
+        selectedService: null,
+        collectedEntities: {},
+        missingEntities: [],
+        waitingField: 'advisor_confirmation',
+        lastBotQuestion: responseText
+      };
+    return makeResolved({
+      empresaId,
+      reason: service ? 'advisor_request_active_flow' : 'advisor_request_no_active_flow',
+      nlu: nluForRoute('HABLAR_ASESOR', entities),
+      decision: decisionForRoute({ handoff: true }),
+      responsePlan: {
+        type: 'quote_requirements_followup',
+        deterministicRouter: true,
+        selectedType: NCIE_TYPES.SERVICE,
+        selected: service,
+        summary: 'Asesor solicitado',
+        question: responseText,
+        quoteContext: service ? quoteContextFromEntities(service, entities) : null
+      },
+      plannerDecision: plannerDecisionForRoute({
+        stateUpdatePreview,
+        selectedService: service,
+        responsePlanType: 'quote_requirements_followup',
+        entities,
+        waitingField: 'advisor_confirmation'
+      })
+    });
+  }
+
   if (isServiceCatalogRequest(text, { waitingField, hasShownOptions })) {
-    const fullCatalog = await catalog(empresaId, mcpClient);
+    logRouterPriority({ empresaId, conversationId, priority: 'CATALOG', reason: 'service_catalog_request', waitingField });
+    const fullCatalog = await catalog(empresaId, mcpClient, providedCatalog);
     return fullCatalogResolved({
       empresaId,
       plannerState,
@@ -649,7 +766,40 @@ export async function routeMessage({ empresaId, conversationId, state, normalize
     });
   }
 
+  if (!flow && !waitingField && /\b(asesor|ejecutivo|persona|humano)\b/.test(text)) {
+    const responseText = 'Claro, te comunico con un asesor. Ya le compartí el resumen de tu solicitud.';
+    return makeResolved({
+      empresaId,
+      reason: 'advisor_request_no_active_flow',
+      nlu: nluForRoute('HABLAR_ASESOR', { handoffRequested: true }),
+      decision: decisionForRoute({ handoff: true }),
+      responsePlan: {
+        type: 'quote_requirements_followup',
+        deterministicRouter: true,
+        selectedType: NCIE_TYPES.SERVICE,
+        selected: null,
+        summary: 'Asesor solicitado',
+        question: responseText
+      },
+      plannerDecision: plannerDecisionForRoute({
+        stateUpdatePreview: plannerState,
+        selectedService: null,
+        responsePlanType: 'quote_requirements_followup',
+        entities: { handoffRequested: true },
+        waitingField: null
+      })
+    });
+  }
+
   if (flow || waitingField) {
+    logRouterPriority({
+      empresaId,
+      conversationId,
+      priority: 'WAITING_FIELD',
+      reason: 'active_flow_or_waiting_field',
+      waitingField,
+      selectedService: serviceFromState?.nombre ?? null
+    });
     const service = serviceFromState;
     const existing = flow?.entities ?? {};
     const raw = normalizedMessage?.original ?? normalizedMessage?.raw ?? normalizedMessage?.normalized ?? '';
@@ -661,11 +811,42 @@ export async function routeMessage({ empresaId, conversationId, state, normalize
         pendingOptions: state?.commercial?.lastOptionsShown ?? []
       })
       : { handled: false, entities: {} };
+    if ((waitingField === 'catalog_selection' || waitingField === 'category_selection') && interpreted.ambiguous) {
+      const responseText = 'Dime cuál servicio te interesa cotizar o responde con el número de la lista.';
+      const plannerDecision = plannerDecisionForRoute({
+        stateUpdatePreview: {
+          ...plannerState,
+          waitingField,
+          selectedService: null,
+          lastBotQuestion: responseText
+        },
+        selectedService: null,
+        responsePlanType: 'clarify_pending_options',
+        entities: {},
+        waitingField,
+        nextAction: COMMERCIAL_NEXT_ACTIONS.FOLLOW_UP_CATALOG
+      });
+      return makeResolved({
+        empresaId,
+        reason: 'catalog_ambiguous_confirmation',
+        nlu: nluForRoute('ACLARAR_SELECCION_CATALOGO', {}),
+        decision: decisionForRoute(),
+        responsePlan: {
+          type: 'clarify_pending_options',
+          deterministicRouter: true,
+          selectedType: NCIE_TYPES.SERVICE,
+          selected: null,
+          summary: 'Seleccion de catalogo ambigua',
+          question: responseText
+        },
+        plannerDecision
+      });
+    }
     const repeatedGenericCategory = (waitingField === 'catalog_selection' || waitingField === 'category_selection')
       ? genericCategoryFromText(text)
       : null;
     if (repeatedGenericCategory) {
-      const fullCatalogForCategory = await catalog(empresaId, mcpClient);
+      const fullCatalogForCategory = await catalog(empresaId, mcpClient, providedCatalog);
       const routedCategory = categoryResolved({
         empresaId,
         plannerState,
@@ -683,6 +864,7 @@ export async function routeMessage({ empresaId, conversationId, state, normalize
     const design = interpreted.entities?.design ?? detectDesignPreference(text);
     const installation = interpreted.entities?.installation ?? detectInstallationPreference(text) ?? (/^instalacion$/.test(text) ? true : null);
     const advisorYes = /^(si|si por favor|claro|claro que si|por favor|adelante|va|sale)$/.test(text);
+    const advisorRequested = advisorYes || isAdvisorRequest(text);
 
     let entities = null;
     let nextWaiting = null;
@@ -690,6 +872,36 @@ export async function routeMessage({ empresaId, conversationId, state, normalize
     let responseType = 'quote_from_memory';
     let intent = 'RESPUESTA_CONTEXTO';
     let handoff = false;
+
+    if (waitingField === 'advisor_confirmation' && advisorRequested && !service) {
+      const responseText = 'Claro, te comunico con un asesor. Ya le compartí el resumen de tu solicitud.';
+      const plannerDecision = plannerDecisionForRoute({
+        stateUpdatePreview: {
+          ...plannerState,
+          waitingField: 'advisor_confirmation',
+          lastBotQuestion: responseText
+        },
+        selectedService: null,
+        responsePlanType: 'quote_requirements_followup',
+        entities: { advisorConfirmation: true, handoffRequested: true },
+        waitingField: 'advisor_confirmation'
+      });
+      return makeResolved({
+        empresaId,
+        reason: 'waiting_field_advisor_confirmation',
+        nlu: nluForRoute('HABLAR_ASESOR', { advisorConfirmation: true, handoffRequested: true }),
+        decision: decisionForRoute({ handoff: true }),
+        responsePlan: {
+          type: 'quote_requirements_followup',
+          deterministicRouter: true,
+          selectedType: NCIE_TYPES.SERVICE,
+          selected: null,
+          summary: 'Asesor solicitado',
+          question: responseText
+        },
+        plannerDecision
+      });
+    }
 
     if ((waitingField === 'catalog_selection' || waitingField === 'category_selection') && interpreted.entities?.catalogSelection?.selectedService) {
       const selected = interpreted.entities.catalogSelection.selectedService;
@@ -760,10 +972,10 @@ export async function routeMessage({ empresaId, conversationId, state, normalize
       });
     }
 
-    if (waitingField === 'advisor_confirmation' && advisorYes) {
+    if (waitingField === 'advisor_confirmation' && advisorRequested) {
       entities = { ...existing, advisorConfirmation: true, handoffRequested: true };
       nextWaiting = 'advisor_confirmation';
-      responseText = 'Perfecto, te comunico con un asesor para confirmar tiempo y precio final.';
+      responseText = 'Claro, te comunico con un asesor. Ya le compartí el resumen de tu solicitud.';
       responseType = 'quote_requirements_followup';
       intent = 'HABLAR_ASESOR';
       handoff = true;
@@ -893,21 +1105,10 @@ export async function routeMessage({ empresaId, conversationId, state, normalize
     }
   }
 
-  const genericCategory = genericCategoryFromText(text);
-  if (genericCategory) {
-    const fullCatalogForCategory = await catalog(empresaId, mcpClient);
-    const routedCategory = categoryResolved({
-      empresaId,
-      plannerState,
-      fullCatalog: fullCatalogForCategory,
-      category: genericCategory,
-      reason: 'generic_category_request'
-    });
-    if (routedCategory) return routedCategory;
-  }
-
-  const fullCatalog = await catalog(empresaId, mcpClient);
+  const fullCatalog = await catalog(empresaId, mcpClient, providedCatalog);
   const services = fullCatalog.services ?? [];
+  const products = fullCatalog.products ?? [];
+  const categories = fullCatalog.categories ?? [];
 
   const pendingOptions = state?.commercial?.lastOptionsShown ?? [];
   if ((waitingField === 'catalog_selection' || waitingField === 'category_selection') && /^\d{1,3}$/.test(text)) {
@@ -950,7 +1151,27 @@ export async function routeMessage({ empresaId, conversationId, state, normalize
     }
   }
 
-  const selectedByText = exactServiceForText(text, services);
+  const directMatch = directCatalogMatcher({ message: text, services, products, categories, empresaId, conversationId });
+  logger.info('direct_catalog_match', {
+    empresaId,
+    type: directMatch.type,
+    score: directMatch.score,
+    serviceName: directMatch.service?.nombre ?? null,
+    category: directMatch.category ?? null
+  });
+
+  if (directMatch.type === 'category' && directMatch.score >= 0.70) {
+    const routedCategory = categoryResolved({
+      empresaId,
+      plannerState,
+      fullCatalog,
+      category: directMatch.category,
+      reason: 'direct_catalog_category'
+    });
+    if (routedCategory) return routedCategory;
+  }
+
+  const selectedByText = directMatch.type === 'service' && directMatch.score >= 0.78 ? directMatch.service : null;
   if (selectedByText) {
     const quantity = /\b(pieza|piezas|pzs|unidades)\b/.test(text) ? quantityFromText(text) : null;
     const dimensions = parseDimensions(normalizedMessage?.original ?? text);
@@ -1013,6 +1234,11 @@ export async function routeMessage({ empresaId, conversationId, state, normalize
     activeFlow: flow?.id ?? null,
     waitingField: waitingField ?? null
   });
+  logger.info('conversation_router_unhandled', {
+    empresaId,
+    activeFlow: flow?.id ?? null,
+    waitingField: waitingField ?? null
+  });
   return { resolved: false };
 }
 
@@ -1020,24 +1246,38 @@ export async function routeConversationMessage({
   empresaId,
   phone = null,
   normalizedMessage,
+  originalMessage = null,
   state,
   plannerState = null,
   pendingOptions = null,
+  catalog = null,
   mcpClient
 } = {}) {
+  logLegacyDecisionDetected({
+    module: 'conversation-router',
+    responsibility: 'legacy_dispatcher_invoked',
+    empresaId,
+    conversationId: phone,
+    reason: 'legacy_engine_path'
+  });
   const routed = await routeMessage({
     empresaId,
     conversationId: phone,
     state,
-    normalizedMessage,
-    mcpClient
+    normalizedMessage: normalizedMessage ?? { original: originalMessage, raw: originalMessage, normalized: originalMessage },
+    mcpClient,
+    catalog
   });
   return {
     ...routed,
     handled: Boolean(routed.resolved),
+    updatedState: routed.plannerDecision?.stateUpdatePreview ?? plannerState ?? null,
     updatedPlannerState: routed.plannerDecision?.stateUpdatePreview ?? plannerState ?? null,
+    advisorNotificationRequired: routed.decision?.action === NCIE_ACTIONS.ESCALATE_HUMAN,
+    advisorNotificationPayload: null,
     advisorNotification: null,
     response: routed.responsePlan?.question ?? null,
     pendingOptions
   };
 }
+

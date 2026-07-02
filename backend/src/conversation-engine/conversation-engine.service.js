@@ -1,5 +1,6 @@
 import { mcpClient as defaultMcpClient } from '../mcp/mcpClient.js';
 import { logger } from '../utils/logger.js';
+import { logLegacyDecisionDetected } from './legacy-decision-warning.js';
 import { normalizeIncomingMessage } from './message-normalizer.js';
 import { loadConversationState, saveConversationState } from './conversation-state.manager.js';
 import { interpretNlu } from './nlu.interpreter.js';
@@ -21,6 +22,19 @@ import { normalizePlannerState } from './planner/commercial-state.schema.js';
 import { currentWaitingField, interpretResponseForWaitingField } from './planner/response-interpreter.js';
 import { planAdvisorNotification } from './advisor-notification.js';
 import { routeConversationMessage } from './conversation-router.js';
+import {
+  isUnifiedPlannerRollbackOnError,
+  runUnifiedPlannerCanary,
+  selectUnifiedPlannerCanary
+} from './unified-canary.service.js';
+import { isUnifiedPlannerShadowEnabled, runUnifiedPlannerShadow } from './unified-shadow.service.js';
+
+/**
+ * Conversation orchestrator.
+ *
+ * Unified canary path is the target authority path. The legacy branch below remains
+ * LegacyOnly for rollback and companies outside canary until Phase 9 removal.
+ */
 
 function emptyRetrieval({ commercialReasoning = null } = {}) {
   return {
@@ -152,10 +166,16 @@ async function validateStateAfterSave({
 }) {
   const beforePlannerState = normalizePlannerState({ state: stateBefore, empresaId, conversationId: phone });
   const beforeActiveFlow = beforePlannerState.activeFlowId;
-  if (!beforeActiveFlow) return null;
-
   const after = await loadConversationState({ empresaId, phone, contextStore });
   const afterPlannerState = normalizePlannerState({ state: after, empresaId, conversationId: phone });
+  logger.info('state_saved_verified', {
+    empresaId,
+    conversationId: phone,
+    beforeActiveFlow: beforeActiveFlow ?? null,
+    afterActiveFlow: afterPlannerState.activeFlowId ?? null,
+    waitingField: afterPlannerState.waitingField ?? null
+  });
+  if (!beforeActiveFlow) return after;
   if (afterPlannerState.activeFlowId) return after;
 
   const allowedReason = responsePlan?.flowCloseReason ?? plannerDecision?.flowCloseReason ?? (
@@ -215,6 +235,51 @@ async function maybeCreateLead({ mcpClient, empresaId, phone, whatsappChatId, co
   return result;
 }
 
+async function attachUnifiedShadowComparison({
+  enabled = isUnifiedPlannerShadowEnabled(),
+  runner = runUnifiedPlannerShadow,
+  oldResult,
+  empresaId,
+  conversationId,
+  normalizedMessage,
+  state,
+  mcpClient
+}) {
+  if (!enabled) return oldResult;
+  try {
+    const comparison = await runner({
+      empresaId,
+      conversationId,
+      normalizedMessage,
+      state,
+      oldResult,
+      mcpClient
+    });
+    return {
+      ...oldResult,
+      ncie: {
+        ...(oldResult.ncie ?? {}),
+        unifiedShadowComparison: comparison
+      }
+    };
+  } catch (error) {
+    logger.error('unified_shadow_comparison_failed', {
+      empresaId,
+      conversationId,
+      error
+    });
+    return {
+      ...oldResult,
+      ncie: {
+        ...(oldResult.ncie ?? {}),
+        unifiedShadowComparison: {
+          error: error?.message ?? 'unified shadow failed'
+        }
+      }
+    };
+  }
+}
+
 export async function runConversationEngine({
   empresaId,
   phone,
@@ -224,21 +289,78 @@ export async function runConversationEngine({
   contactName = null,
   mcpClient = defaultMcpClient,
   contextStore = undefined,
-  persist = true
+  persist = true,
+  unifiedShadowRunner = runUnifiedPlannerShadow,
+  unifiedCanaryRunner = runUnifiedPlannerCanary
 }) {
   logger.info('ncie_message_received', { empresaId, phone });
   const normalizedMessage = normalizeIncomingMessage({ message, contactName, phone });
   const state = await loadConversationState({ empresaId, phone, contextStore });
+  const conversationId = whatsappChatId ?? phone;
+  const canarySelection = selectUnifiedPlannerCanary({ empresaId });
+  if (!canarySelection.selected) {
+    logger.info('unified_canary_skipped', {
+      empresaId,
+      conversationId,
+      reason: canarySelection.reason,
+      canaryEmpresas: canarySelection.canaryEmpresas
+    });
+  } else {
+    logger.info('unified_canary_selected', {
+      empresaId,
+      conversationId,
+      reason: canarySelection.reason,
+      unifiedState: state?.unified?.currentState ?? null,
+      unifiedSelectedService: state?.unified?.selectedService?.nombre ?? null
+    });
+    try {
+      return await unifiedCanaryRunner({
+        empresaId,
+        phone,
+        message,
+        normalizedMessage,
+        whatsappChatId,
+        whatsappMessageId,
+        contactName,
+        state,
+        mcpClient,
+        contextStore,
+        persist
+      });
+    } catch (error) {
+      logger.error('unified_canary_error', {
+        empresaId,
+        conversationId,
+        error
+      });
+      if (!isUnifiedPlannerRollbackOnError()) {
+        throw error;
+      }
+      logger.info('unified_canary_fallback_to_legacy', {
+        empresaId,
+        conversationId,
+        reason: error?.message ?? 'unified_canary_error'
+      });
+    }
+  }
+  logLegacyDecisionDetected({
+    module: 'conversation-engine.service',
+    responsibility: 'legacy_engine_branch',
+    decision: 'legacy_engine_path',
+    empresaId,
+    conversationId,
+    reason: canarySelection.selected ? 'canary_fallback_to_legacy' : canarySelection.reason
+  });
   logger.info('ncie_conversation_state_loaded', {
     empresaId,
-    conversationId: whatsappChatId ?? phone,
+    conversationId,
     activeFlow: state?.commercial?.plannerState?.activeFlowId ?? null,
     waitingField: state?.commercial?.plannerState?.waitingField ?? null
   });
-  const plannerStateForInput = normalizePlannerState({ state, empresaId, conversationId: whatsappChatId ?? phone });
+  const plannerStateForInput = normalizePlannerState({ state, empresaId, conversationId });
   logger.info('ncie_state_before', {
     empresaId,
-    conversationId: whatsappChatId ?? phone,
+    conversationId,
     activeFlow: plannerStateForInput.activeFlowId ?? null,
     selectedService: plannerStateForInput.selectedService?.nombre ?? null,
     waitingField: plannerStateForInput.waitingField ?? null,
@@ -246,7 +368,7 @@ export async function runConversationEngine({
   });
   const routed = await routeConversationMessage({
     empresaId,
-    phone: whatsappChatId ?? phone,
+    phone: conversationId,
     state,
     normalizedMessage,
     plannerState: plannerStateForInput,
@@ -274,6 +396,14 @@ export async function runConversationEngine({
       ncie_skipped_retrieval_due_to_waiting_field: true,
       retrievalSkipped: true
     });
+    logger.info('conversation_router_skipped_ncie', {
+      empresaId,
+      reason: routed.reason,
+      skippedNlu: true,
+      skippedPlanner: true,
+      skippedRetrieval: true,
+      skippedCommercialReasoning: true
+    });
     logger.info('ncie_response_planned', { empresaId, type: responsePlan.type });
     const generated = generateResponse({ nlu, retrieval, decision, state, commercialReasoning, responsePlan });
     logger.info('ncie_response_generated', { empresaId, hasResponse: Boolean(generated.respuesta) });
@@ -288,6 +418,25 @@ export async function runConversationEngine({
       plannerDecision: plannerAuthorityDecision,
       responsePlan
     });
+    if (advisorNotification.advisorNotificationRequired) {
+      logger.info('ncie_advisor_notification_required', {
+        empresaId,
+        reason: advisorNotification.notificationReason,
+        selectedService: advisorNotification.notificationPayload?.selectedService ?? null,
+        currentEstimate: advisorNotification.notificationPayload?.currentEstimate ?? null
+      });
+      logger.info('advisor_notification_sent', {
+        empresaId,
+        reason: advisorNotification.notificationReason,
+        notificationHash: advisorNotification.notificationHash
+      });
+    } else if (advisorNotification.skippedDuplicate) {
+      logger.info('advisor_notification_skipped_duplicate', {
+        empresaId,
+        reason: advisorNotification.notificationReason,
+        notificationHash: advisorNotification.notificationHash
+      });
+    }
 
     let savedConversation = null;
     let lead = null;
@@ -346,7 +495,7 @@ export async function runConversationEngine({
       });
     }
 
-    return {
+    const oldResult = {
       respuesta: generated.respuesta,
       medios: generated.medios,
       intencion: nlu.intent,
@@ -374,6 +523,15 @@ export async function runConversationEngine({
       lead_id: lead?.lead_id ?? null,
       conversacion_id: savedConversation?.conversacion_id ?? null
     };
+    return attachUnifiedShadowComparison({
+      runner: unifiedShadowRunner,
+      oldResult,
+      empresaId,
+      conversationId: whatsappChatId ?? phone,
+      normalizedMessage,
+      state,
+      mcpClient
+    });
   }
   const waitingField = currentWaitingField(plannerStateForInput);
   const contextualResponse = waitingField
@@ -636,6 +794,11 @@ export async function runConversationEngine({
       empresaId,
       reason: advisorNotification.notificationReason
     });
+    logger.info('advisor_notification_skipped_duplicate', {
+      empresaId,
+      reason: advisorNotification.notificationReason,
+      notificationHash: advisorNotification.notificationHash
+    });
   }
 
   let savedConversation = null;
@@ -718,7 +881,7 @@ export async function runConversationEngine({
     });
   }
 
-  return {
+  const oldResult = {
     respuesta: generated.respuesta,
     medios: generated.medios,
     intencion: nlu.intent,
@@ -746,4 +909,13 @@ export async function runConversationEngine({
     lead_id: lead?.lead_id ?? null,
     conversacion_id: savedConversation?.conversacion_id ?? null
   };
+  return attachUnifiedShadowComparison({
+    runner: unifiedShadowRunner,
+    oldResult,
+    empresaId,
+    conversationId: whatsappChatId ?? phone,
+    normalizedMessage,
+    state,
+    mcpClient
+  });
 }

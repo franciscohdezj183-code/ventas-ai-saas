@@ -1,0 +1,36 @@
+{
+  "generatedAt": "2026-07-02T07:22:54.873Z",
+  "totalComparisons": 0,
+  "sameIntentRate": 0,
+  "selectedServiceMatchRate": 0,
+  "nextStateMatchRate": 0,
+  "oldEngineFailureDetected": 0,
+  "unifiedEngineFailureDetected": 0,
+  "unifiedBetterCount": 0,
+  "oldBetterCount": 0,
+  "criticalMismatchCount": 0,
+  "differenceCounts": {
+    "Servicio incorrecto": 0,
+    "Estado incorrecto": 0,
+    "Handoff incorrecto": 0,
+    "Pregunta repetida": 0,
+    "Revive memoria vieja": 0,
+    "Interpreta numero mal": 0,
+    "Catalogo/categoria incorrecta": 0,
+    "Respuesta vacia o error": 0,
+    "Cambio de servicio sin intencion explicita": 0
+  },
+  "phase6B": {
+    "canProceed": false,
+    "criteria": {
+      "zeroCriticalUnifiedErrors": true,
+      "unifiedBeatsOld": false,
+      "noStaleMemoryRevival": true,
+      "noExactRepeatedQuestion": true,
+      "noServiceChangeWithoutExplicitIntent": true
+    }
+  },
+  "samples": {
+    "criticalMismatches": []
+  }
+}

@@ -63,7 +63,11 @@ export function isTargetClosedError(error) {
 export function isLockedLocalAuthError(error) {
   const code = String(error?.code ?? '').toUpperCase();
   const message = String(error?.message ?? error ?? '').toUpperCase();
-  return ['EBUSY', 'EPERM', 'ENOTEMPTY'].some((value) => code === value || message.includes(value));
+  return ['EBUSY', 'EPERM', 'ENOTEMPTY'].some((value) => code === value || message.includes(value))
+    || (
+      message.includes('BROWSER IS ALREADY RUNNING')
+      && message.includes('USERDATADIR')
+    );
 }
 
 export async function waitForWhatsappTerminalState({

@@ -3,6 +3,7 @@ import {
   saveConversationContext
 } from '../bot/conversationContext.service.js';
 import { logger } from '../utils/logger.js';
+import { logLegacyDecisionDetected } from './legacy-decision-warning.js';
 import { NCIE_FUNNEL_STAGES } from './conversation-engine.types.js';
 import {
   COMMERCIAL_PLANNER_GOALS,
@@ -11,6 +12,14 @@ import {
   emptyPlannerState,
   waitingFieldFromMissing
 } from './planner/commercial-state.schema.js';
+
+/**
+ * Legacy compatibility boundary.
+ *
+ * @deprecated LegacyOnly state fields (`activeFlow`, `waitingField`, `active_service_*`)
+ * remain for rollback/non-canary compatibility. Unified Planner persists canonical
+ * state under `datos_json.ncie.unified` and must not use these fields as authority.
+ */
 
 function parseData(context) {
   return context?.datos_json && typeof context.datos_json === 'object'
@@ -59,8 +68,22 @@ function guardPlannerStateIntegrity({
   const previousFlow = activeFlow(previousPlannerState);
   if (!nextPlannerState) return nextPlannerState;
   const nextFlow = activeFlow(nextPlannerState);
-  const explicitReset = responsePlan?.type === 'catalog_listing';
+  const explicitReset = [
+    'clarify_need',
+    'consultative_diagnosis',
+    'economic_category_question',
+    'recommendation_goal_question',
+    'personalized_products_summary',
+    'catalog_listing'
+  ].includes(responsePlan?.type) && !responsePlan?.selected;
   if (previousFlow && !nextFlow && !explicitReset) {
+    logLegacyDecisionDetected({
+      module: 'conversation-state.manager',
+      responsibility: 'active_flow_integrity_guard',
+      decision: previousFlow.id,
+      empresaId,
+      reason: 'active_flow_would_be_cleared'
+    });
     logger.error('ncie_state_corruption_prevented', {
       empresaId,
       previousActiveFlow: previousFlow.id,
@@ -112,9 +135,11 @@ export async function loadConversationState({
   const legacyContext = await contextStore.find({ empresaId, phone });
   const data = parseData(legacyContext);
   const ncie = data.ncie && typeof data.ncie === 'object' ? data.ncie : {};
+  const unified = ncie.unified && typeof ncie.unified === 'object' ? ncie.unified : null;
 
   return {
     legacyContext,
+    unified,
     lastProductId: legacyContext?.ultimo_producto_id ?? null,
     lastServiceId: legacyContext?.ultimo_servicio_id ?? ncie.active_service_id ?? null,
     lastSearchText: legacyContext?.ultimo_texto_busqueda ?? null,
@@ -184,7 +209,7 @@ export async function saveConversationState({
     'marketing_goal_followup'
   ]);
   const productSelectionPlans = new Set(['product_explanation']);
-  const planSelectedService = selectedType === 'service' && serviceSelectionPlans.has(responsePlan?.type)
+  const rawPlanSelectedService = selectedType === 'service' && serviceSelectionPlans.has(responsePlan?.type)
     ? responsePlan?.selected ?? state?.lastService ?? null
     : null;
   const planSelectedProduct = selectedType === 'product' && productSelectionPlans.has(responsePlan?.type)
@@ -198,12 +223,26 @@ export async function saveConversationState({
     'personalized_products_summary',
     'catalog_listing'
   ].includes(responsePlan?.type);
-  const shouldClearActiveSelection = clearsActiveSelection && responsePlan?.type === 'catalog_listing';
+  const shouldClearActiveSelection = clearsActiveSelection && !responsePlan?.selected;
   const plannerActiveFlow = plannerDecision
     ? (plannerDecision.activeFlow ?? activeFlow(plannerDecision.stateUpdatePreview) ?? null)
     : activeFlow(state?.commercial?.plannerState) ?? null;
-  const hasPlannerActiveFlow = Boolean(plannerActiveFlow);
-  const plannerActiveService = plannerActiveFlow?.selectedServiceName || plannerActiveFlow?.selectedServiceId
+  const hasPlannerActiveFlow = Boolean(plannerActiveFlow) && !shouldClearActiveSelection;
+  const preventsStaleActiveMemory = responsePlan?.type === 'quote_requirements_followup'
+    && decision?.action === 'escalate_human'
+    && !hasPlannerActiveFlow
+    && !responsePlan?.selected;
+  const planSelectedService = preventsStaleActiveMemory ? null : rawPlanSelectedService;
+  if (preventsStaleActiveMemory && (state?.lastService || state?.commercial?.activeServiceName || state?.commercial?.activeServiceId)) {
+    logger.info('active_memory_ignored_stale', {
+      empresaId,
+      phone,
+      reason: 'handoff_without_valid_active_flow',
+      activeServiceId: state?.commercial?.activeServiceId ?? state?.lastServiceId ?? null,
+      activeServiceName: state?.commercial?.activeServiceName ?? state?.lastService?.nombre ?? null
+    });
+  }
+  const plannerActiveService = hasPlannerActiveFlow && (plannerActiveFlow?.selectedServiceName || plannerActiveFlow?.selectedServiceId)
     ? {
       ...(state?.lastService ?? {}),
       id: plannerActiveFlow.selectedServiceId ?? null,
@@ -216,18 +255,18 @@ export async function saveConversationState({
       requiere_cantidad: plannerActiveFlow.requiresQuantity ?? state?.lastService?.requiere_cantidad ?? null
     }
     : null;
-  const bestService = planSelectedService ?? plannerActiveService ?? (shouldClearActiveSelection && !hasPlannerActiveFlow ? null : state?.lastService ?? null);
-  const bestProduct = planSelectedProduct ?? (shouldClearActiveSelection && !hasPlannerActiveFlow ? null : state?.lastProduct ?? null);
+  const bestService = planSelectedService ?? plannerActiveService ?? (preventsStaleActiveMemory || (shouldClearActiveSelection && !hasPlannerActiveFlow) ? null : state?.lastService ?? null);
+  const bestProduct = planSelectedProduct ?? (preventsStaleActiveMemory || (shouldClearActiveSelection && !hasPlannerActiveFlow) ? null : state?.lastProduct ?? null);
   const lastServiceId = planSelectedProduct
     ? null
     : planSelectedService
       ? planSelectedService?.id ?? state?.lastServiceId ?? null
-      : bestService?.id ?? (shouldClearActiveSelection && !hasPlannerActiveFlow ? null : state?.lastServiceId ?? null);
+      : bestService?.id ?? (preventsStaleActiveMemory || (shouldClearActiveSelection && !hasPlannerActiveFlow) ? null : state?.lastServiceId ?? null);
   const lastProductId = planSelectedService
     ? null
     : planSelectedProduct
       ? planSelectedProduct?.id ?? state?.lastProductId ?? null
-      : bestProduct?.id ?? (shouldClearActiveSelection && !hasPlannerActiveFlow ? null : state?.lastProductId ?? null);
+      : bestProduct?.id ?? (preventsStaleActiveMemory || (shouldClearActiveSelection && !hasPlannerActiveFlow) ? null : state?.lastProductId ?? null);
   const previousData = state?.legacyContext?.datos_json ?? {};
   const missingData = decision?.missingData ?? nlu?.missing_data ?? [];
   const needSummary = decision?.needSummary ?? response?.summary ?? state?.needSummary ?? null;
@@ -243,7 +282,7 @@ export async function saveConversationState({
     ?? catalogList
     ?? responsePlan?.families
     ?? (isListPlan ? retrieval?.services ?? retrieval?.products ?? [] : state?.commercial?.lastOptionsShown ?? state?.commercial?.lastShownList ?? []);
-  const lastSelection = planSelectedService ?? planSelectedProduct ?? (shouldClearActiveSelection ? null : state?.commercial?.lastSelection ?? null);
+  const lastSelection = planSelectedService ?? planSelectedProduct ?? (preventsStaleActiveMemory || shouldClearActiveSelection ? null : state?.commercial?.lastSelection ?? null);
   let quoteContext = responsePlan?.type === 'quote_estimate'
     ? {
       service_id: bestService?.id ?? null,
@@ -258,8 +297,8 @@ export async function saveConversationState({
       ? {
         ...(state?.commercial?.lastQuoteContext ?? {}),
         ...(responsePlan?.quoteContext ?? {}),
-        service_id: bestService?.id ?? state?.commercial?.lastQuoteContext?.service_id ?? null,
-        service_name: bestService?.nombre ?? state?.commercial?.lastQuoteContext?.service_name ?? null,
+        service_id: bestService?.id ?? (preventsStaleActiveMemory ? null : state?.commercial?.lastQuoteContext?.service_id ?? null),
+        service_name: bestService?.nombre ?? (preventsStaleActiveMemory ? null : state?.commercial?.lastQuoteContext?.service_name ?? null),
         question: response?.question ?? null,
         design_support: responsePlan?.type === 'quote_design_followup'
           ? responsePlan.customerAnswer !== 'ya_tiene_diseno'
@@ -325,7 +364,20 @@ export async function saveConversationState({
         missingEntities: ['catalogo'],
         lastBotQuestion: response?.question ?? state?.commercial?.lastBotQuestion ?? null
       }
-      : state?.commercial?.plannerState ?? null;
+    : state?.commercial?.plannerState ?? null;
+
+  if (shouldClearActiveSelection && plannerState) {
+    plannerState = {
+      ...plannerState,
+      activeFlowId: null,
+      selectedService: null,
+      currentEstimate: null,
+      waitingField: responsePlan?.type === 'catalog_listing' ? 'catalog_selection' : null,
+      selectedCategory: responsePlan?.type === 'catalog_listing' ? plannerState.selectedCategory ?? null : null,
+      missingEntities: responsePlan?.type === 'catalog_listing' ? plannerState.missingEntities ?? ['catalogo'] : [],
+      flows: plannerState.flows ?? []
+    };
+  }
 
   plannerState = guardPlannerStateIntegrity({
     empresaId,
@@ -333,12 +385,14 @@ export async function saveConversationState({
     nextPlannerState: plannerState,
     responsePlan
   });
-  quoteContext = quoteContext ?? quoteContextFromFlow(activeFlow(plannerState), state?.commercial?.lastQuoteContext ?? null);
+  quoteContext = preventsStaleActiveMemory
+    ? null
+    : quoteContext ?? quoteContextFromFlow(activeFlow(plannerState), state?.commercial?.lastQuoteContext ?? null);
 
   const savedDatos = {
     ...previousData,
-    producto: bestProduct ?? (shouldClearActiveSelection ? null : previousData.producto ?? null),
-    servicio: bestService ?? (shouldClearActiveSelection ? null : previousData.servicio ?? null),
+    producto: bestProduct ?? (preventsStaleActiveMemory || shouldClearActiveSelection ? null : previousData.producto ?? null),
+    servicio: bestService ?? (preventsStaleActiveMemory || shouldClearActiveSelection ? null : previousData.servicio ?? null),
     ultima_lista_productos: retrieval?.products ?? previousData.ultima_lista_productos ?? [],
     ultima_lista_servicios: retrieval?.services ?? previousData.ultima_lista_servicios ?? [],
     ncie: {
@@ -346,8 +400,8 @@ export async function saveConversationState({
       symptom: nlu?.entities?.symptom ?? null,
       necesidad_actual: needSummary,
       problema_detectado: nlu?.entities?.problem ?? state?.detectedProblem ?? null,
-      servicio_probable: bestService?.nombre ?? (shouldClearActiveSelection ? null : nlu?.entities?.service ?? state?.probableService ?? null),
-      producto_probable: bestProduct?.nombre ?? (shouldClearActiveSelection ? null : nlu?.entities?.product ?? state?.probableProduct ?? null),
+      servicio_probable: bestService?.nombre ?? (preventsStaleActiveMemory || shouldClearActiveSelection ? null : nlu?.entities?.service ?? state?.probableService ?? null),
+      producto_probable: bestProduct?.nombre ?? (preventsStaleActiveMemory || shouldClearActiveSelection ? null : nlu?.entities?.product ?? state?.probableProduct ?? null),
       ultima_pregunta_bot: response?.question ?? null,
       datos_recolectados: collectedData,
       datos_faltantes: missingData,
@@ -356,15 +410,15 @@ export async function saveConversationState({
       funnel_stage: decision?.funnelStage ?? state?.funnelStage ?? NCIE_FUNNEL_STAGES.EXPLORING,
       need_summary: needSummary,
       last_decision: decision?.action ?? null,
-      ultimo_dominio: shouldClearActiveSelection ? null : commercialReasoning?.domain ?? lastCategory ?? state?.commercial?.lastDomain ?? null,
-      ultimo_servicio: bestService?.nombre ?? (shouldClearActiveSelection ? null : state?.commercial?.lastService ?? null),
+      ultimo_dominio: preventsStaleActiveMemory || shouldClearActiveSelection ? null : commercialReasoning?.domain ?? lastCategory ?? state?.commercial?.lastDomain ?? null,
+      ultimo_servicio: bestService?.nombre ?? (preventsStaleActiveMemory || shouldClearActiveSelection ? null : state?.commercial?.lastService ?? null),
       ultima_categoria: lastCategory,
       ultima_pregunta: response?.question ?? state?.commercial?.lastQuestion ?? null,
       ultima_lista_mostrada: lastShownList,
       ultima_seleccion: lastSelection,
       active_service_id: bestService?.id ?? null,
       active_service_name: bestService?.nombre ?? null,
-      active_domain: bestService?.categoria ?? (shouldClearActiveSelection ? null : commercialReasoning?.domain ?? state?.commercial?.activeDomain ?? null),
+      active_domain: bestService?.categoria ?? (preventsStaleActiveMemory || shouldClearActiveSelection ? null : commercialReasoning?.domain ?? state?.commercial?.activeDomain ?? null),
       last_quote_context: quoteContext,
       last_advisor_notification_at: advisorNotification?.advisorNotificationRequired
         ? new Date().toISOString()

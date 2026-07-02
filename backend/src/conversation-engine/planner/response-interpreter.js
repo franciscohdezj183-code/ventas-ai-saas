@@ -1,4 +1,5 @@
 import { normalizeForNcie } from '../message-normalizer.js';
+import { logLegacyDecisionDetected } from '../legacy-decision-warning.js';
 import { activeFlow, waitingFieldFromMissing } from './commercial-state.schema.js';
 import {
   detectDesignPreference,
@@ -6,6 +7,11 @@ import {
   detectWebType
 } from './missing-information.detector.js';
 import { parseDimensions } from './dimensions.parser.js';
+
+/**
+ * @deprecated LegacyOnly parser. Unified Planner uses entity-extractor and ConversationState.currentState.
+ * This module must not be used as authority outside legacy rollback/non-canary paths.
+ */
 
 const AMBIGUOUS_CONFIRMATIONS = new Set(['si', 'no', 'tal vez', 'depende']);
 const POSITIVE_CONFIRMATIONS = new Set(['si', 'claro', 'por favor', 'adelante']);
@@ -167,6 +173,12 @@ export function interpretResponseForWaitingField({
   const rawText = normalizedMessage?.original ?? normalizedMessage?.raw ?? normalizedMessage?.normalized ?? '';
   const text = normalizeForNcie(rawText);
   if (!waitingField || !text) return { handled: false, entities: {}, confidence: 0 };
+  logLegacyDecisionDetected({
+    module: 'response-interpreter',
+    responsibility: 'waiting_field_context_parser',
+    decision: waitingField,
+    reason: 'legacy_waiting_field_invoked'
+  });
 
   if (isAmbiguousChoice({ text, waitingField, pendingOptions })) {
     return {

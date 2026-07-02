@@ -1,3 +1,5 @@
+import { logger } from '../../utils/logger.js';
+
 export const PLANNER_STATE_VERSION = 2;
 
 export const COMMERCIAL_PLANNER_GOALS = Object.freeze({
@@ -83,11 +85,35 @@ export function waitingFieldFromMissing(missing = []) {
 export function normalizePlannerState({ state = null, empresaId = null, conversationId = null } = {}) {
   const existing = state?.commercial?.plannerState ?? state?.plannerState ?? null;
   if (existing?.version === PLANNER_STATE_VERSION && Array.isArray(existing.flows)) {
-    return {
+    const merged = {
       ...emptyPlannerState({ empresaId, conversationId }),
       ...existing,
       empresaId: existing.empresaId ?? empresaId,
       conversationId: existing.conversationId ?? conversationId
+    };
+    const flow = activeFlow(merged);
+    if (
+      !flow &&
+      ['catalog_selection', 'category_selection', 'advisor_confirmation'].includes(merged.waitingField) &&
+      (merged.selectedService || state?.commercial?.activeServiceName || state?.commercial?.activeServiceId)
+    ) {
+      logger.info('active_memory_ignored_stale', {
+        empresaId,
+        conversationId,
+        waitingField: merged.waitingField,
+        activeServiceId: state?.commercial?.activeServiceId ?? null,
+        activeServiceName: state?.commercial?.activeServiceName ?? null
+      });
+      return {
+        ...merged,
+        selectedService: null,
+        collectedEntities: {},
+        quotationDraft: null,
+        currentEstimate: null
+      };
+    }
+    return {
+      ...merged
     };
   }
 

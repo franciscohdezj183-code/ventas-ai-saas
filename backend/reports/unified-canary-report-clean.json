@@ -1,0 +1,208 @@
+{
+  "generatedAt": "2026-07-02T17:06:29.125Z",
+  "totalEvents": 52,
+  "totalResponses": 37,
+  "unifiedCanaryErrorCount": 0,
+  "fallbackToLegacyCount": 0,
+  "syntheticFallbackIgnoredCount": 0,
+  "clarifyIntentCount": 3,
+  "commercialQualityScoreCount": 0,
+  "recommendationGeneratedCount": 0,
+  "recommendationExplainedCount": 0,
+  "businessGoalDetectedCount": 0,
+  "businessTypeDetectedCount": 0,
+  "repeatedQuestionPreventedCount": 5,
+  "outOfOrderEntityHandledCount": 5,
+  "handoffSentCount": 2,
+  "legacyServiceRevivedCount": 0,
+  "byMessage": {
+    "unified_canary_response_sent": 37,
+    "unified_canary_repeated_question_prevented": 5,
+    "unified_canary_out_of_order_entity_handled": 5,
+    "unified_canary_clarify": 3,
+    "unified_canary_handoff_sent": 2
+  },
+  "byIntent": {
+    "SHOW_CATALOG": 7,
+    "START_SERVICE_QUOTE": 9,
+    "ANSWER_PREVIOUS_QUESTION": 12,
+    "SHOW_CATEGORY": 1,
+    "NEUTRAL": 2,
+    "CLARIFY": 3,
+    "HANDOFF": 2,
+    "TOPIC_SWITCH": 1
+  },
+  "phase7": {
+    "canProceedToLegacyCleanup": true,
+    "criteria": {
+      "hasCanaryEvents": true,
+      "zeroCriticalFallbacks": true,
+      "zeroLegacyServiceRevived": true,
+      "zeroUnhandledRepeatedQuestions": true,
+      "rollbackStillObservable": true,
+      "advisorObserved": true
+    },
+    "reason": null
+  },
+  "samples": {
+    "errors": [],
+    "fallbacks": [],
+    "clarifies": [
+      {
+        "level": "info",
+        "message": "unified_canary_clarify",
+        "timestamp": "2026-07-02T17:06:26.419Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "dimensions_without_service",
+        "nextState": "INIT"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_clarify",
+        "timestamp": "2026-07-02T17:06:26.427Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "ambiguous_number_requires_clarification",
+        "nextState": "INIT"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_clarify",
+        "timestamp": "2026-07-02T17:06:26.437Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "no_planner_rule_matched",
+        "nextState": "INIT"
+      }
+    ],
+    "repeatedQuestionsPrevented": [
+      {
+        "level": "info",
+        "message": "unified_canary_repeated_question_prevented",
+        "timestamp": "2026-07-02T17:06:26.359Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "questionId": "quote.design",
+        "question": "Perfecto, considero presupuesto aproximado de $1,000.00. Para cerrar: ya tienes el diseno o quieres apoyo?"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_repeated_question_prevented",
+        "timestamp": "2026-07-02T17:06:26.383Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "questionId": "quote.design",
+        "question": "Perfecto, agrego instalacion para revisar con asesor. Ya tienes el diseno o quieres apoyo?"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_repeated_question_prevented",
+        "timestamp": "2026-07-02T17:06:26.522Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "questionId": "quote.design",
+        "question": "Perfecto, considero presupuesto aproximado de $1,000.00. Para cerrar: ya tienes el diseno o quieres apoyo?"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_repeated_question_prevented",
+        "timestamp": "2026-07-02T17:06:26.548Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "questionId": "quote.design",
+        "question": "Perfecto, considero presupuesto aproximado de $2,000.00. Para cerrar: ya tienes el diseno o quieres apoyo?"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_repeated_question_prevented",
+        "timestamp": "2026-07-02T17:06:26.582Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "questionId": "quote.design",
+        "question": "Perfecto, considero presupuesto aproximado de $1,000.00. Para cerrar: ya tienes el diseno o quieres apoyo?"
+      }
+    ],
+    "outOfOrderEntityHandled": [
+      {
+        "level": "info",
+        "message": "unified_canary_out_of_order_entity_handled",
+        "timestamp": "2026-07-02T17:06:26.360Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "selectedService": "Impresion de lona",
+        "nextState": "ESPERANDO_DISENO",
+        "entities": [
+          "budget",
+          "currency"
+        ]
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_out_of_order_entity_handled",
+        "timestamp": "2026-07-02T17:06:26.385Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "selectedService": "Vinil de rotulacion de color",
+        "nextState": "ESPERANDO_DISENO",
+        "entities": [
+          "category",
+          "installation"
+        ]
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_out_of_order_entity_handled",
+        "timestamp": "2026-07-02T17:06:26.524Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "selectedService": "Impresion de lona",
+        "nextState": "ESPERANDO_DISENO",
+        "entities": [
+          "budget",
+          "currency"
+        ]
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_out_of_order_entity_handled",
+        "timestamp": "2026-07-02T17:06:26.550Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "selectedService": "Impresion de lona",
+        "nextState": "ESPERANDO_DISENO",
+        "entities": [
+          "budget",
+          "currency"
+        ]
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_out_of_order_entity_handled",
+        "timestamp": "2026-07-02T17:06:26.586Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "selectedService": "Impresion de lona",
+        "nextState": "ESPERANDO_DISENO",
+        "entities": [
+          "budget",
+          "currency"
+        ]
+      }
+    ],
+    "legacyServiceRevived": []
+  }
+}

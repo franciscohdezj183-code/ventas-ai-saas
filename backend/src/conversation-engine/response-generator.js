@@ -67,18 +67,18 @@ function productPrice(product) {
 
 function normalizeResponseText(value) {
   return String(value ?? '')
-    .replace(/Ã‚Â¿|Â¿/g, '\u00BF')
-    .replace(/ÃƒÂ¡|Ã¡/g, '\u00E1')
-    .replace(/ÃƒÂ©|Ã©/g, '\u00E9')
-    .replace(/ÃƒÂ­|Ã­/g, '\u00ED')
-    .replace(/ÃƒÂ³|Ã³/g, '\u00F3')
-    .replace(/ÃƒÂº|Ãº/g, '\u00FA')
-    .replace(/ÃƒÂ±|Ã±/g, '\u00F1')
+    .replace(/\u00C3\u201A\u00BF|\u00BF/g, '\u00BF')
+    .replace(/\u00C3\u0192\u00C2\u00A1|\u00E1/g, '\u00E1')
+    .replace(/\u00C3\u0192\u00C2\u00A9|\u00E9/g, '\u00E9')
+    .replace(/\u00C3\u0192\u00C2\u00AD|\u00ED/g, '\u00ED')
+    .replace(/\u00C3\u0192\u00C2\u00B3|\u00F3/g, '\u00F3')
+    .replace(/\u00C3\u0192\u00C2\u00BA|\u00FA/g, '\u00FA')
+    .replace(/\u00C3\u0192\u00C2\u00B1|\u00F1/g, '\u00F1')
     .replace(/(^|[\s\n])\?([A-Za-z\u00C1\u00C9\u00CD\u00D3\u00DA\u00DC\u00D1\u00E1\u00E9\u00ED\u00F3\u00FA\u00FC\u00F1])/g, '$1\u00BF$2');
 }
 
 function plannedQuestion(plan) {
-  return plan?.question ?? 'Â¿Que te gustaria revisar?';
+  return plan?.question ?? '¿Que te gustaria revisar?';
 }
 
 function contextLead(plan, fallback = 'Para avanzar bien') {
@@ -106,7 +106,7 @@ function renderPlannedResponse(plan) {
       return `${index + 1}. ${family.category}${examples}`;
     });
     if (!plan.fullCatalog) {
-      return `Trabajamos principalmente en diseno, impresion, publicidad fisica, rotulacion, senaletica, textiles, promocionales, marketing digital y paginas web.\n\n?Quieres ver opciones para publicidad fisica, presencia digital o diseno/imagen?`;
+      return `Trabajamos principalmente en diseno, impresion, publicidad fisica, rotulacion, senaletica, textiles, promocionales, marketing digital y paginas web.\n\n¿Quieres ver opciones para publicidad fisica, presencia digital o diseno/imagen?`;
     }
     const body = lines.length
       ? lines.join('\n')
@@ -152,6 +152,10 @@ function renderPlannedResponse(plan) {
 
   if (plan.type === 'generic_price_question') {
     return `Claro. Para darte precios necesito saber que quieres cotizar: lona, tarjetas, pagina web, marketing digital u otro servicio.`;
+  }
+
+  if (plan.type === 'clarify_pending_options') {
+    return plannedQuestion(plan);
   }
 
   if (plan.type === 'service_explanation') {
@@ -345,30 +349,30 @@ function buildClarifyingQuestion(nlu, decision) {
   }
 
   if (nlu.intent === 'ACLARACION_CLIENTE') {
-    return 'Tienes razon, lo ubico de nuevo. Â¿Que necesitas resolver o que estabas buscando exactamente?';
+    return 'Tienes razon, lo ubico de nuevo. ¿Que necesitas resolver o que estabas buscando exactamente?';
   }
 
   if (nlu.entities?.problem || nlu.entities?.symptom) {
-    return 'Para no darte informacion incorrecta, Â¿me puedes contar un poco mas sobre el problema?';
+    return 'Para no darte informacion incorrecta, ¿me puedes contar un poco mas sobre el problema?';
   }
 
   if ((decision.missingData ?? []).includes('producto_o_categoria')) {
-    return 'Puedo buscar una opcion economica. Â¿Para que producto o categoria la necesitas?';
+    return 'Puedo buscar una opcion economica. ¿Para que producto o categoria la necesitas?';
   }
 
-  return 'Te ayudo a orientarlo. Â¿Buscas un producto especifico, un servicio o prefieres revisar opciones con un asesor?';
+  return 'Te ayudo a orientarlo. ¿Buscas un producto especifico, un servicio o prefieres revisar opciones con un asesor?';
 }
 
 function serviceQuestion(nlu, service = null) {
-  if (nlu.entities?.problem === 'plomeria') return 'Â¿La fuga es constante o solo aparece cuando usas el lavabo?';
-  if (nlu.entities?.problem === 'refrigeracion') return 'Â¿Es refrigerador domestico o comercial?';
-  if (nlu.entities?.problem === 'dental') return 'Â¿El dolor es leve o fuerte y desde cuando empezo?';
-  if (nlu.entities?.problem === 'computadoras') return 'Â¿Es laptop o computadora de escritorio?';
-  if (nlu.entities?.problem === 'camaras') return 'Â¿Cuantas camaras quieres instalar aproximadamente?';
-  if (nlu.entities?.problem === 'contabilidad') return 'Â¿Es declaracion personal o de negocio?';
-  if (nlu.entities?.problem === 'pagina_web') return 'Â¿Seria una pagina informativa, landing page o tienda en linea?';
-  if (service?.requiere_medidas) return 'Â¿Me compartes las medidas aproximadas?';
-  return 'Â¿Me puedes contar un poco mas para orientarte mejor?';
+  if (nlu.entities?.problem === 'plomeria') return '¿La fuga es constante o solo aparece cuando usas el lavabo?';
+  if (nlu.entities?.problem === 'refrigeracion') return '¿Es refrigerador domestico o comercial?';
+  if (nlu.entities?.problem === 'dental') return '¿El dolor es leve o fuerte y desde cuando empezo?';
+  if (nlu.entities?.problem === 'computadoras') return '¿Es laptop o computadora de escritorio?';
+  if (nlu.entities?.problem === 'camaras') return '¿Cuantas camaras quieres instalar aproximadamente?';
+  if (nlu.entities?.problem === 'contabilidad') return '¿Es declaracion personal o de negocio?';
+  if (nlu.entities?.problem === 'pagina_web') return '¿Seria una pagina informativa, landing page o tienda en linea?';
+  if (service?.requiere_medidas) return '¿Me compartes las medidas aproximadas?';
+  return '¿Me puedes contar un poco mas para orientarte mejor?';
 }
 
 export function generateResponse({ nlu, retrieval, decision, state, responsePlan = null }) {
@@ -407,7 +411,7 @@ export function generateResponse({ nlu, retrieval, decision, state, responsePlan
     const question = serviceQuestion(nlu, topService);
 
     if (decision.action === NCIE_ACTIONS.OFFER_SIMILAR_OPTIONS || retrieval.services.length > 1) {
-      respuesta = `Encontre estas opciones que pueden servirte:\n\n${lines.join('\n')}\n\nÂ¿CuÃ¡l se parece mas a lo que necesitas?`;
+      respuesta = `Encontre estas opciones que pueden servirte:\n\n${lines.join('\n')}\n\n¿Cuál se parece mas a lo que necesitas?`;
     } else if (nlu.entities?.problem) {
       respuesta = `Por lo que comentas, parece relacionado con ${topService.nombre}. ${question}`;
     } else {
@@ -417,12 +421,12 @@ export function generateResponse({ nlu, retrieval, decision, state, responsePlan
   } else if (decision.selectedType === NCIE_TYPES.PRODUCT && retrieval.products.length > 0) {
     const lines = retrieval.products.slice(0, 3).map(productLine);
     respuesta = decision.action === NCIE_ACTIONS.OFFER_SIMILAR_OPTIONS
-      ? `Encontre estas opciones que pueden acercarse a lo que buscas:\n\n${lines.join('\n')}\n\nÂ¿CuÃ¡l se parece mas a lo que necesitas?`
+      ? `Encontre estas opciones que pueden acercarse a lo que buscas:\n\n${lines.join('\n')}\n\n¿Cuál se parece mas a lo que necesitas?`
       : `Encontre estas opciones:\n\n${lines.join('\n')}\n\nResponde con el numero o dime si buscas algo mas especifico.`;
     summary = retrieval.products[0]?.nombre ?? summary;
   } else if (retrieval.categories.length > 0) {
     const categories = retrieval.categories.slice(0, 5).map((category) => category.nombre).join(', ');
-    respuesta = `Puedo ayudarte. Tenemos estas categorias para empezar: ${categories}. Â¿Cual quieres revisar?`;
+    respuesta = `Puedo ayudarte. Tenemos estas categorias para empezar: ${categories}. ¿Cual quieres revisar?`;
   } else {
     respuesta = buildClarifyingQuestion(nlu, decision);
   }
@@ -435,4 +439,6 @@ export function generateResponse({ nlu, retrieval, decision, state, responsePlan
     medios: []
   };
 }
+
+
 

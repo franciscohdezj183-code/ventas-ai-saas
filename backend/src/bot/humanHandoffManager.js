@@ -20,8 +20,8 @@ async function getHandoffConfig(empresaId) {
   return {
     timeoutMinutes: Number.isInteger(timeoutMinutes) && timeoutMinutes > 0 ? Math.min(timeoutMinutes, 120) : 4,
     mensajeTomar: profile?.handoff?.mensaje_tomar || 'Listo, un asesor continuara contigo por aqui',
-    mensajeDeclinar: profile?.handoff?.mensaje_declinar || 'Por ahora nuestros asesores estan ocupados. Pueden contactarte despues y se comunicaran en cuanto puedan. Mientras tanto puedo seguir ayudandote por aqui.',
-    mensajeExpirado: profile?.handoff?.mensaje_expirado || 'Por ahora nuestros asesores estan ocupados. Pueden contactarte despues y se comunicaran en cuanto puedan. Mientras tanto puedo seguir ayudandote por aqui.',
+    mensajeDeclinar: profile?.handoff?.mensaje_declinar || 'Por ahora nuestros asesores están ocupados. Mientras tanto puedo seguir ayudándote por aquí.',
+    mensajeExpirado: profile?.handoff?.mensaje_expirado || 'Por ahora nuestros asesores están ocupados. Mientras tanto puedo seguir ayudándote por aquí.',
     mensajeReactivar: profile?.handoff?.mensaje_reactivar || 'Voy a continuar apoyandote por aqui. Que otra duda tienes?'
   };
 }
@@ -81,7 +81,7 @@ function normalizeText(value) {
 function ownerResponseKind(message) {
   const text = normalizeText(message);
 
-  if (['1', 'si', 'sÃ­', 'yo lo atiendo', 'yo atiendo', 'lo atiendo'].includes(text)) {
+  if (['1', 'si', 'sí', 'yo lo atiendo', 'yo atiendo', 'lo atiendo'].includes(text)) {
     return 'ACCEPT';
   }
 
@@ -310,19 +310,23 @@ function buildCompactCommercialOwnerNotification({
   handoffCode = null
 }) {
   const code = normalizeHandoffCode(handoffCode);
+  const service = payload.selectedService || payload.selectedServiceName || null;
+  const dataSummary = [
+    payload.dimensionsOrQuantity ? `Medidas/cantidad: ${payload.dimensionsOrQuantity}` : null,
+    payload.currentEstimate ? `Estimado: ${payload.currentEstimate}` : null,
+    payload.ownerDesignStatus && payload.ownerDesignStatus !== 'pendiente' ? `Diseño: ${payload.ownerDesignStatus}` : null,
+    payload.ownerInstallationStatus && payload.ownerInstallationStatus !== 'pendiente' ? `Instalación: ${payload.ownerInstallationStatus}` : null,
+    payload.budget ? `Presupuesto: ${payload.budget}` : null
+  ].filter(Boolean).join(' | ');
   return [
     `Nueva solicitud - ${companyName ?? 'Empresa'}`,
     '',
-    code ? `Codigo: ${code}` : null,
+    code ? `Código: ${code}` : null,
     `Cliente: ${payload.customer ?? customerPhone}`,
-    `Servicio: ${payload.selectedService ?? 'pendiente'}`,
-    `Medidas/cantidad: ${payload.dimensionsOrQuantity ?? 'pendiente'}`,
-    `Estimado: ${payload.currentEstimate ?? 'pendiente'}`,
-    `Diseno: ${payload.ownerDesignStatus ?? payload.designStatus ?? 'pendiente'}`,
-    `Instalacion: ${payload.ownerInstallationStatus ?? payload.installationStatus ?? 'pendiente'}`,
+    `Servicio: ${service ?? 'pendiente'}`,
+    `Datos: ${dataSummary || 'pendiente'}`,
     payload.lastUserMessage ? `Mensaje: "${payload.lastUserMessage}"` : null,
     '',
-    'Accion: contactar para confirmar precio y tiempos.',
     code ? `Responder: si ${code} / no ${code}` : null
   ].filter((line) => line !== null).join('\n');
 }
@@ -477,6 +481,14 @@ export async function handleOwnerResponse({ empresa_id: empresaId, telefono_duen
   const ownerPhone = normalizePhone(telefonoDueno);
   const responseKind = ownerDecisionKind(mensaje);
   const responseCode = ownerDecisionCode(mensaje, responseKind);
+  if (responseKind && responseCode) {
+    logger.info('owner_reply_code_detected', {
+      empresaId,
+      telefonoDueno: ownerPhone,
+      responseKind,
+      code: responseCode
+    });
+  }
   const [rows] = await query(
     `SELECT *
      FROM human_handoffs
@@ -554,7 +566,7 @@ export async function handleOwnerResponse({ empresa_id: empresaId, telefono_duen
   if (responseKind === 'DECLINE') {
     await query(
       `UPDATE human_handoffs
-       SET estado = 'BOT_ACTIVE',
+       SET estado = 'DECLINED',
            owner_responded_at = NOW(),
            last_activity_at = NOW()
        WHERE id = ?`,
@@ -572,6 +584,18 @@ export async function handleOwnerResponse({ empresa_id: empresaId, telefono_duen
       handoffId: handoff.id,
       telefonoCliente: handoff.telefono_cliente
     });
+    logger.info('owner_reply_sent_to_client', {
+      empresaId,
+      handoffId: handoff.id,
+      telefonoCliente: handoff.telefono_cliente,
+      action: 'DECLINED'
+    });
+    logger.info('owner_reply_ack_sent_to_owner', {
+      empresaId,
+      handoffId: handoff.id,
+      telefonoDueno: ownerPhone,
+      action: 'DECLINED'
+    });
 
     return {
       handled: true,
@@ -580,7 +604,7 @@ export async function handleOwnerResponse({ empresa_id: empresaId, telefono_duen
       whatsapp_chat_id: handoff.whatsapp_chat_id,
       mensaje_cliente: handoffConfig.mensajeDeclinar,
       telefono_dueno: ownerPhone,
-      mensaje_dueno: 'Entiendo, seguirÃ© por mi cuenta.'
+      mensaje_dueno: 'Entendido. El bot seguirá atendiendo al cliente.'
     };
   }
 
@@ -718,7 +742,7 @@ export async function expirePendingHandoffs() {
     await sendWhatsappText(
       handoff.empresa_id,
       handoff.telefono_dueno,
-      'Entiendo, seguirÃ© por mi cuenta.'
+      'Entendido. El bot seguirá atendiendo al cliente.'
     ).catch((error) => logger.error('human_handoff_pending_expire_owner_message_error', { error, handoffId: handoff.id }));
 
     logger.info('human_handoff_pending_expired', {
@@ -797,4 +821,11 @@ export function stopHumanHandoffExpirationJob() {
 }
 
 export const humanHandoffActiveStates = ACTIVE_STATES;
+
+export const humanHandoffTestHelpers = {
+  buildCompactCommercialOwnerNotification,
+  ownerDecisionKind,
+  ownerDecisionCode,
+  normalizeHandoffCode
+};
 

@@ -32,7 +32,7 @@ export { ALLOWED_INTENTS, FALLBACK_INTENT, expectedToolForIntent, validateIntent
 
 let openaiClient = null;
 
-function getOpenAIClient() {
+export function getOpenAIClient() {
   if (!env.openai.apiKey) {
     return null;
   }

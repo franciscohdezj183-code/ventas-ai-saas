@@ -18,11 +18,10 @@ function textFromMessage(normalizedMessage = null) {
   ).trim();
 }
 
-function selectedServiceFrom({ plannerDecision, responsePlan, state }) {
+function selectedServiceFrom({ plannerDecision, responsePlan }) {
   return plannerDecision?.selectedServiceItem
     ?? responsePlan?.selected
     ?? plannerDecision?.selectedService
-    ?? state?.lastService
     ?? null;
 }
 
@@ -132,7 +131,7 @@ export function buildAdvisorNotificationPayload({
   responsePlan = null,
   reason
 }) {
-  const service = selectedServiceFrom({ plannerDecision, responsePlan, state });
+  const service = selectedServiceFrom({ plannerDecision, responsePlan });
   const flow = activeFlowFrom(plannerDecision);
   const quoteContext = quoteContextFrom({ plannerDecision, responsePlan, state });
   const entities = {
@@ -236,6 +235,19 @@ export function planAdvisorNotification({
     reason
   });
   const hash = advisorNotificationHash(payload, reason);
+  const previousHash = state?.commercial?.lastAdvisorNotificationHash
+    ?? state?.legacyContext?.datos_json?.ncie?.last_advisor_notification_hash
+    ?? null;
+
+  if (previousHash && previousHash === hash) {
+    return {
+      advisorNotificationRequired: false,
+      notificationReason: reason,
+      notificationPayload: payload,
+      notificationHash: hash,
+      skippedDuplicate: true
+    };
+  }
 
   return {
     advisorNotificationRequired: true,
@@ -269,6 +281,7 @@ export async function executeAdvisorNotification({
     owner_notification_payload: advisorNotification.notificationPayload,
     respuesta_bot: advisorNotification.notificationReason === 'handoff_explicit' ? response : null,
     atendido_por_bot: advisorNotification.notificationReason !== 'handoff_explicit',
+    servicio_id: advisorNotification.notificationPayload.selectedServiceId ?? null,
     motivo: advisorNotification.notificationReason === 'handoff_explicit' ? 'HABLAR_ASESOR' : 'INTENCION_COMPRA'
   });
 }

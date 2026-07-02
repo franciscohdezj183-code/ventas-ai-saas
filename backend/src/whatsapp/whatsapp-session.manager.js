@@ -48,6 +48,7 @@ const reconnectAttempts = new Map();
 const operationGenerations = new Map();
 const restartRequests = new Map();
 const initializationCancellations = new Map();
+const pendingClientDestroys = new Map();
 
 function numberEnv(name, fallback) {
   const value = Number(process.env[name] ?? fallback);
@@ -236,6 +237,39 @@ async function destroyClientQuietly(client) {
   }
 }
 
+function trackClientDestroy(companyId, client) {
+  const id = normalizeCompanyId(companyId);
+  const destroyPromise = destroyClientQuietly(client)
+    .finally(() => {
+      if (pendingClientDestroys.get(id) === destroyPromise) {
+        pendingClientDestroys.delete(id);
+      }
+    });
+  pendingClientDestroys.set(id, destroyPromise);
+  return destroyPromise;
+}
+
+async function waitForPendingClientDestroy(companyId) {
+  const id = normalizeCompanyId(companyId);
+  const pendingDestroy = pendingClientDestroys.get(id);
+
+  if (!pendingDestroy) {
+    return;
+  }
+
+  logger.info('whatsapp_waiting_for_pending_destroy', { empresaId: id });
+  await withTimeout(
+    pendingDestroy.catch(() => null),
+    numberEnv('WHATSAPP_PENDING_DESTROY_WAIT_MS', 20000),
+    'Timed out waiting for previous WhatsApp browser to close'
+  ).catch((error) => {
+    logger.warn('whatsapp_pending_destroy_wait_timeout', {
+      empresaId: id,
+      error: error instanceof Error ? error.message : String(error ?? 'unknown')
+    });
+  });
+}
+
 async function removeCompanyLocalAuthQuietly(companyId) {
   if (process.env.WHATSAPP_ALLOW_AUTH_DELETE !== 'true') {
     logger.info('whatsapp_auth_delete_skipped', {
@@ -339,6 +373,7 @@ export function resetWhatsappSessionsForTests() {
   operationGenerations.clear();
   restartRequests.clear();
   initializationCancellations.clear();
+  pendingClientDestroys.clear();
   resetWhatsappStartupCoordinatorForTests();
   resetStoreForTests();
   clientFactory = createWhatsappClient;
@@ -442,7 +477,9 @@ async function startSessionNow(companyId, requestedGeneration = getOperationGene
     }
 
     if (currentBeforeStart?.client) {
-      await destroyClientQuietly(currentBeforeStart.client);
+      await trackClientDestroy(id, currentBeforeStart.client);
+    } else {
+      await waitForPendingClientDestroy(id);
     }
 
     if (generation !== getOperationGeneration(id)) {
@@ -515,11 +552,13 @@ async function startSessionNow(companyId, requestedGeneration = getOperationGene
       if (current?.client === client) {
         await destroyClientQuietly(client);
         const errorMessage = error instanceof Error ? error.message : String(error ?? 'Error inicializando WhatsApp');
+        const lockedLocalAuth = isLockedLocalAuthError(error);
         const transientInitializationError =
           error?.code === 'WHATSAPP_INIT_TIMEOUT'
-          || isTargetClosedError(error);
+          || isTargetClosedError(error)
+          || lockedLocalAuth;
 
-        if (transientInitializationError && shouldAutoReconnect(errorMessage)) {
+        if (transientInitializationError && shouldAutoReconnect(errorMessage) && (!lockedLocalAuth || pendingClientDestroys.has(id))) {
           const session = setStatus(id, WHATSAPP_SESSION_STATUSES.DISCONNECTED, {
             client: null,
             disconnectedAt: new Date().toISOString(),
@@ -532,10 +571,19 @@ async function startSessionNow(companyId, requestedGeneration = getOperationGene
             empresaId: id,
             reason: errorMessage,
             targetClosed: isTargetClosedError(error),
+            lockedLocalAuth,
             timeout: error?.code === 'WHATSAPP_INIT_TIMEOUT'
           });
           scheduleReconnect(id, null, errorMessage);
           return getPublicSession(id);
+        }
+
+        if (lockedLocalAuth) {
+          logger.error('whatsapp_profile_lock_requires_manual_cleanup', {
+            empresaId: id,
+            sessionPath: getCompanyLocalAuthPath(id),
+            reason: errorMessage
+          });
         }
 
         const session = setStatus(id, WHATSAPP_SESSION_STATUSES.FAILED, {
@@ -561,7 +609,14 @@ async function startSessionNow(companyId, requestedGeneration = getOperationGene
         lockedLocalAuth: isLockedLocalAuthError(error),
         error
       });
-      scheduleReconnect(id, null, error?.message ?? String(error));
+      if (isLockedLocalAuthError(error)) {
+        logger.info('whatsapp_auto_reconnect_skipped', {
+          empresaId: id,
+          reason: 'local_auth_profile_locked'
+        });
+      } else {
+        scheduleReconnect(id, null, error?.message ?? String(error));
+      }
       return getPublicSession(id);
     } finally {
       cancellation.clear();
@@ -617,7 +672,9 @@ async function restartSessionNow(companyId, requestedGeneration = getOperationGe
   clearReconnectTimer(id);
 
   if (existing?.client) {
-    await destroyClientQuietly(existing.client);
+    await trackClientDestroy(id, existing.client);
+  } else {
+    await waitForPendingClientDestroy(id);
   }
 
   const session = upsertSession(id, {
@@ -680,11 +737,11 @@ async function disconnectSessionNow(companyId, { backgroundDestroy = false } = {
   if (existing?.client) {
     if (backgroundDestroy) {
       logger.info('whatsapp_disconnect_destroy_background_started', { empresaId: id });
-      destroyClientQuietly(existing.client)
+      trackClientDestroy(id, existing.client)
         .then(() => logger.info('whatsapp_disconnect_destroy_background_completed', { empresaId: id }))
         .catch((error) => logger.error('whatsapp_disconnect_destroy_background_error', { empresaId: id, error }));
     } else {
-      await destroyClientQuietly(existing.client);
+      await trackClientDestroy(id, existing.client);
     }
   }
 

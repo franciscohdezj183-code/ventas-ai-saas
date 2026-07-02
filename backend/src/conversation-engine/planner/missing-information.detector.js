@@ -17,8 +17,8 @@ export function detectWebType(value) {
 
 export function detectDesignPreference(value) {
   const text = normalizeForNcie(value);
-  if (/\b(sin diseno|sin el diseno|no quiero diseno|no necesito diseno|ya tengo diseno|ya tengo el diseno|ya tengo un diseno|tengo diseno|tengo el diseno|tengo un diseno|yo tengo el diseno|yo tengo un diseno)\b/.test(text)) return false;
   if (/\b(con diseno|con el diseno|tambien con el diseno|tambien diseno|tambien el diseno|apoyo con el diseno|ayuda con el diseno|quiero diseno|quiero un diseno|necesito diseno|necesito un diseno|no tengo diseno|no tengo el diseno|no tengo un diseno)\b/.test(text)) return true;
+  if (/\b(sin diseno|sin el diseno|no quiero diseno|no necesito diseno|ya tengo diseno|ya tengo el diseno|ya tengo un diseno|tengo diseno|tengo el diseno|tengo un diseno|yo tengo el diseno|yo tengo un diseno)\b/.test(text)) return false;
   return null;
 }
 
