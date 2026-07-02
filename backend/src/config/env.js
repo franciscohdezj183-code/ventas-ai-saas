@@ -187,6 +187,12 @@ export const env = {
     inputCostPerMillion: numberEnv('OPENAI_INPUT_COST_PER_MILLION', 0),
     outputCostPerMillion: numberEnv('OPENAI_OUTPUT_COST_PER_MILLION', 0)
   },
+  conversationEngine: {
+    version: ['legacy', 'ncie'].includes(String(process.env.CONVERSATION_ENGINE_VERSION ?? 'legacy').toLowerCase())
+      ? String(process.env.CONVERSATION_ENGINE_VERSION ?? 'legacy').toLowerCase()
+      : 'legacy',
+    shadowMode: booleanEnv('CONVERSATION_ENGINE_SHADOW_MODE', false)
+  },
   db: {
     host: process.env.DB_HOST ?? 'localhost',
     port: numberEnv('DB_PORT', 3306),

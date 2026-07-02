@@ -31,6 +31,7 @@ describe('WhatsApp startup coordinator', () => {
     assert.equal(isTargetClosedError(new Error('Execution context was destroyed')), true);
     assert.equal(isLockedLocalAuthError({ code: 'EBUSY' }), true);
     assert.equal(isLockedLocalAuthError(new Error('EPERM removing folder')), true);
+    assert.equal(isLockedLocalAuthError(new Error('The browser is already running for C:\\session-company_5. Use a different `userDataDir` or stop the running browser first.')), true);
   });
 
   it('calculates bounded exponential backoff with jitter', () => {

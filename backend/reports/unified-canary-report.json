@@ -1,0 +1,1093 @@
+{
+  "generatedAt": "2026-07-02T18:45:30.640Z",
+  "totalEvents": 1852,
+  "totalResponses": 1302,
+  "unifiedCanaryErrorCount": 0,
+  "fallbackToLegacyCount": 0,
+  "syntheticFallbackIgnoredCount": 32,
+  "clarifyIntentCount": 118,
+  "commercialQualityScoreCount": 0,
+  "recommendationGeneratedCount": 0,
+  "recommendationExplainedCount": 0,
+  "businessGoalDetectedCount": 0,
+  "businessTypeDetectedCount": 0,
+  "repeatedQuestionPreventedCount": 180,
+  "outOfOrderEntityHandledCount": 187,
+  "handoffSentCount": 65,
+  "legacyServiceRevivedCount": 0,
+  "byMessage": {
+    "unified_canary_response_sent": 1302,
+    "unified_canary_clarify": 118,
+    "unified_canary_repeated_question_prevented": 180,
+    "unified_canary_handoff_sent": 65,
+    "unified_canary_out_of_order_entity_handled": 187
+  },
+  "byIntent": {
+    "NEUTRAL": 63,
+    "SHOW_CATALOG": 122,
+    "START_SERVICE_QUOTE": 343,
+    "ANSWER_PREVIOUS_QUESTION": 523,
+    "CONFIRM_DIMENSIONS": 15,
+    "CLARIFY": 118,
+    "HANDOFF": 65,
+    "RECOMMENDATION": 13,
+    "SHOW_CATEGORY": 33,
+    "TOPIC_SWITCH": 7
+  },
+  "phase7": {
+    "canProceedToLegacyCleanup": true,
+    "criteria": {
+      "hasCanaryEvents": true,
+      "zeroCriticalFallbacks": true,
+      "zeroLegacyServiceRevived": true,
+      "zeroUnhandledRepeatedQuestions": true,
+      "rollbackStillObservable": true,
+      "advisorObserved": true
+    },
+    "reason": null
+  },
+  "samples": {
+    "errors": [
+      {
+        "level": "error",
+        "message": "unified_canary_error",
+        "timestamp": "2026-07-02T18:07:26.425Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "error": {
+          "name": "Error",
+          "message": "canary boom",
+          "stack": "Error: canary boom\n    at unifiedCanaryRunner (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:242:15)\n    at runConversationEngine (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/conversation-engine.service.js:317:20)\n    at async runCase (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:173:18)\n    at async TestContext.<anonymous> (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:240:49)\n    at async Test.run (node:internal/test_runner/test:632:9)\n    at async Suite.processPendingSubtests (node:internal/test_runner/test:374:7)"
+        }
+      },
+      {
+        "level": "error",
+        "message": "unified_canary_error",
+        "timestamp": "2026-07-02T18:07:27.317Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "error": {
+          "name": "Error",
+          "message": "semantic classifier should not be called",
+          "stack": "Error: semantic classifier should not be called\n    at classifier (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:831:13)\n    at runUnifiedPlannerCanary (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary.service.js:350:27)\n    at async runConversationEngine (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/conversation-engine.service.js:317:14)\n    at async runCase (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:173:18)\n    at async TestContext.<anonymous> (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:833:24)\n    at async Test.run (node:internal/test_runner/test:632:9)\n    at async Suite.processPendingSubtests (node:internal/test_runner/test:374:7)"
+        }
+      },
+      {
+        "level": "error",
+        "message": "unified_canary_error",
+        "timestamp": "2026-07-02T18:07:27.471Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "error": {
+          "name": "Error",
+          "message": "semantic classifier should not be called",
+          "stack": "Error: semantic classifier should not be called\n    at classifier (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:845:13)\n    at runUnifiedPlannerCanary (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary.service.js:350:27)\n    at async runConversationEngine (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/conversation-engine.service.js:317:14)\n    at async runCase (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:173:18)\n    at async TestContext.<anonymous> (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:850:26)\n    at async Test.run (node:internal/test_runner/test:632:9)\n    at async Suite.processPendingSubtests (node:internal/test_runner/test:374:7)"
+        }
+      },
+      {
+        "level": "error",
+        "message": "unified_canary_error",
+        "timestamp": "2026-07-02T18:08:29.363Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "error": {
+          "name": "Error",
+          "message": "canary boom",
+          "stack": "Error: canary boom\n    at unifiedCanaryRunner (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:242:15)\n    at runConversationEngine (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/conversation-engine.service.js:317:20)\n    at async runCase (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:173:18)\n    at async TestContext.<anonymous> (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:240:49)\n    at async Test.run (node:internal/test_runner/test:632:9)\n    at async Suite.processPendingSubtests (node:internal/test_runner/test:374:7)"
+        }
+      },
+      {
+        "level": "error",
+        "message": "unified_canary_error",
+        "timestamp": "2026-07-02T18:08:30.083Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "error": {
+          "name": "Error",
+          "message": "semantic classifier should not be called",
+          "stack": "Error: semantic classifier should not be called\n    at classifier (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:846:13)\n    at runUnifiedPlannerCanary (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary.service.js:350:27)\n    at async runConversationEngine (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/conversation-engine.service.js:317:14)\n    at async runCase (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:173:18)\n    at async TestContext.<anonymous> (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:851:26)\n    at async Test.run (node:internal/test_runner/test:632:9)\n    at async Suite.processPendingSubtests (node:internal/test_runner/test:374:7)"
+        }
+      },
+      {
+        "level": "error",
+        "message": "unified_canary_error",
+        "timestamp": "2026-07-02T18:09:00.248Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "error": {
+          "name": "Error",
+          "message": "canary boom",
+          "stack": "Error: canary boom\n    at unifiedCanaryRunner (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:242:15)\n    at runConversationEngine (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/conversation-engine.service.js:317:20)\n    at async runCase (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:173:18)\n    at async TestContext.<anonymous> (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:240:49)\n    at async Test.run (node:internal/test_runner/test:632:9)\n    at async Suite.processPendingSubtests (node:internal/test_runner/test:374:7)"
+        }
+      },
+      {
+        "level": "error",
+        "message": "unified_canary_error",
+        "timestamp": "2026-07-02T18:09:13.445Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "error": {
+          "name": "Error",
+          "message": "canary boom",
+          "stack": "Error: canary boom\n    at unifiedCanaryRunner (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:242:15)\n    at runConversationEngine (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/conversation-engine.service.js:317:20)\n    at async runCase (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:173:18)\n    at async TestContext.<anonymous> (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:240:49)\n    at async Test.run (node:internal/test_runner/test:632:9)\n    at async Suite.processPendingSubtests (node:internal/test_runner/test:374:7)"
+        }
+      },
+      {
+        "level": "error",
+        "message": "unified_canary_error",
+        "timestamp": "2026-07-02T18:32:49.421Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "error": {
+          "name": "Error",
+          "message": "canary boom",
+          "stack": "Error: canary boom\n    at unifiedCanaryRunner (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:263:15)\n    at runConversationEngine (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/conversation-engine.service.js:317:20)\n    at async runCase (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:173:18)\n    at async TestContext.<anonymous> (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:261:49)\n    at async Test.run (node:internal/test_runner/test:632:9)\n    at async Suite.processPendingSubtests (node:internal/test_runner/test:374:7)"
+        }
+      },
+      {
+        "level": "error",
+        "message": "unified_canary_error",
+        "timestamp": "2026-07-02T18:34:07.551Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "error": {
+          "name": "Error",
+          "message": "canary boom",
+          "stack": "Error: canary boom\n    at unifiedCanaryRunner (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:263:15)\n    at runConversationEngine (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/conversation-engine.service.js:317:20)\n    at async runCase (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:173:18)\n    at async TestContext.<anonymous> (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:261:49)\n    at async Test.run (node:internal/test_runner/test:632:9)\n    at async Suite.processPendingSubtests (node:internal/test_runner/test:374:7)"
+        }
+      },
+      {
+        "level": "error",
+        "message": "unified_canary_error",
+        "timestamp": "2026-07-02T18:36:06.707Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "error": {
+          "name": "Error",
+          "message": "canary boom",
+          "stack": "Error: canary boom\n    at unifiedCanaryRunner (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:263:15)\n    at runConversationEngine (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/conversation-engine.service.js:317:20)\n    at async runCase (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:173:18)\n    at async TestContext.<anonymous> (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:261:49)\n    at async Test.run (node:internal/test_runner/test:632:9)\n    at async Suite.processPendingSubtests (node:internal/test_runner/test:374:7)"
+        }
+      },
+      {
+        "level": "error",
+        "message": "unified_canary_error",
+        "timestamp": "2026-07-02T18:38:10.481Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "error": {
+          "name": "Error",
+          "message": "canary boom",
+          "stack": "Error: canary boom\n    at unifiedCanaryRunner (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:263:15)\n    at runConversationEngine (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/conversation-engine.service.js:317:20)\n    at async runCase (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:173:18)\n    at async TestContext.<anonymous> (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:261:49)\n    at async Test.run (node:internal/test_runner/test:632:9)\n    at async Suite.processPendingSubtests (node:internal/test_runner/test:374:7)"
+        }
+      },
+      {
+        "level": "error",
+        "message": "unified_canary_error",
+        "timestamp": "2026-07-02T18:39:14.878Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "error": {
+          "name": "Error",
+          "message": "canary boom",
+          "stack": "Error: canary boom\n    at unifiedCanaryRunner (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:263:15)\n    at runConversationEngine (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/conversation-engine.service.js:317:20)\n    at async runCase (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:173:18)\n    at async TestContext.<anonymous> (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:261:49)\n    at async Test.run (node:internal/test_runner/test:632:9)\n    at async Suite.processPendingSubtests (node:internal/test_runner/test:374:7)"
+        }
+      },
+      {
+        "level": "error",
+        "message": "unified_canary_error",
+        "timestamp": "2026-07-02T18:39:44.545Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "error": {
+          "name": "Error",
+          "message": "canary boom",
+          "stack": "Error: canary boom\n    at unifiedCanaryRunner (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:263:15)\n    at runConversationEngine (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/conversation-engine.service.js:317:20)\n    at async runCase (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:173:18)\n    at async TestContext.<anonymous> (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:261:49)\n    at async Test.run (node:internal/test_runner/test:632:9)\n    at async Suite.processPendingSubtests (node:internal/test_runner/test:374:7)"
+        }
+      },
+      {
+        "level": "error",
+        "message": "unified_canary_error",
+        "timestamp": "2026-07-02T18:40:53.507Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "error": {
+          "name": "Error",
+          "message": "canary boom",
+          "stack": "Error: canary boom\n    at unifiedCanaryRunner (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:263:15)\n    at runConversationEngine (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/conversation-engine.service.js:317:20)\n    at async runCase (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:173:18)\n    at async TestContext.<anonymous> (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:261:49)\n    at async Test.run (node:internal/test_runner/test:632:9)\n    at async Suite.processPendingSubtests (node:internal/test_runner/test:374:7)"
+        }
+      },
+      {
+        "level": "error",
+        "message": "unified_canary_error",
+        "timestamp": "2026-07-02T18:41:11.983Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "error": {
+          "name": "Error",
+          "message": "canary boom",
+          "stack": "Error: canary boom\n    at unifiedCanaryRunner (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:263:15)\n    at runConversationEngine (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/conversation-engine.service.js:317:20)\n    at async runCase (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:173:18)\n    at async TestContext.<anonymous> (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:261:49)\n    at async Test.run (node:internal/test_runner/test:632:9)\n    at async Suite.processPendingSubtests (node:internal/test_runner/test:374:7)"
+        }
+      },
+      {
+        "level": "error",
+        "message": "unified_canary_error",
+        "timestamp": "2026-07-02T18:45:10.204Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "error": {
+          "name": "Error",
+          "message": "canary boom",
+          "stack": "Error: canary boom\n    at unifiedCanaryRunner (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:263:15)\n    at runConversationEngine (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/conversation-engine.service.js:317:20)\n    at async runCase (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:173:18)\n    at async TestContext.<anonymous> (file:///C:/Users/test1234/Documents/ventas-ai-saas/backend/src/conversation-engine/unified-canary-mode.test.js:261:49)\n    at async Test.run (node:internal/test_runner/test:632:9)\n    at async Suite.processPendingSubtests (node:internal/test_runner/test:374:7)"
+        }
+      }
+    ],
+    "fallbacks": [
+      {
+        "level": "info",
+        "message": "unified_canary_fallback_to_legacy",
+        "timestamp": "2026-07-02T18:07:26.427Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "canary boom"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_fallback_to_legacy",
+        "timestamp": "2026-07-02T18:07:27.318Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "semantic classifier should not be called"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_fallback_to_legacy",
+        "timestamp": "2026-07-02T18:07:27.472Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "semantic classifier should not be called"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_fallback_to_legacy",
+        "timestamp": "2026-07-02T18:08:29.365Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "canary boom"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_fallback_to_legacy",
+        "timestamp": "2026-07-02T18:08:30.085Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "semantic classifier should not be called"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_fallback_to_legacy",
+        "timestamp": "2026-07-02T18:09:00.250Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "canary boom"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_fallback_to_legacy",
+        "timestamp": "2026-07-02T18:09:13.447Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "canary boom"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_fallback_to_legacy",
+        "timestamp": "2026-07-02T18:32:49.423Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "canary boom"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_fallback_to_legacy",
+        "timestamp": "2026-07-02T18:34:07.554Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "canary boom"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_fallback_to_legacy",
+        "timestamp": "2026-07-02T18:36:06.709Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "canary boom"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_fallback_to_legacy",
+        "timestamp": "2026-07-02T18:38:10.484Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "canary boom"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_fallback_to_legacy",
+        "timestamp": "2026-07-02T18:39:14.881Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "canary boom"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_fallback_to_legacy",
+        "timestamp": "2026-07-02T18:39:44.547Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "canary boom"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_fallback_to_legacy",
+        "timestamp": "2026-07-02T18:40:53.510Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "canary boom"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_fallback_to_legacy",
+        "timestamp": "2026-07-02T18:41:11.985Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "canary boom"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_fallback_to_legacy",
+        "timestamp": "2026-07-02T18:45:10.206Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "canary boom"
+      }
+    ],
+    "clarifies": [
+      {
+        "level": "info",
+        "message": "unified_canary_clarify",
+        "timestamp": "2026-07-02T17:46:15.454Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "196808420634826@lid",
+        "reason": "no_planner_rule_matched",
+        "nextState": "INIT"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_clarify",
+        "timestamp": "2026-07-02T17:46:44.329Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "196808420634826@lid",
+        "reason": "no_planner_rule_matched",
+        "nextState": "INIT"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_clarify",
+        "timestamp": "2026-07-02T17:47:02.731Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "196808420634826@lid",
+        "reason": "no_planner_rule_matched",
+        "nextState": "INIT"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_clarify",
+        "timestamp": "2026-07-02T18:07:26.812Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "catalog_selection_out_of_range",
+        "nextState": "CATALOGO"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_clarify",
+        "timestamp": "2026-07-02T18:07:27.071Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "dimensions_without_service",
+        "nextState": "INIT"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_clarify",
+        "timestamp": "2026-07-02T18:07:27.214Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "repeated_info_reference_with_active_service",
+        "nextState": "RESUMEN"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_clarify",
+        "timestamp": "2026-07-02T18:07:27.450Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "ambiguous_number_requires_clarification",
+        "nextState": "INIT"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_clarify",
+        "timestamp": "2026-07-02T18:07:27.456Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "dimensions_without_service",
+        "nextState": "INIT"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_clarify",
+        "timestamp": "2026-07-02T18:08:29.688Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "catalog_selection_out_of_range",
+        "nextState": "CATALOGO"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_clarify",
+        "timestamp": "2026-07-02T18:08:29.856Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "dimensions_without_service",
+        "nextState": "INIT"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_clarify",
+        "timestamp": "2026-07-02T18:08:29.991Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "repeated_info_reference_with_active_service",
+        "nextState": "RESUMEN"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_clarify",
+        "timestamp": "2026-07-02T18:08:30.072Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "ambiguous_number_requires_clarification",
+        "nextState": "INIT"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_clarify",
+        "timestamp": "2026-07-02T18:08:30.078Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "dimensions_without_service",
+        "nextState": "INIT"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_clarify",
+        "timestamp": "2026-07-02T18:09:00.578Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "catalog_selection_out_of_range",
+        "nextState": "CATALOGO"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_clarify",
+        "timestamp": "2026-07-02T18:09:00.752Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "dimensions_without_service",
+        "nextState": "INIT"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_clarify",
+        "timestamp": "2026-07-02T18:09:00.922Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "repeated_info_reference_with_active_service",
+        "nextState": "RESUMEN"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_clarify",
+        "timestamp": "2026-07-02T18:09:01.048Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "ambiguous_number_requires_clarification",
+        "nextState": "INIT"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_clarify",
+        "timestamp": "2026-07-02T18:09:01.054Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "dimensions_without_service",
+        "nextState": "INIT"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_clarify",
+        "timestamp": "2026-07-02T18:09:01.059Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "no_planner_rule_matched",
+        "nextState": "INIT"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_clarify",
+        "timestamp": "2026-07-02T18:09:01.076Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "reason": "no_planner_rule_matched",
+        "nextState": "INIT"
+      }
+    ],
+    "repeatedQuestionsPrevented": [
+      {
+        "level": "info",
+        "message": "unified_canary_repeated_question_prevented",
+        "timestamp": "2026-07-02T17:46:44.331Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "196808420634826@lid",
+        "questionId": "clarify.need",
+        "question": "Me ayudas con un poco mas de detalle?"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_repeated_question_prevented",
+        "timestamp": "2026-07-02T18:07:26.612Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "questionId": "quote.design",
+        "question": "Perfecto, considero presupuesto aproximado de $1,000.00. Para cerrar: ya tienes el diseno o quieres apoyo?"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_repeated_question_prevented",
+        "timestamp": "2026-07-02T18:07:26.695Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "questionId": "quote.design",
+        "question": "Perfecto, considero presupuesto aproximado de $1,000.00. Para cerrar: ya tienes el diseno o quieres apoyo?"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_repeated_question_prevented",
+        "timestamp": "2026-07-02T18:07:26.840Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "questionId": "quote.design",
+        "question": "Perfecto, considero presupuesto aproximado de $1,000.00. Para cerrar: ya tienes el diseno o quieres apoyo?"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_repeated_question_prevented",
+        "timestamp": "2026-07-02T18:07:26.915Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "questionId": "quote.design",
+        "question": "Perfecto, considero presupuesto aproximado de $1,000.00. Para cerrar: ya tienes el diseno o quieres apoyo?"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_repeated_question_prevented",
+        "timestamp": "2026-07-02T18:07:26.965Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "questionId": "quote.design",
+        "question": "Perfecto, agrego instalacion para revisar con asesor. Ya tienes el diseno o quieres apoyo?"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_repeated_question_prevented",
+        "timestamp": "2026-07-02T18:07:26.988Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "questionId": "quote.design",
+        "question": "Perfecto, agrego instalacion para revisar con asesor. Ya tienes el diseno o quieres apoyo?"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_repeated_question_prevented",
+        "timestamp": "2026-07-02T18:07:27.038Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "questionId": "quote.design",
+        "question": "Perfecto, considero presupuesto aproximado de $1,000.00. Para cerrar: ya tienes el diseno o quieres apoyo?"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_repeated_question_prevented",
+        "timestamp": "2026-07-02T18:07:27.050Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "questionId": "quote.design",
+        "question": "Perfecto, considero presupuesto aproximado de $2,000.00. Para cerrar: ya tienes el diseno o quieres apoyo?"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_repeated_question_prevented",
+        "timestamp": "2026-07-02T18:07:27.141Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "questionId": "quote.design",
+        "question": "Perfecto, considero presupuesto aproximado de $1,000.00. Para cerrar: ya tienes el diseno o quieres apoyo?"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_repeated_question_prevented",
+        "timestamp": "2026-07-02T18:07:27.175Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "questionId": "quote.design",
+        "question": "Perfecto, considero presupuesto aproximado de $1,000.00. Para cerrar: ya tienes el diseno o quieres apoyo?"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_repeated_question_prevented",
+        "timestamp": "2026-07-02T18:07:27.304Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "questionId": "quote.design",
+        "question": "Perfecto, considero presupuesto aproximado de $1,000.00. Para cerrar: ya tienes el diseno o quieres apoyo?"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_repeated_question_prevented",
+        "timestamp": "2026-07-02T18:08:29.566Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "questionId": "quote.design",
+        "question": "Perfecto, considero presupuesto aproximado de $1,000.00. Para cerrar: ya tienes el diseno o quieres apoyo?"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_repeated_question_prevented",
+        "timestamp": "2026-07-02T18:08:29.612Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "questionId": "quote.design",
+        "question": "Perfecto, considero presupuesto aproximado de $1,000.00. Para cerrar: ya tienes el diseno o quieres apoyo?"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_repeated_question_prevented",
+        "timestamp": "2026-07-02T18:08:29.706Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "questionId": "quote.design",
+        "question": "Perfecto, considero presupuesto aproximado de $1,000.00. Para cerrar: ya tienes el diseno o quieres apoyo?"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_repeated_question_prevented",
+        "timestamp": "2026-07-02T18:08:29.750Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "questionId": "quote.design",
+        "question": "Perfecto, considero presupuesto aproximado de $1,000.00. Para cerrar: ya tienes el diseno o quieres apoyo?"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_repeated_question_prevented",
+        "timestamp": "2026-07-02T18:08:29.776Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "questionId": "quote.design",
+        "question": "Perfecto, agrego instalacion para revisar con asesor. Ya tienes el diseno o quieres apoyo?"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_repeated_question_prevented",
+        "timestamp": "2026-07-02T18:08:29.794Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "questionId": "quote.design",
+        "question": "Perfecto, agrego instalacion para revisar con asesor. Ya tienes el diseno o quieres apoyo?"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_repeated_question_prevented",
+        "timestamp": "2026-07-02T18:08:29.836Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "questionId": "quote.design",
+        "question": "Perfecto, considero presupuesto aproximado de $1,000.00. Para cerrar: ya tienes el diseno o quieres apoyo?"
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_repeated_question_prevented",
+        "timestamp": "2026-07-02T18:08:29.843Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "questionId": "quote.design",
+        "question": "Perfecto, considero presupuesto aproximado de $2,000.00. Para cerrar: ya tienes el diseno o quieres apoyo?"
+      }
+    ],
+    "outOfOrderEntityHandled": [
+      {
+        "level": "info",
+        "message": "unified_canary_out_of_order_entity_handled",
+        "timestamp": "2026-07-02T18:07:26.615Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "selectedService": "Impresion de lona",
+        "nextState": "ESPERANDO_DISENO",
+        "entities": [
+          "budget",
+          "currency"
+        ]
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_out_of_order_entity_handled",
+        "timestamp": "2026-07-02T18:07:26.696Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "selectedService": "Impresion de lona",
+        "nextState": "ESPERANDO_DISENO",
+        "entities": [
+          "budget",
+          "currency"
+        ]
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_out_of_order_entity_handled",
+        "timestamp": "2026-07-02T18:07:26.841Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "selectedService": "Impresion de lona",
+        "nextState": "ESPERANDO_DISENO",
+        "entities": [
+          "budget",
+          "currency"
+        ]
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_out_of_order_entity_handled",
+        "timestamp": "2026-07-02T18:07:26.940Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "selectedService": "Impresion de lona",
+        "nextState": "ESPERANDO_DISENO",
+        "entities": [
+          "budget",
+          "currency"
+        ]
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_out_of_order_entity_handled",
+        "timestamp": "2026-07-02T18:07:26.967Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "selectedService": "Vinil de rotulacion de color",
+        "nextState": "ESPERANDO_DISENO",
+        "entities": [
+          "category",
+          "installation"
+        ]
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_out_of_order_entity_handled",
+        "timestamp": "2026-07-02T18:07:26.989Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "selectedService": "Vinil de rotulacion de color",
+        "nextState": "ESPERANDO_DISENO",
+        "entities": [
+          "category",
+          "installation"
+        ]
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_out_of_order_entity_handled",
+        "timestamp": "2026-07-02T18:07:27.038Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "selectedService": "Impresion de lona",
+        "nextState": "ESPERANDO_DISENO",
+        "entities": [
+          "budget",
+          "currency"
+        ]
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_out_of_order_entity_handled",
+        "timestamp": "2026-07-02T18:07:27.051Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "selectedService": "Impresion de lona",
+        "nextState": "ESPERANDO_DISENO",
+        "entities": [
+          "budget",
+          "currency"
+        ]
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_out_of_order_entity_handled",
+        "timestamp": "2026-07-02T18:07:27.144Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "selectedService": "Impresion de lona",
+        "nextState": "ESPERANDO_DISENO",
+        "entities": [
+          "budget",
+          "currency"
+        ]
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_out_of_order_entity_handled",
+        "timestamp": "2026-07-02T18:07:27.178Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "selectedService": "Impresion de lona",
+        "nextState": "ESPERANDO_DISENO",
+        "entities": [
+          "budget",
+          "currency"
+        ]
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_out_of_order_entity_handled",
+        "timestamp": "2026-07-02T18:07:27.239Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "selectedService": "Impresion de lona",
+        "nextState": "ESPERANDO_DISENO",
+        "entities": [
+          "dimensions"
+        ]
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_out_of_order_entity_handled",
+        "timestamp": "2026-07-02T18:07:27.305Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "selectedService": "Impresion de lona",
+        "nextState": "ESPERANDO_DISENO",
+        "entities": [
+          "budget",
+          "currency"
+        ]
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_out_of_order_entity_handled",
+        "timestamp": "2026-07-02T18:08:29.567Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "selectedService": "Impresion de lona",
+        "nextState": "ESPERANDO_DISENO",
+        "entities": [
+          "budget",
+          "currency"
+        ]
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_out_of_order_entity_handled",
+        "timestamp": "2026-07-02T18:08:29.613Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "selectedService": "Impresion de lona",
+        "nextState": "ESPERANDO_DISENO",
+        "entities": [
+          "budget",
+          "currency"
+        ]
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_out_of_order_entity_handled",
+        "timestamp": "2026-07-02T18:08:29.707Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "selectedService": "Impresion de lona",
+        "nextState": "ESPERANDO_DISENO",
+        "entities": [
+          "budget",
+          "currency"
+        ]
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_out_of_order_entity_handled",
+        "timestamp": "2026-07-02T18:08:29.751Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "selectedService": "Impresion de lona",
+        "nextState": "ESPERANDO_DISENO",
+        "entities": [
+          "budget",
+          "currency"
+        ]
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_out_of_order_entity_handled",
+        "timestamp": "2026-07-02T18:08:29.777Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "selectedService": "Vinil de rotulacion de color",
+        "nextState": "ESPERANDO_DISENO",
+        "entities": [
+          "category",
+          "installation"
+        ]
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_out_of_order_entity_handled",
+        "timestamp": "2026-07-02T18:08:29.795Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "selectedService": "Vinil de rotulacion de color",
+        "nextState": "ESPERANDO_DISENO",
+        "entities": [
+          "category",
+          "installation"
+        ]
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_out_of_order_entity_handled",
+        "timestamp": "2026-07-02T18:08:29.837Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "selectedService": "Impresion de lona",
+        "nextState": "ESPERANDO_DISENO",
+        "entities": [
+          "budget",
+          "currency"
+        ]
+      },
+      {
+        "level": "info",
+        "message": "unified_canary_out_of_order_entity_handled",
+        "timestamp": "2026-07-02T18:08:29.845Z",
+        "service": "ventas-ai-saas-api",
+        "empresaId": 5,
+        "conversationId": "5215550000000@c.us",
+        "selectedService": "Impresion de lona",
+        "nextState": "ESPERANDO_DISENO",
+        "entities": [
+          "budget",
+          "currency"
+        ]
+      }
+    ],
+    "legacyServiceRevived": []
+  }
+}

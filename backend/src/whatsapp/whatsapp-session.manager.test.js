@@ -27,6 +27,7 @@ class FakeWhatsappClient extends EventEmitter {
     this.initializeError = null;
     this.initializeEvents = [];
     this.initializeDelayMs = 0;
+    this.destroyDelayMs = 0;
     this.info = {
       wid: { user: '5217711234567' }
     };
@@ -50,6 +51,9 @@ class FakeWhatsappClient extends EventEmitter {
 
   async destroy() {
     this.destroyCalls += 1;
+    if (this.destroyDelayMs) {
+      await new Promise((resolve) => setTimeout(resolve, this.destroyDelayMs));
+    }
   }
 
   async getState() {
@@ -439,6 +443,37 @@ describe('whatsapp session manager', () => {
     await restartSession(1);
 
     assert.deepEqual(order, ['create-0', 'destroy-0', 'create-1']);
+  });
+
+  it('start waits for a background disconnect destroy before launching the same profile', async () => {
+    const order = [];
+    const clients = [];
+    setWhatsappClientFactoryForTests(() => {
+      const client = new FakeWhatsappClient();
+      const index = clients.length;
+      client.initializeEvents = [['ready']];
+      client.destroyDelayMs = index === 0 ? 50 : 0;
+      client.destroy = async () => {
+        order.push(`destroy-start-${index}`);
+        client.destroyCalls += 1;
+        if (client.destroyDelayMs) {
+          await new Promise((resolve) => setTimeout(resolve, client.destroyDelayMs));
+        }
+        order.push(`destroy-end-${index}`);
+      };
+      clients.push(client);
+      order.push(`create-${index}`);
+      return client;
+    });
+
+    await startSession(1);
+    await disconnectSession(1);
+    await startSession(1);
+
+    assert.deepEqual(order, ['create-0', 'destroy-start-0', 'destroy-end-0', 'create-1']);
+    assert.equal(clients.length, 2);
+    assert.equal(clients[0].destroyCalls, 1);
+    assert.equal(clients[1].initializeCalls, 1);
   });
 
   it('restores companies sequentially and continues after a failure', async () => {

@@ -1,5 +1,21 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import {
+  appendUtf8JsonLine,
+  writeUtf8JsonToStream
+} from './utf8-json-output.js';
+
 const SENSITIVE_KEY_PATTERN = /(^|[_-])(authorization|cookie|password|passwd|secret|token|api[_-]?key|access[_-]?token|refresh[_-]?token|jwt|qr|code|session)($|[_-])/i;
 const SENSITIVE_VALUE_PATTERN = /(bearer\s+)[a-z0-9._~+/=-]+|((?:token|password|secret|api[_-]?key|code)=)[^&\s]+|(sk-(?:proj-)?)[a-z0-9_-]{12,}/gi;
+const BACKEND_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const DEFAULT_UNIFIED_CANARY_LOG_PATH = path.resolve(BACKEND_ROOT, 'logs', 'unified-canary.jsonl');
+
+function unifiedCanaryLogPath() {
+  return process.env.UNIFIED_CANARY_LOG_PATH
+    ? path.resolve(process.env.UNIFIED_CANARY_LOG_PATH)
+    : DEFAULT_UNIFIED_CANARY_LOG_PATH;
+}
 
 function serializeError(error) {
   if (!error) {
@@ -77,14 +93,25 @@ function write(level, message, meta = {}) {
     ...sanitizeForLog(meta)
   };
 
-  const line = JSON.stringify(entry);
+  writeUnifiedCanaryLog(message, entry);
 
   if (level === 'error') {
-    console.error(line);
+    writeUtf8JsonToStream(process.stderr, entry);
     return;
   }
 
-  console.log(line);
+  writeUtf8JsonToStream(process.stdout, entry);
+}
+
+function writeUnifiedCanaryLog(message, entry) {
+  if (!String(message ?? '').startsWith('unified_canary_')) return;
+  try {
+    const logPath = unifiedCanaryLogPath();
+    fs.mkdirSync(path.dirname(logPath), { recursive: true });
+    appendUtf8JsonLine(logPath, entry);
+  } catch {
+    // Logging must never break the request path.
+  }
 }
 
 export const logger = {

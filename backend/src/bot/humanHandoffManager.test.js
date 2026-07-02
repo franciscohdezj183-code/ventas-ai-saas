@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { findOwnerPendingHandoff } from './humanHandoffManager.js';
+import { findOwnerPendingHandoff, humanHandoffTestHelpers } from './humanHandoffManager.js';
 import { buildReadableOwnerNotification } from './ownerNotificationFormatter.js';
 
 test('solo permite responder un handoff al telefono del dueno asignado', () => {
@@ -21,6 +21,39 @@ test('solo permite responder un handoff al telefono del dueno asignado', () => {
   assert.equal(findOwnerPendingHandoff(rows, '+52 220 572 2560', '99123ab')?.id, 25);
   assert.equal(findOwnerPendingHandoff(rows, '+52 220 572 2560', '00000ZZ'), null);
   assert.equal(findOwnerPendingHandoff(rows, '+52 220 564 2307'), null);
+});
+
+test('detecta respuesta del dueno No CODIGO y mantiene textos sin mojibake', () => {
+  const kind = humanHandoffTestHelpers.ownerDecisionKind('No 951356F');
+  const code = humanHandoffTestHelpers.ownerDecisionCode('No 951356F', kind);
+
+  assert.equal(kind, 'DECLINE');
+  assert.equal(code, '951356F');
+  assert.doesNotMatch('Entendido. El bot seguirá atendiendo al cliente.', /Ã|Â/);
+});
+
+test('formatea aviso comercial al dueno con servicio pendiente sin inventar seleccion', () => {
+  const message = humanHandoffTestHelpers.buildCompactCommercialOwnerNotification({
+    companyName: 'MOK Estudio + Taller',
+    customerPhone: '+527298349854',
+    handoffCode: '951356F',
+    payload: {
+      customer: 'Cliente MOK',
+      selectedService: null,
+      dimensionsOrQuantity: null,
+      currentEstimate: null,
+      lastUserMessage: 'Me comunicas con un asesor por favor'
+    }
+  });
+
+  assert.match(message, /Nueva solicitud - MOK Estudio \+ Taller/);
+  assert.match(message, /Código: 951356F/);
+  assert.match(message, /Servicio: pendiente/);
+  assert.match(message, /Datos: pendiente/);
+  assert.match(message, /Mensaje: "Me comunicas con un asesor por favor"/);
+  assert.match(message, /Responder: si 951356F \/ no 951356F/);
+  assert.doesNotMatch(message, /Aluminio|Textil|Señalética|Senaletica/);
+  assert.doesNotMatch(message, /Ã|Â/);
 });
 
 test('formatea el aviso al dueno con resumen claro y sin repetir el mensaje', () => {

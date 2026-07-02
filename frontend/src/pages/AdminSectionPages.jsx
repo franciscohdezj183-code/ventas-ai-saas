@@ -6,6 +6,7 @@ import { CompanySettingsManager } from '../features/companySettings/CompanySetti
 import { ConversationsManager } from '../features/conversations/ConversationsManager.jsx';
 import { LeadsManager } from '../features/leads/LeadsManager.jsx';
 import { OnboardingManager } from '../features/onboarding/OnboardingManager.jsx';
+import { NCIEAdminPanel } from '../features/ncie/NCIEAdminPanel.jsx';
 import { OrdersPlaceholder } from '../features/orders/OrdersPlaceholder.jsx';
 import { OwnerCompanyPanel } from '../features/owner/OwnerCompanyPanel.jsx';
 import { PlansManager } from '../features/plans/PlansManager.jsx';
@@ -93,6 +94,10 @@ export function ReportsPage() {
 
 export function AIUsagePage() {
   return <AIUsageManager />;
+}
+
+export function NCIEAdminPage() {
+  return <NCIEAdminPanel />;
 }
 
 export function PlansPage() {

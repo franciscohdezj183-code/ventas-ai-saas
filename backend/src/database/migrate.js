@@ -55,7 +55,18 @@ function splitSqlStatements(sql) {
 
 async function runStatements(connection, statements) {
   for (const statement of statements) {
-    await connection.query(statement);
+    try {
+      await connection.query(statement);
+    } catch (error) {
+      const isAddColumnStatement = /^ALTER\s+TABLE\s+.+\s+ADD\s+COLUMN\s+/i.test(statement);
+
+      if (error?.code === 'ER_DUP_FIELDNAME' && isAddColumnStatement) {
+        console.info(`Skipping existing column in migration: ${error.message}`);
+        continue;
+      }
+
+      throw error;
+    }
   }
 }
 

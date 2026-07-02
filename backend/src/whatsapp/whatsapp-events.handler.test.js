@@ -25,15 +25,33 @@ class PollingClient extends EventEmitter {
   }
 }
 
+class SocketLostClient extends PollingClient {
+  async getState() {
+    throw new TypeError("Cannot read properties of null (reading 'Socket')");
+  }
+}
+
+class StoreUnavailableClient extends PollingClient {
+  async getChats() {
+    this.getChatsCalls += 1;
+    throw new TypeError("Cannot read properties of undefined (reading 'getChats')");
+  }
+}
+
 function waitForTick() {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
 afterEach(() => {
+  delete process.env.WHATSAPP_POLLING_CONTEXT_BACKOFF_BASE_MS;
+  delete process.env.WHATSAPP_POLLING_CONTEXT_BACKOFF_MAX_MS;
+  delete process.env.WHATSAPP_POLLING_CONTEXT_MAX_RECOVERY_FAILURES;
   resetStoreForTests();
 });
 
-test('detiene el polling y solicita una sola reconexion cuando se pierde el contexto', async () => {
+test('mantiene la sesion lista y reintenta polling cuando WhatsApp navega temporalmente', async () => {
+  process.env.WHATSAPP_POLLING_CONTEXT_BACKOFF_BASE_MS = '10';
+  process.env.WHATSAPP_POLLING_CONTEXT_BACKOFF_MAX_MS = '10';
   const client = new PollingClient();
   const disconnects = [];
   markStarted(5, client);
@@ -47,10 +65,55 @@ test('detiene el polling y solicita una sola reconexion cuando se pierde el cont
   client.emit('ready');
   await new Promise((resolve) => setTimeout(resolve, 80));
 
-  assert.equal(client.getChatsCalls, 1);
+  assert.equal(client.getChatsCalls >= 2, true);
+  assert.equal(disconnects.length, 0);
+  assert.equal(getSession(5).status, 'ready');
+  assert.equal(getSession(5).lastError, null);
+});
+
+test('marca la sesion para reconexion despues de backoff cuando getState pierde window.Store.Socket', async () => {
+  process.env.WHATSAPP_POLLING_CONTEXT_BACKOFF_BASE_MS = '10';
+  process.env.WHATSAPP_POLLING_CONTEXT_BACKOFF_MAX_MS = '10';
+  const client = new SocketLostClient();
+  const disconnects = [];
+  markStarted(5, client);
+  registerWhatsappClientEvents({
+    companyId: 5,
+    client,
+    unreadPollIntervalMs: 15,
+    onDisconnected: (event) => disconnects.push(event)
+  });
+
+  client.emit('ready');
+  await new Promise((resolve) => setTimeout(resolve, 150));
+
+  assert.equal(client.getChatsCalls, 0);
   assert.equal(disconnects.length, 1);
   assert.equal(getSession(5).status, 'disconnected');
-  assert.match(getSession(5).lastError, /perdio el contexto/i);
+  assert.match(getSession(5).lastError, /socket|contexto|polling/i);
+});
+
+test('fuerza reconexion cuando getState sigue CONNECTED pero Store.getChats no existe', async () => {
+  process.env.WHATSAPP_POLLING_CONTEXT_BACKOFF_BASE_MS = '10';
+  process.env.WHATSAPP_POLLING_CONTEXT_BACKOFF_MAX_MS = '10';
+  process.env.WHATSAPP_POLLING_CONTEXT_MAX_RECOVERY_FAILURES = '3';
+  const client = new StoreUnavailableClient();
+  const disconnects = [];
+  markStarted(5, client);
+  registerWhatsappClientEvents({
+    companyId: 5,
+    client,
+    unreadPollIntervalMs: 15,
+    onDisconnected: (event) => disconnects.push(event)
+  });
+
+  client.emit('ready');
+  await new Promise((resolve) => setTimeout(resolve, 300));
+
+  assert.equal(client.getChatsCalls >= 3, true);
+  assert.equal(disconnects.length, 1);
+  assert.equal(getSession(5).status, 'disconnected');
+  assert.match(getSession(5).lastError, /getChats|contexto|polling/i);
 });
 
 test('no inicia polling mientras la sesion solo esta esperando QR', async () => {

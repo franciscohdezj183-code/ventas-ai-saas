@@ -54,13 +54,20 @@ export function isTargetClosedError(error) {
   return message.includes('target closed')
     || message.includes('execution context was destroyed')
     || message.includes('protocol error')
-    || message.includes("reading 'getchats'");
+    || message.includes("reading 'getchats'")
+    || message.includes("reading 'socket'")
+    || message.includes('whatsapp client state is unlaunched')
+    || (message.includes('store') && message.includes('socket'));
 }
 
 export function isLockedLocalAuthError(error) {
   const code = String(error?.code ?? '').toUpperCase();
   const message = String(error?.message ?? error ?? '').toUpperCase();
-  return ['EBUSY', 'EPERM', 'ENOTEMPTY'].some((value) => code === value || message.includes(value));
+  return ['EBUSY', 'EPERM', 'ENOTEMPTY'].some((value) => code === value || message.includes(value))
+    || (
+      message.includes('BROWSER IS ALREADY RUNNING')
+      && message.includes('USERDATADIR')
+    );
 }
 
 export async function waitForWhatsappTerminalState({
