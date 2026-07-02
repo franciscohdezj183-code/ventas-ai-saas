@@ -54,7 +54,10 @@ export function isTargetClosedError(error) {
   return message.includes('target closed')
     || message.includes('execution context was destroyed')
     || message.includes('protocol error')
-    || message.includes("reading 'getchats'");
+    || message.includes("reading 'getchats'")
+    || message.includes("reading 'socket'")
+    || message.includes('whatsapp client state is unlaunched')
+    || (message.includes('store') && message.includes('socket'));
 }
 
 export function isLockedLocalAuthError(error) {

@@ -174,7 +174,7 @@ async function safeCallTool(mcpClient, toolName, args) {
   }
 }
 
-async function loadFullServiceCatalog({ empresaId, mcpClient }) {
+export async function loadFullServiceCatalog({ empresaId, mcpClient }) {
   if (typeof mcpClient.loadFullServiceCatalog === 'function') {
     return mcpClient.loadFullServiceCatalog({ empresaId });
   }

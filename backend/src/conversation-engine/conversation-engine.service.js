@@ -20,6 +20,7 @@ import {
 import { normalizePlannerState } from './planner/commercial-state.schema.js';
 import { currentWaitingField, interpretResponseForWaitingField } from './planner/response-interpreter.js';
 import { planAdvisorNotification } from './advisor-notification.js';
+import { routeConversationMessage } from './conversation-router.js';
 
 function emptyRetrieval({ commercialReasoning = null } = {}) {
   return {
@@ -141,6 +142,48 @@ async function hydratePlannerDecisionService({ empresaId, plannerDecision, mcpCl
   return mergeHydratedPlannerService(plannerDecision, hydrated);
 }
 
+async function validateStateAfterSave({
+  empresaId,
+  phone,
+  stateBefore,
+  responsePlan,
+  plannerDecision,
+  contextStore
+}) {
+  const beforePlannerState = normalizePlannerState({ state: stateBefore, empresaId, conversationId: phone });
+  const beforeActiveFlow = beforePlannerState.activeFlowId;
+  if (!beforeActiveFlow) return null;
+
+  const after = await loadConversationState({ empresaId, phone, contextStore });
+  const afterPlannerState = normalizePlannerState({ state: after, empresaId, conversationId: phone });
+  if (afterPlannerState.activeFlowId) return after;
+
+  const allowedReason = responsePlan?.flowCloseReason ?? plannerDecision?.flowCloseReason ?? (
+    plannerDecision?.explicitTopicChange || responsePlan?.type === 'catalog_listing' ? 'explicit_topic_change' : null
+  );
+  if (allowedReason === 'flow_completed' || allowedReason === 'explicit_topic_change') return after;
+
+  logger.error('ncie_state_corruption_prevented', {
+    empresaId,
+    previousActiveFlow: beforeActiveFlow,
+    responsePlanType: responsePlan?.type ?? null,
+    reason: 'state_after_save_lost_active_flow'
+  });
+
+  const previousContext = stateBefore?.legacyContext;
+  if (!previousContext?.datos_json) return after;
+  await contextStore.save({
+    empresaId,
+    phone,
+    ultimaIntencion: previousContext.ultima_intencion ?? null,
+    ultimoProductoId: previousContext.ultimo_producto_id ?? null,
+    ultimoServicioId: previousContext.ultimo_servicio_id ?? null,
+    ultimoTextoBusqueda: previousContext.ultimo_texto_busqueda ?? null,
+    datos: previousContext.datos_json
+  });
+  return loadConversationState({ empresaId, phone, contextStore });
+}
+
 async function saveConversation({ mcpClient, empresaId, phone, whatsappChatId, whatsappMessageId, contactName, message, response, decision }) {
   return mcpClient.callTool('guardar_conversacion', {
     empresa_id: empresaId,
@@ -201,6 +244,137 @@ export async function runConversationEngine({
     waitingField: plannerStateForInput.waitingField ?? null,
     currentEstimate: plannerStateForInput.currentEstimate ?? null
   });
+  const routed = await routeConversationMessage({
+    empresaId,
+    phone: whatsappChatId ?? phone,
+    state,
+    normalizedMessage,
+    plannerState: plannerStateForInput,
+    pendingOptions: state?.commercial?.lastOptionsShown ?? [],
+    mcpClient
+  });
+  if (routed.handled) {
+    const nlu = routed.nlu;
+    const decision = routed.decision;
+    const retrieval = routed.retrieval;
+    const responsePlan = routed.responsePlan;
+    const plannerAuthorityDecision = routed.plannerDecision;
+    const commercialReasoning = {
+      conversation_goal: responsePlan?.type === 'service_explanation' ? 'find_solution' : plannerAuthorityDecision?.goal ?? 'cotizar',
+      conversation_stage: plannerAuthorityDecision?.stage ?? 'cotizacion',
+      retrieval_strategy: 'deterministic_router',
+      recommended_action: 'answer_from_context',
+      need_clarification: false
+    };
+    logger.info('ncie_deterministic_router_short_circuit', {
+      empresaId,
+      reason: routed.reason,
+      routeMessage_resolved: true,
+      route_conversation_message_handled: true,
+      ncie_skipped_retrieval_due_to_waiting_field: true,
+      retrievalSkipped: true
+    });
+    logger.info('ncie_response_planned', { empresaId, type: responsePlan.type });
+    const generated = generateResponse({ nlu, retrieval, decision, state, commercialReasoning, responsePlan });
+    logger.info('ncie_response_generated', { empresaId, hasResponse: Boolean(generated.respuesta) });
+    const advisorNotification = planAdvisorNotification({
+      phone,
+      conversationId: whatsappChatId ?? phone,
+      contactName,
+      normalizedMessage,
+      state,
+      nlu,
+      decision,
+      plannerDecision: plannerAuthorityDecision,
+      responsePlan
+    });
+
+    let savedConversation = null;
+    let lead = null;
+    if (persist) {
+      savedConversation = await saveConversation({
+        mcpClient,
+        empresaId,
+        phone,
+        whatsappChatId,
+        whatsappMessageId,
+        contactName,
+        message,
+        response: generated.respuesta,
+        decision
+      });
+      lead = await maybeCreateLead({
+        mcpClient,
+        empresaId,
+        phone,
+        whatsappChatId,
+        contactName,
+        nlu,
+        decision,
+        state,
+        response: generated
+      });
+      const savedState = await saveConversationState({
+        empresaId,
+        phone,
+        state,
+        nlu,
+        decision,
+        retrieval,
+        response: generated,
+        commercialReasoning,
+        responsePlan,
+        plannerDecision: plannerAuthorityDecision,
+        advisorNotification,
+        contextStore
+      });
+      await validateStateAfterSave({
+        empresaId,
+        phone,
+        stateBefore: state,
+        responsePlan,
+        plannerDecision: plannerAuthorityDecision,
+        contextStore
+      });
+      const savedDatos = savedState?.datos_json ?? savedState?.datos ?? {};
+      logger.info('ncie_active_memory_updated', {
+        empresaId,
+        activeServiceId: savedState?.ultimoServicioId ?? null,
+        activeServiceName: savedDatos?.ncie?.active_service_name ?? null,
+        activeDomain: savedDatos?.ncie?.active_domain ?? null,
+        lastBotQuestion: savedDatos?.ncie?.last_bot_question ?? null
+      });
+    }
+
+    return {
+      respuesta: generated.respuesta,
+      medios: generated.medios,
+      intencion: nlu.intent,
+      tipo: nlu.type,
+      herramienta_mcp: null,
+      parametros: nlu.entities,
+      confianza: nlu.confidence,
+      requiere_respuesta_ia: false,
+      ncie: {
+        nlu,
+        commercialReasoning,
+        retrieval,
+        responsePlan,
+        decision,
+        advisorNotificationRequired: advisorNotification.advisorNotificationRequired,
+        notificationReason: advisorNotification.notificationReason,
+        notificationPayload: advisorNotification.notificationPayload,
+        notificationHash: advisorNotification.notificationHash,
+        advisorNotification,
+        plannerShadowDecision: isConversationPlannerShadowEnabled() ? plannerAuthorityDecision : null,
+        plannerAuthorityDecision
+      },
+      mcp_result: retrieval,
+      notificacion: null,
+      lead_id: lead?.lead_id ?? null,
+      conversacion_id: savedConversation?.conversacion_id ?? null
+    };
+  }
   const waitingField = currentWaitingField(plannerStateForInput);
   const contextualResponse = waitingField
     ? interpretResponseForWaitingField({
@@ -506,6 +680,14 @@ export async function runConversationEngine({
       advisorNotification,
       contextStore
     });
+    await validateStateAfterSave({
+      empresaId,
+      phone,
+      stateBefore: state,
+      responsePlan,
+      plannerDecision: plannerAuthorityActive ? plannerAuthorityDecision : null,
+      contextStore
+    });
     if (plannerAuthorityActive) {
       logger.info('ncie_planner_state_committed', {
         empresaId,
@@ -513,20 +695,21 @@ export async function runConversationEngine({
         responsePlanType: plannerAuthorityDecision?.responsePlanType ?? null
       });
     }
+    const savedDatos = savedState?.datos_json ?? savedState?.datos ?? {};
     logger.info('ncie_active_memory_updated', {
       empresaId,
       activeServiceId: savedState?.ultimoServicioId ?? null,
-      activeServiceName: savedState?.datos?.ncie?.active_service_name ?? null,
-      activeDomain: savedState?.datos?.ncie?.active_domain ?? null,
-      lastBotQuestion: savedState?.datos?.ncie?.last_bot_question ?? null
+      activeServiceName: savedDatos?.ncie?.active_service_name ?? null,
+      activeDomain: savedDatos?.ncie?.active_domain ?? null,
+      lastBotQuestion: savedDatos?.ncie?.last_bot_question ?? null
     });
     logger.info('ncie_state_after', {
       empresaId,
       conversationId: whatsappChatId ?? phone,
-      activeFlow: savedState?.datos?.ncie?.planner_state?.activeFlowId ?? null,
-      selectedService: savedState?.datos?.ncie?.active_service_name ?? null,
-      waitingField: savedState?.datos?.ncie?.planner_state?.waitingField ?? null,
-      currentEstimate: savedState?.datos?.ncie?.planner_state?.currentEstimate ?? null
+      activeFlow: savedDatos?.ncie?.planner_state?.activeFlowId ?? null,
+      selectedService: savedDatos?.ncie?.active_service_name ?? null,
+      waitingField: savedDatos?.ncie?.planner_state?.waitingField ?? null,
+      currentEstimate: savedDatos?.ncie?.planner_state?.currentEstimate ?? null
     });
     logger.info('ncie_commercial_stage_updated', {
       empresaId,

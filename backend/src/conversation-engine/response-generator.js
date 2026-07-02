@@ -115,6 +115,9 @@ function renderPlannedResponse(plan) {
   }
 
   if (plan.type === 'catalog_listing') {
+    if (plan.categoryFiltered && plan.question) {
+      return plannedQuestion(plan);
+    }
     const services = plan.services ?? [];
     const products = plan.products ?? [];
     if (services.length === 0 && products.length === 0) {
@@ -157,7 +160,7 @@ function renderPlannedResponse(plan) {
 
   if (plan.type === 'quote_estimate') {
     const dimensions = plan.dimensions;
-    const dimensionsText = String(dimensions.text ?? '').replace(/\s+/g, '');
+    const dimensionsText = String(dimensions.text ?? '').replace(/\s+/g, ' ').trim();
     const unitPrice = plan.unitPrice ? money(plan.unitPrice) : null;
     const total = plan.priceText ?? 'total por confirmar';
     const includesDesign = /\blona\b/i.test(String(plan.selected?.nombre ?? ''));
@@ -196,6 +199,9 @@ function renderPlannedResponse(plan) {
   }
 
   if (plan.type === 'quote_requirements_followup') {
+    if (plan.deterministicRouter && plan.question) {
+      return plannedQuestion(plan);
+    }
     const dimensions = plan.quoteContext?.dimensions;
     const total = money(plan.quoteContext?.total);
     const design = plan.quoteContext?.designSupport === false ? 'ya lo tienes' : 'incluido / apoyo requerido';
@@ -218,7 +224,7 @@ function renderPlannedResponse(plan) {
 
   if (plan.type === 'quote_from_memory') {
     const subject = plan.selected?.nombre ?? plan.summary ?? 'lo que revisamos';
-    if (/^Lo (?:tomamos|dejamos)/i.test(String(plan.question ?? ''))) {
+    if (/^(Lo (?:tomamos|dejamos)|Perfecto|A la orden)/i.test(String(plan.question ?? ''))) {
       return plannedQuestion(plan);
     }
     return `Retomamos ${subject}.\n\n${plannedQuestion(plan)}`;

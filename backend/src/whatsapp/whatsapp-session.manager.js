@@ -468,9 +468,21 @@ async function startSessionNow(companyId, requestedGeneration = getOperationGene
     const cancellation = createInitializationCancellation(id, generation);
 
     try {
+      const initializePromise = Promise.resolve()
+        .then(() => client.initialize());
+      initializePromise.catch((error) => {
+        const current = getSession(id);
+        if (current?.client !== client || generation !== getOperationGeneration(id)) {
+          logger.info('whatsapp_initialize_late_rejection_ignored', {
+            empresaId: id,
+            error: error instanceof Error ? error.message : String(error ?? 'unknown'),
+            targetClosed: isTargetClosedError(error)
+          });
+        }
+      });
       await withTimeout(
         Promise.race([
-          client.initialize(),
+          initializePromise,
           cancellation.promise
         ]),
         timeoutMs,

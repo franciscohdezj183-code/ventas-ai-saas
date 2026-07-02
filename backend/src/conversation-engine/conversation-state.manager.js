@@ -199,10 +199,9 @@ export async function saveConversationState({
     'catalog_listing'
   ].includes(responsePlan?.type);
   const shouldClearActiveSelection = clearsActiveSelection && responsePlan?.type === 'catalog_listing';
-  const plannerActiveFlow = plannerDecision?.activeFlow
-    ?? activeFlow(plannerDecision?.stateUpdatePreview)
-    ?? activeFlow(state?.commercial?.plannerState)
-    ?? null;
+  const plannerActiveFlow = plannerDecision
+    ? (plannerDecision.activeFlow ?? activeFlow(plannerDecision.stateUpdatePreview) ?? null)
+    : activeFlow(state?.commercial?.plannerState) ?? null;
   const hasPlannerActiveFlow = Boolean(plannerActiveFlow);
   const plannerActiveService = plannerActiveFlow?.selectedServiceName || plannerActiveFlow?.selectedServiceId
     ? {
@@ -401,13 +400,15 @@ export async function saveConversationState({
     waitingField: plannerState?.waitingField ?? null,
     missingEntities: plannerState?.missingEntities ?? [],
     activeServiceId: saved?.ultimoServicioId ?? null,
-    activeServiceName: saved?.datos?.ncie?.active_service_name ?? null
+    activeServiceName: (saved?.datos_json ?? saved?.datos)?.ncie?.active_service_name ?? null
   });
 
+  const realDatos = saved?.datos_json ?? saved?.datos ?? savedDatos;
   return {
     ...saved,
     ultimoServicioId: saved?.ultimoServicioId ?? lastServiceId,
     ultimoProductoId: saved?.ultimoProductoId ?? lastProductId,
-    datos: saved?.datos ?? savedDatos
+    datos_json: realDatos,
+    datos: realDatos
   };
 }

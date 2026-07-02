@@ -22,6 +22,16 @@ const UNREAD_POLL_INTERVAL_MS = Number(process.env.WHATSAPP_UNREAD_POLL_INTERVAL
 const UNREAD_POLL_MESSAGE_LIMIT = Number(process.env.WHATSAPP_UNREAD_POLL_MESSAGE_LIMIT ?? 5);
 export const WHATSAPP_EVENT_CONTROL = Symbol.for('ventas-ai.whatsapp-event-control');
 
+function buildPollingContextLostError(error) {
+  const wrapped = error instanceof Error
+    ? error
+    : new Error(String(error ?? 'WhatsApp polling context lost'));
+  if (!wrapped.code && isTargetClosedError(wrapped)) {
+    wrapped.code = 'WHATSAPP_CONTEXT_LOST';
+  }
+  return wrapped;
+}
+
 function getConnectedPhoneNumber(client) {
   const wid = client.info?.wid ?? client.info?.me;
   const phone = wid?.user ?? String(wid?._serialized ?? '').replace('@c.us', '');
@@ -263,7 +273,12 @@ export function registerWhatsappClientEvents({
         }
 
         if (client.getState) {
-          const state = await client.getState();
+          let state = null;
+          try {
+            state = await client.getState();
+          } catch (error) {
+            throw buildPollingContextLostError(error);
+          }
           if (state && state !== 'CONNECTED') {
             const error = new Error(`WhatsApp client state is ${state}`);
             error.code = 'WHATSAPP_NOT_CONNECTED';
@@ -333,7 +348,7 @@ export function registerWhatsappClientEvents({
 
         const clientContextLost =
           isTargetClosedError(error)
-          || ['WHATSAPP_PAGE_CLOSED', 'WHATSAPP_NOT_CONNECTED', 'WHATSAPP_GETCHATS_UNAVAILABLE']
+          || ['WHATSAPP_PAGE_CLOSED', 'WHATSAPP_NOT_CONNECTED', 'WHATSAPP_GETCHATS_UNAVAILABLE', 'WHATSAPP_CONTEXT_LOST']
             .includes(error?.code);
 
         if (clientContextLost || consecutiveUnreadPollFailures >= 3) {

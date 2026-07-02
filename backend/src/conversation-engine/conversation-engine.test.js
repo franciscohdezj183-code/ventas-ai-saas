@@ -1419,7 +1419,7 @@ describe('MOK production conversation hardening flows', () => {
     assert.doesNotMatch(normalize(results[12].respuesta), /te ayudo a ubicar la mejor opcion/);
   });
 
-  it('Flow J treats plain Instalacion as a separate service when the quote excludes installation', async () => {
+  it('Flow J keeps plain Instalacion inside the active quote instead of switching service', async () => {
     const reportedCatalog = [
       {
         id: 50,
@@ -1464,8 +1464,182 @@ describe('MOK production conversation hardening flows', () => {
     assert.equal(results[2].ncie.responsePlan.total, 2400);
     assert.equal(design.ncie.responsePlan.type, 'quote_requirements_followup');
     assert.equal(design.ncie.advisorNotificationRequired, false);
-    assert.equal(installation.ncie.plannerAuthorityDecision.selectedService.nombre, 'Instalacion');
+    assert.equal(installation.ncie.plannerAuthorityDecision.selectedService.nombre, 'Vinil de rotulacion de color');
+    assert.equal(installation.ncie.plannerAuthorityDecision.detectedInstallationPreference, true);
     assert.equal(installation.ncie.notificationPayload, null);
     assert.doesNotMatch(normalize(installation.respuesta), /dejamos instalacion para revisar con asesor|instalacion: revisar/);
+  });
+
+  it('Deterministic router Flow 1 lists print options for generic impresion requests', async () => {
+    const mokCatalog = [
+      { id: 1, nombre: 'Tarjetas digitales laminado mate 100 pzs', precio: 0, tipo_precio: 'COTIZACION', categoria: 'Impresion' },
+      { id: 2, nombre: 'Impresion de lona', precio: 390, tipo_precio: 'POR_M2', requiere_medidas: true, categoria: 'Impresion' },
+      { id: 3, nombre: 'Vinil impreso', precio: 390, tipo_precio: 'POR_M2', requiere_medidas: true, categoria: 'Impresion' }
+    ];
+    const { results } = await runMokFlow([
+      'Hola',
+      'Me interesa una impresión',
+      'Quiero una impresión',
+      'impresión'
+    ], { serviceCatalog: mokCatalog });
+
+    for (const result of results.slice(1)) {
+      assert.equal(result.ncie.responsePlan.type, 'catalog_listing');
+      assert.equal(result.ncie.responsePlan.deterministicRouter, true);
+      assert.match(normalize(result.respuesta), /claro, en impresion manejamos/);
+      assert.doesNotMatch(normalize(result.respuesta), /te ayudo a ubicar la mejor opcion|que necesitas lograr/);
+    }
+  });
+
+  it('Deterministic router Flow 2 keeps catalog item 9 and stores quantity once', async () => {
+    const mokCatalog = [
+      { id: 1, nombre: 'Tarjetas digitales laminado mate 100 pzs', precio: 0, tipo_precio: 'COTIZACION', categoria: 'Impresion' },
+      { id: 2, nombre: 'Impresion de lona', precio: 390, tipo_precio: 'POR_M2', requiere_medidas: true, categoria: 'Impresion' },
+      { id: 3, nombre: 'Marketing digital', precio: 0, tipo_precio: 'COTIZACION', categoria: 'Marketing' },
+      { id: 4, nombre: 'Banner arana 0.60 x 1.60 m', precio: 0, tipo_precio: 'COTIZACION', categoria: 'Banners' },
+      { id: 5, nombre: 'Banner arana 0.80 x 1.80 m', precio: 0, tipo_precio: 'COTIZACION', categoria: 'Banners' },
+      { id: 6, nombre: 'Diseno de logotipo', precio: 0, tipo_precio: 'COTIZACION', categoria: 'Diseno' },
+      { id: 7, nombre: 'Diseno web', precio: 0, tipo_precio: 'COTIZACION', categoria: 'Diseno' },
+      { id: 8, nombre: 'Identidad e imagen corporativa', precio: 0, tipo_precio: 'COTIZACION', categoria: 'Diseno' },
+      { id: 9, nombre: 'Promocionales con corte de vinil', precio: 0, tipo_precio: 'COTIZACION', requiere_cantidad: true, categoria: 'Promocionales' },
+      { id: 10, nombre: 'Coroplast con vinil impreso', precio: 0, tipo_precio: 'COTIZACION', categoria: 'Senaletica' }
+    ];
+    const { results, contextStore } = await runMokFlow([
+      'qué servicios tienes',
+      '9',
+      '3',
+      'quiero 3 piezas'
+    ], { serviceCatalog: mokCatalog });
+
+    assert.equal(results[1].ncie.plannerAuthorityDecision.selectedService.nombre, 'Promocionales con corte de vinil');
+    assert.equal(results[2].ncie.plannerAuthorityDecision.selectedService.nombre, 'Promocionales con corte de vinil');
+    assert.equal(results[2].ncie.plannerAuthorityDecision.detectedQuantity, 3);
+    assert.match(normalize(results[2].respuesta), /perfecto, anoto 3 piezas/);
+    assert.equal(results[3].ncie.plannerAuthorityDecision.selectedService.nombre, 'Promocionales con corte de vinil');
+    assert.equal(contextStore.saved.at(-1).datos.ncie.planner_state.collectedEntities.quantity, 3);
+    assert.doesNotMatch(normalize(results[3].respuesta), /cuantas piezas necesitas/);
+  });
+
+  it('Deterministic router Flow 3 keeps fuzzy promocionales service through dimensions budget and usage', async () => {
+    const mokCatalog = [
+      { id: 9, nombre: 'Promocionales con corte de vinil', precio: 0, tipo_precio: 'COTIZACION', requiere_cantidad: true, categoria: 'Promocionales' },
+      { id: 10, nombre: 'Coroplast con vinil impreso', precio: 0, tipo_precio: 'COTIZACION', categoria: 'Senaletica' }
+    ];
+    const { results, contextStore } = await runMokFlow([
+      'quiero tres piezas de promcionalesd e corte de vinil',
+      '30x12',
+      '10000 pesos',
+      'interior'
+    ], { serviceCatalog: mokCatalog });
+
+    for (const result of results) {
+      assert.equal(result.ncie.plannerAuthorityDecision.selectedService.nombre, 'Promocionales con corte de vinil');
+      assert.notEqual(result.ncie.plannerAuthorityDecision.selectedService.nombre, 'Coroplast con vinil impreso');
+    }
+    const entities = contextStore.saved.at(-1).datos.ncie.planner_state.collectedEntities;
+    assert.equal(entities.quantity, 3);
+    assert.equal(entities.dimensions.text, '30x12');
+    assert.equal(entities.budget, 10000);
+    assert.equal(entities.usageContext, 'interior');
+    assert.match(normalize(results.at(-1).respuesta), /uso: interior|interior/);
+  });
+
+  it('Deterministic router Flow 4 keeps lona quote through design and solo impresion', async () => {
+    const mokCatalog = [
+      { id: 2, nombre: 'Impresion de lona', precio: 390, tipo_precio: 'POR_M2', requiere_medidas: true, categoria: 'Impresion', no_incluye: 'instalacion' }
+    ];
+    const { results } = await runMokFlow([
+      'Impresión de lona',
+      '1.20 x 2.40',
+      'ya tengo diseño',
+      'solo la impresión'
+    ], { serviceCatalog: mokCatalog });
+
+    assert.equal(results[0].ncie.plannerAuthorityDecision.selectedService.nombre, 'Impresion de lona');
+    assert.equal(results[1].ncie.plannerAuthorityDecision.detectedDimensions.area, 2.88);
+    assert.equal(results[3].ncie.plannerAuthorityDecision.selectedService.nombre, 'Impresion de lona');
+    assert.match(normalize(results[3].respuesta), /resumen|instalacion: no incluida/);
+    assert.doesNotMatch(normalize(results[3].respuesta), /te ayudo a ubicar la mejor opcion/);
+  });
+
+  it('Deterministic router keeps lona flow through ambiguous large dimensions, design, usage and advisor handoff', async () => {
+    const mokCatalog = [
+      { id: 2, nombre: 'Impresion de lona', precio: 390, tipo_precio: 'POR_M2', requiere_medidas: true, incluye: 'Diseno', categoria: 'Impresion', no_incluye: 'Instalacion' }
+    ];
+    const { results } = await runMokFlow([
+      'me intresa una impresion de lona',
+      'las medidas son 10x20',
+      'son metros',
+      'quiero un diseno',
+      'Ya tengo un diseno',
+      'atraer mas clientes',
+      'exterior',
+      'si, por favor'
+    ], { serviceCatalog: mokCatalog });
+
+    assert.equal(results[0].ncie.plannerAuthorityDecision.selectedService.nombre, 'Impresion de lona');
+    assert.match(normalize(results[1].respuesta), /10 x 20|centimetros o en metros/);
+    assert.doesNotMatch(normalize(results[1].respuesta), /lasmedidasson10x20|\$78,000\.00/);
+    assert.equal(results[2].ncie.responsePlan.type, 'quote_estimate');
+    assert.match(normalize(results[2].respuesta), /10 x 20 m|200 m2|\$78,000\.00/);
+    assert.equal(results[3].ncie.plannerAuthorityDecision.selectedService.nombre, 'Impresion de lona');
+    assert.doesNotMatch(normalize(results[3].respuesta), /que necesitas lograr|te ayudo a ubicar la mejor opcion/);
+    assert.equal(results[4].ncie.plannerAuthorityDecision.selectedService.nombre, 'Impresion de lona');
+    assert.match(normalize(results[4].respuesta), /interior, exterior o evento/);
+    assert.doesNotMatch(normalize(results[5].respuesta), /que necesitas lograr|te ayudo a ubicar la mejor opcion/);
+    assert.match(normalize(results[6].respuesta), /servicio: impresion de lona|uso: exterior|objetivo: atraer mas clientes/);
+    assert.equal(results[7].intencion, 'HABLAR_ASESOR');
+    assert.equal(results[7].ncie.decision.action, 'escalate_human');
+    assert.match(normalize(results[7].respuesta), /te comunico con un asesor/);
+    assert.doesNotMatch(normalize(results[7].respuesta), /que necesitas lograr|te ayudo a ubicar la mejor opcion/);
+  });
+
+  it('Deterministic router lists full catalog after advisor handoff when customer asks services or informes', async () => {
+    const mokCatalog = [
+      { id: 1, nombre: 'Tarjetas digitales laminado mate 100 pzs', precio: 0, tipo_precio: 'COTIZACION', categoria: 'Impresion' },
+      { id: 2, nombre: 'Impresion de lona', precio: 390, tipo_precio: 'POR_M2', requiere_medidas: true, incluye: 'Diseno', categoria: 'Impresion', no_incluye: 'Instalacion' },
+      { id: 3, nombre: 'Marketing digital', precio: 0, tipo_precio: 'COTIZACION', categoria: 'Marketing' },
+      { id: 4, nombre: 'Banner arana 0.60 x 1.60 m', precio: 0, tipo_precio: 'COTIZACION', categoria: 'Banners' },
+      { id: 5, nombre: 'Banner arana 0.80 x 1.80 m', precio: 0, tipo_precio: 'COTIZACION', categoria: 'Banners' },
+      { id: 6, nombre: 'Diseno de logotipo', precio: 0, tipo_precio: 'COTIZACION', categoria: 'Diseno' },
+      { id: 7, nombre: 'Vinil de rotulacion de color', precio: 400, tipo_precio: 'POR_M2', requiere_medidas: true, categoria: 'Rotulacion' }
+    ];
+    const { results } = await runMokFlow([
+      'Me gustaria la impresion de una lona',
+      'Las medidas serian 2x3',
+      'Ya tengo el diseno',
+      'Si por favor',
+      'Me podrias pasar el catalogo de tus servicios por favor',
+      'Quiero informes',
+      'Me das informes de tus servicios',
+      'Que servicios tienen'
+    ], { serviceCatalog: mokCatalog });
+
+    assert.equal(results[3].intencion, 'HABLAR_ASESOR');
+    for (const result of results.slice(4)) {
+      assert.equal(result.ncie.responsePlan.type, 'catalog_listing');
+      assert.equal(result.ncie.plannerAuthorityDecision.selectedService, null);
+      assert.match(normalize(result.respuesta), /claro, estos son los servicios que manejamos/);
+      assert.match(normalize(result.respuesta), /impresion de lona|marketing digital|diseno de logotipo/);
+      assert.doesNotMatch(normalize(result.respuesta), /diseno de logotipo si puede ser|no encontre ese servicio exacto|estos servicios pueden interesarte/);
+    }
+  });
+
+  it('Deterministic router Flow 5 treats Instalacion as current-flow answer, not service switch', async () => {
+    const mokCatalog = [
+      { id: 50, nombre: 'Vinil de rotulacion de color', descripcion: 'Vinil para rotulacion', precio: 400, tipo_precio: 'POR_M2', requiere_medidas: true, categoria: 'Rotulacion' },
+      { id: 51, nombre: 'Instalacion', descripcion: 'Instalacion de graficos', precio: 0, tipo_precio: 'COTIZACION', categoria: 'Instalacion' }
+    ];
+    const { results } = await runMokFlow([
+      'Rotulación',
+      '3x2',
+      'Ya tengo diseño',
+      'Instalación'
+    ], { serviceCatalog: mokCatalog });
+
+    assert.equal(results[0].ncie.plannerAuthorityDecision.selectedService.nombre, 'Vinil de rotulacion de color');
+    assert.equal(results[3].ncie.plannerAuthorityDecision.selectedService.nombre, 'Vinil de rotulacion de color');
+    assert.notEqual(results[3].ncie.plannerAuthorityDecision.selectedService.nombre, 'Instalacion');
+    assert.equal(results[3].ncie.plannerAuthorityDecision.detectedInstallationPreference, true);
   });
 });

@@ -17,10 +17,37 @@ export function currentWaitingField(plannerState = null) {
 }
 
 function numericQuantity(text) {
-  const match = text.match(/^\s*(\d+)\s*(?:piezas|pzs|unidades|uds)?\s*$/);
-  if (!match) return null;
-  const quantity = Number(match[1]);
-  return Number.isFinite(quantity) && quantity > 0 ? quantity : null;
+  const digit = text.match(/\b(\d{1,6})\b(?:\s*(?:piezas|pieza|pzs|unidades|unidad|uds))?/);
+  if (digit) {
+    const quantity = Number(digit[1]);
+    return Number.isFinite(quantity) && quantity > 0 ? quantity : null;
+  }
+  const words = new Map([
+    ['un', 1],
+    ['una', 1],
+    ['uno', 1],
+    ['dos', 2],
+    ['tres', 3],
+    ['cuatro', 4],
+    ['cinco', 5],
+    ['seis', 6],
+    ['siete', 7],
+    ['ocho', 8],
+    ['nueve', 9],
+    ['diez', 10],
+    ['once', 11],
+    ['doce', 12],
+    ['quince', 15],
+    ['veinte', 20],
+    ['treinta', 30],
+    ['cuarenta', 40],
+    ['cincuenta', 50],
+    ['cien', 100]
+  ]);
+  for (const token of text.split(/\s+/)) {
+    if (words.has(token)) return words.get(token);
+  }
+  return null;
 }
 
 function dimensionsFromText(rawText, text, existingDimensions = null) {
@@ -157,7 +184,7 @@ export function interpretResponseForWaitingField({
     if (quantity !== null) return { handled: true, waitingField, entities: { quantity }, confidence: 0.98 };
   }
 
-  if (waitingField === 'catalog_selection') {
+  if (waitingField === 'catalog_selection' || waitingField === 'category_selection') {
     const selection = catalogSelectionFromText(text, pendingOptions);
     if (selection) return { handled: true, waitingField, entities: { catalogSelection: selection }, confidence: 0.94 };
     if (AMBIGUOUS_CONFIRMATIONS.has(text)) {
