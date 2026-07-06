@@ -367,6 +367,26 @@ describe('whatsapp session manager', () => {
     assert.equal(Date.now() - startedAt < 300, true);
   });
 
+  it('logout during initialization detaches the stale client and ignores late QR events', async () => {
+    let client;
+    setWhatsappClientFactoryForTests(() => {
+      client = new FakeWhatsappClient();
+      client.initializeEvents = [['disconnected', 'LOGOUT'], ['qr', 'late-qr-payload']];
+      return client;
+    });
+
+    const status = await startSession(5);
+    await waitForStatus(5, 'disconnected');
+
+    assert.equal(status.status, 'disconnected');
+    assert.equal(status.qr, null);
+
+    const finalStatus = await getSessionStatus(5);
+    assert.equal(finalStatus.status, 'disconnected');
+    assert.equal(finalStatus.qr, null);
+    assert.equal(client.destroyCalls, 1);
+  });
+
   it('disconnect cancels a queued start before it reaches the global initialize lock', async () => {
     const clients = [];
     setWhatsappClientFactoryForTests((companyId) => {

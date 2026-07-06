@@ -148,7 +148,7 @@ describe('tenant conversation engine selection', () => {
     assert.equal(selection.shouldRunNcie, true);
   });
 
-  it('selects NCIE for an enabled NCIE company with 100 percent canary', () => {
+  it('selects NCIE for an enabled NCIE company', () => {
     const selection = selectTenantEngine({
       config: { ...baseConfig, conversation_engine_version: 'ncie', ncie_enabled: true, ncie_canary_percentage: 100 },
       conversationKey: 'chat-a'
@@ -159,24 +159,26 @@ describe('tenant conversation engine selection', () => {
     assert.equal(selection.canarySelected, true);
   });
 
-  it('skips NCIE when canary is 0 percent', () => {
+  it('keeps enabled NCIE on NCIE even when an old canary percentage is 0', () => {
     const selection = selectTenantEngine({
       config: { ...baseConfig, conversation_engine_version: 'ncie', ncie_enabled: true, ncie_canary_percentage: 0 },
       conversationKey: 'chat-a'
     });
 
-    assert.equal(selection.engine, 'legacy');
-    assert.equal(selection.canarySelected, false);
+    assert.equal(selection.engine, 'ncie');
+    assert.equal(selection.responseEngine, 'ncie');
+    assert.equal(selection.canarySelected, true);
   });
 
-  it('selects a stable subset when canary is 50 percent', () => {
-    const selected = Array.from({ length: 100 }, (_, index) => selectTenantEngine({
+  it('keeps enabled NCIE on NCIE for every conversation even when an old canary percentage is partial', () => {
+    const selections = Array.from({ length: 100 }, (_, index) => selectTenantEngine({
       config: { ...baseConfig, conversation_engine_version: 'ncie', ncie_enabled: true, ncie_canary_percentage: 50 },
       conversationKey: `chat-${index}`
-    })).filter((selection) => selection.canarySelected);
+    }));
 
-    assert.ok(selected.length > 25);
-    assert.ok(selected.length < 75);
+    assert.equal(selections.every((selection) => selection.engine === 'ncie'), true);
+    assert.equal(selections.every((selection) => selection.responseEngine === 'ncie'), true);
+    assert.equal(selections.every((selection) => selection.canarySelected), true);
   });
 
   it('selects every conversation when canary is 100 percent', () => {

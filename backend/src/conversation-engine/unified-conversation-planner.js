@@ -421,16 +421,30 @@ function emojiModeFrom(companyConfig = null) {
   return 'professional';
 }
 
+const DEFAULT_WELCOME_MESSAGE = 'Hola, gracias por escribirnos. Dime que producto o servicio buscas y te ayudo a revisarlo.';
+const PLACEHOLDER_WELCOME_MESSAGES = new Set([
+  'hola en que te ayudo',
+  'hola en que puedo ayudarte',
+  'hola como puedo ayudarte',
+  'hola como te puedo ayudar'
+]);
+
+function welcomeMessageCandidate(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  const normalized = normalizeName(text).replace(/[?!.]+$/g, '').trim();
+  return PLACEHOLDER_WELCOME_MESSAGES.has(normalized) ? null : text;
+}
+
 function configuredWelcomeMessage(companyConfig = null) {
-  return String(
-    companyConfig?.greetingMessage
-    ?? companyConfig?.defaultWelcomeMessage
-    ?? companyConfig?.welcomeMessage
-    ?? companyConfig?.mensaje_bienvenida
-    ?? companyConfig?.mensajeBienvenida
-    ?? companyConfig?.response_profile?.saludo_personalizado
-    ?? ''
-  ).trim() || null;
+  return [
+    companyConfig?.response_profile?.saludo_personalizado,
+    companyConfig?.greetingMessage,
+    companyConfig?.defaultWelcomeMessage,
+    companyConfig?.welcomeMessage,
+    companyConfig?.mensaje_bienvenida,
+    companyConfig?.mensajeBienvenida
+  ].map(welcomeMessageCandidate).find(Boolean) ?? null;
 }
 
 function excessiveBudgetThreshold(companyConfig = null) {
@@ -944,7 +958,7 @@ function neutralTextFor({ entities, stateBefore, companyConfig }) {
       : 'Con gusto. Cuando quieras te ayudo a cotizar o elegir la mejor opcion.';
   }
   if (neutral === 'greeting') {
-    return configuredWelcomeMessage(companyConfig) ?? 'Hola, bienvenido. Que te gustaria cotizar o mejorar hoy?';
+    return configuredWelcomeMessage(companyConfig) ?? DEFAULT_WELCOME_MESSAGE;
   }
   return 'Claro, que necesitas revisar ahora?';
 }
@@ -1202,11 +1216,11 @@ export function planConversation({
   }
 
   if (entity(entities, ENTITY_NAMES.NEUTRAL_MESSAGE)) {
+    const neutralText = neutralTextFor({ entities, stateBefore, companyConfig });
     const question = resolveQuestionPlan({
       state: stateBefore,
       questionId: 'neutral.reply',
-      text: neutralTextFor({ entities, stateBefore, companyConfig }),
-      variants: ['Hola, en que te ayudo?']
+      text: neutralText
     });
     const stateAfter = stateWithQuestion({ ...stateBefore }, question);
     return buildPlan({

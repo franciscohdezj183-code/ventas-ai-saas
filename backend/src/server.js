@@ -7,6 +7,7 @@ import {
   restoreSessionsOnBoot,
   shutdownWhatsappSessions
 } from './whatsapp/whatsapp-session.manager.js';
+import { isExpectedWhatsappLateRejection } from './whatsapp/whatsapp-startup.coordinator.js';
 import { initializeWhatsappSocket } from './whatsapp/whatsapp-socket.gateway.js';
 import {
   startHumanHandoffExpirationJob,
@@ -99,6 +100,13 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 process.on('unhandledRejection', (error) => {
+  if (isExpectedWhatsappLateRejection(error)) {
+    logger.info('whatsapp_late_rejection_ignored', {
+      reason: error?.message ?? String(error ?? 'unknown')
+    });
+    return;
+  }
+
   logger.error('unhandled_rejection', { error });
 });
 

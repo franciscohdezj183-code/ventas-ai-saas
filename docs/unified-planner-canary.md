@@ -1,20 +1,25 @@
-# Unified Planner Canary
+# Unified Planner
 
-El Unified Planner no esta activo por defecto. Para habilitarlo solo en empresas controladas:
+El Unified Planner esta activo por defecto para todas las empresas que pasan por el motor NCIE. El backend vuelve a arrancar sin variables especiales:
+
+```bash
+npm run dev --workspace backend
+```
+
+`UNIFIED_PLANNER_ROLLBACK_ON_ERROR` queda habilitado por defecto: cualquier error del flujo unified registra `unified_canary_error` y cae al motor legacy con `unified_canary_fallback_to_legacy`. El flujo unified no envia respuesta, no persiste estado y no crea notificaciones antes de terminar correctamente.
+
+Para apagarlo temporalmente:
+
+```env
+UNIFIED_PLANNER_ENABLED=false
+```
+
+Para limitarlo temporalmente a empresas especificas durante un canary manual:
 
 ```env
 UNIFIED_PLANNER_ENABLED=true
-UNIFIED_PLANNER_CANARY_EMPRESAS=5
-UNIFIED_PLANNER_ROLLBACK_ON_ERROR=true
-```
-
-Para varias empresas:
-
-```env
 UNIFIED_PLANNER_CANARY_EMPRESAS=5,7,10
 ```
-
-Con `UNIFIED_PLANNER_ROLLBACK_ON_ERROR=true`, cualquier error del flujo unified registra `unified_canary_error` y cae al motor legacy con `unified_canary_fallback_to_legacy`. El flujo unified no envia respuesta, no persiste estado y no crea notificaciones antes de terminar correctamente.
 
 El canary usa estado separado en `datos_json.ncie.unified` y no toma `activeFlow`, `waitingField`, `active_service_id` ni `ultimo_servicio_id` legacy como autoridad. Si `ncie.unified` no existe, el Unified Planner inicia en `INIT`.
 
@@ -70,9 +75,9 @@ Criterio minimo antes de ampliar canary:
 - Sin pregunta repetida exacta.
 - Sin cambio de servicio sin intencion explicita.
 
-## Fase 7: estabilizacion canary
+## Fase 7: estabilizacion
 
-El canary sigue protegido por dos condiciones: `UNIFIED_PLANNER_ENABLED=true` y `empresaId` dentro de `UNIFIED_PLANNER_CANARY_EMPRESAS`. Si alguna condicion falla, responde el motor legacy. `UNIFIED_PLANNER_ROLLBACK_ON_ERROR=true` mantiene rollback inmediato.
+Sin `UNIFIED_PLANNER_CANARY_EMPRESAS`, el Unified Planner aplica a cualquier empresa. Si `UNIFIED_PLANNER_CANARY_EMPRESAS` existe, solo esas empresas entran al flujo unified. `UNIFIED_PLANNER_ENABLED=false` fuerza legacy. `UNIFIED_PLANNER_ROLLBACK_ON_ERROR=true` mantiene rollback inmediato y es el valor por defecto.
 
 Los eventos `unified_canary_*` se escriben en consola y tambien en:
 

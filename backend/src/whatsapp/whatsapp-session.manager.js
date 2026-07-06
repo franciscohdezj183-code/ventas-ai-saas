@@ -497,7 +497,26 @@ async function startSessionNow(companyId, requestedGeneration = getOperationGene
         reconnectAttempts.delete(id);
         clearReconnectTimer(id);
       },
-      onDisconnected: ({ reason }) => scheduleReconnect(id, client, reason)
+      onDisconnected: ({ reason }) => {
+        if (shouldAutoReconnect(reason)) {
+          scheduleReconnect(id, client, reason);
+          return;
+        }
+
+        invalidatePendingOperations(id);
+        const current = getSession(id);
+        if (current?.client === client) {
+          upsertSession(id, {
+            client: null,
+            isInitializing: false
+          });
+        }
+
+        logger.info('whatsapp_disconnected_client_cleanup_started', { empresaId: id, reason });
+        trackClientDestroy(id, client)
+          .then(() => logger.info('whatsapp_disconnected_client_cleanup_completed', { empresaId: id, reason }))
+          .catch((error) => logger.error('whatsapp_disconnected_client_cleanup_error', { empresaId: id, reason, error }));
+      }
     });
     logger.info('whatsapp_session_initialize_requested', { empresaId: id });
 

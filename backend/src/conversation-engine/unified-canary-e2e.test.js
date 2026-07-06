@@ -122,7 +122,7 @@ describe('Unified Planner Canary e2e phase 7', () => {
     delete process.env.UNIFIED_PLANNER_SHADOW;
   });
 
-  it('01 keeps canary gated by empresa id', async () => {
+  it('01 only gates by empresa id when a canary list is explicitly configured', async () => {
     process.env.UNIFIED_PLANNER_ENABLED = 'true';
     process.env.UNIFIED_PLANNER_CANARY_EMPRESAS = '7';
     const result = await runConversationEngine({

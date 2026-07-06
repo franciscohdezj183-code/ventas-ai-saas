@@ -1,5 +1,6 @@
 import { closeDatabase } from '../config/database.js';
 import { logger } from '../utils/logger.js';
+import { isExpectedWhatsappLateRejection } from '../whatsapp/whatsapp-startup.coordinator.js';
 
 // Legacy/deprecated worker.
 // WhatsApp sessions are now owned by backend/src/whatsapp/whatsapp-session.manager.js
@@ -33,6 +34,13 @@ async function shutdown(signal) {
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('unhandledRejection', (error) => {
+  if (isExpectedWhatsappLateRejection(error)) {
+    logger.info('whatsapp_worker_late_rejection_ignored', {
+      reason: error?.message ?? String(error ?? 'unknown')
+    });
+    return;
+  }
+
   logger.error('whatsapp_worker_unhandled_rejection', { error });
 });
 process.on('uncaughtException', (error) => {

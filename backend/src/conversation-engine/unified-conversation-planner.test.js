@@ -428,6 +428,77 @@ describe('unified conversation planner phase 3', () => {
     }
   });
 
+  it('prefers bot response profile greeting over company welcome message', () => {
+    const executionPlan = planWithConfig('Hola', {
+      nombre: 'Demo',
+      welcomeMessage: 'Hola, en que te ayudo?',
+      mensaje_bienvenida: 'Hola, en que te ayudo?',
+      response_profile: {
+        saludo_personalizado: 'Hola, gracias por escribir a MOK. Te atiendo en un momento.'
+      }
+    });
+
+    assert.equal(executionPlan.intent, PLANNER_INTENTS.NEUTRAL);
+    assert.equal(executionPlan.responsePlan.question, 'Hola, gracias por escribir a MOK. Te atiendo en un momento.');
+  });
+
+  it('uses the safe default instead of the generic placeholder greeting', () => {
+    const executionPlan = planWithConfig('Hola', {
+      nombre: 'Demo',
+      greetingMessage: 'Hola, en que te ayudo?',
+      mensaje_bienvenida: 'Hola, en que te ayudo?'
+    });
+
+    assert.equal(executionPlan.intent, PLANNER_INTENTS.NEUTRAL);
+    assert.equal(executionPlan.responsePlan.question, 'Hola, gracias por escribirnos. Dime que producto o servicio buscas y te ayudo a revisarlo.');
+  });
+
+  it('does not revive a stale generic neutral greeting when a personalized greeting exists', () => {
+    const greeting = 'Hola, gracias por contactar a MOK Estudio + Taller. Podemos ayudarte con diseno, impresion, rotulacion, senaletica, textil, promocionales y banners. Que servicio necesitas cotizar?';
+    const snapshot = createConversationSnapshot({
+      empresaId: 1,
+      conversationId: 'chat-1',
+      state: createConversationState({
+        status: CONVERSATION_STATES.INIT,
+        lastQuestionId: 'neutral.reply',
+        lastQuestionText: 'Hola, en que te ayudo?'
+      })
+    });
+
+    const executionPlan = planWithConfig('Hola', {
+      response_profile: {
+        saludo_personalizado: greeting
+      },
+      mensaje_bienvenida: 'Hola, en que te ayudo?'
+    }, snapshot);
+
+    assert.equal(executionPlan.intent, PLANNER_INTENTS.NEUTRAL);
+    assert.equal(executionPlan.responsePlan.question, greeting);
+  });
+
+  it('keeps the personalized greeting when greeting repeats after previous state', () => {
+    const greeting = 'Hola, gracias por contactar a MOK Estudio + Taller. Podemos ayudarte con diseno, impresion, rotulacion, senaletica, textil, promocionales y banners. Que servicio necesitas cotizar?';
+    const snapshot = createConversationSnapshot({
+      empresaId: 1,
+      conversationId: 'chat-1',
+      state: createConversationState({
+        status: CONVERSATION_STATES.INIT,
+        lastQuestionId: 'neutral.reply',
+        lastQuestionText: greeting
+      })
+    });
+
+    const executionPlan = planWithConfig('Hola', {
+      response_profile: {
+        saludo_personalizado: greeting
+      }
+    }, snapshot);
+
+    assert.equal(executionPlan.intent, PLANNER_INTENTS.NEUTRAL);
+    assert.equal(executionPlan.responsePlan.question, greeting);
+    assert.notEqual(executionPlan.responsePlan.question, 'Hola, en que te ayudo?');
+  });
+
   it('creates handoff plan without reviving old service', () => {
     const snapshot = createConversationSnapshot({
       empresaId: 1,
