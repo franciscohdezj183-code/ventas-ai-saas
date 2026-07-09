@@ -1,4 +1,6 @@
 import { saveConversationContext } from '../bot/conversationContext.service.js';
+import { getBotResponseProfile } from '../modules/bot-prompts/bot-prompts.service.js';
+import { mcpClient as defaultMcpClient } from '../mcp/mcpClient.js';
 import { logger } from '../utils/logger.js';
 import {
   createConversationSnapshot,
@@ -79,7 +81,9 @@ function canaryEmpresaIds() {
 }
 
 export function isUnifiedPlannerEnabled() {
-  return flagEnabled(process.env.UNIFIED_PLANNER_ENABLED);
+  const raw = process.env.UNIFIED_PLANNER_ENABLED;
+  if (raw === undefined || raw === null || raw === '') return true;
+  return flagEnabled(raw);
 }
 
 export function isUnifiedPlannerRollbackOnError() {
@@ -89,10 +93,16 @@ export function isUnifiedPlannerRollbackOnError() {
 }
 
 export function selectUnifiedPlannerCanary({ empresaId }) {
+  if (flagEnabled(process.env.UNIFIED_PLANNER_SHADOW)) {
+    return { selected: false, reason: 'shadow_mode_enabled', canaryEmpresas: canaryEmpresaIds() };
+  }
   if (!isUnifiedPlannerEnabled()) {
     return { selected: false, reason: 'disabled', canaryEmpresas: canaryEmpresaIds() };
   }
   const canaryEmpresas = canaryEmpresaIds();
+  if (canaryEmpresas.length === 0) {
+    return { selected: true, reason: 'enabled_for_all_empresas', canaryEmpresas };
+  }
   if (!canaryEmpresas.includes(Number(empresaId))) {
     return { selected: false, reason: 'empresa_not_in_canary', canaryEmpresas };
   }
@@ -130,7 +140,15 @@ function conversationStateFromUnifiedNamespace(state = {}) {
 
 async function loadCompanyConfig({ empresaId, mcpClient }) {
   try {
-    return (await mcpClient.callTool('obtener_configuracion_empresa', { empresa_id: empresaId }))?.empresa ?? null;
+    const company = (await mcpClient.callTool('obtener_configuracion_empresa', { empresa_id: empresaId }))?.empresa ?? null;
+    if (!company) return null;
+    const responseProfile = mcpClient === defaultMcpClient
+      ? await getBotResponseProfile(empresaId).catch(() => null)
+      : null;
+    return {
+      ...company,
+      response_profile: responseProfile ?? company.response_profile ?? null
+    };
   } catch {
     return null;
   }

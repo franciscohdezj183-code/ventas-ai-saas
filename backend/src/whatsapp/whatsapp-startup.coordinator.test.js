@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   backoffWithJitter,
+  isExpectedWhatsappLateRejection,
   isLockedLocalAuthError,
   isTargetClosedError,
   resetWhatsappStartupCoordinatorForTests,
@@ -32,6 +33,25 @@ describe('WhatsApp startup coordinator', () => {
     assert.equal(isLockedLocalAuthError({ code: 'EBUSY' }), true);
     assert.equal(isLockedLocalAuthError(new Error('EPERM removing folder')), true);
     assert.equal(isLockedLocalAuthError(new Error('The browser is already running for C:\\session-company_5. Use a different `userDataDir` or stop the running browser first.')), true);
+  });
+
+  it('classifies expected late whatsapp-web.js rejections after logout cleanup', () => {
+    const contextDestroyed = new Error('Execution context was destroyed');
+    contextDestroyed.stack = [
+      'Error: Execution context was destroyed',
+      '    at CdpPage.evaluate (node_modules\\puppeteer-core\\lib\\cjs\\puppeteer\\api\\Page.js:830:43)',
+      '    at Client.inject (node_modules\\whatsapp-web.js\\src\\Client.js:126:38)'
+    ].join('\n');
+    const duplicateBinding = new Error("Failed to add page binding with name onQRChangedEvent: window['onQRChangedEvent'] already exists!");
+    duplicateBinding.stack = [
+      "Error: Failed to add page binding with name onQRChangedEvent: window['onQRChangedEvent'] already exists!",
+      '    at CdpPage.exposeFunction (node_modules\\puppeteer-core\\lib\\cjs\\puppeteer\\cdp\\Page.js:579:19)',
+      '    at Client.inject (node_modules\\whatsapp-web.js\\src\\Client.js:224:17)'
+    ].join('\n');
+
+    assert.equal(isExpectedWhatsappLateRejection(contextDestroyed), true);
+    assert.equal(isExpectedWhatsappLateRejection(duplicateBinding), true);
+    assert.equal(isExpectedWhatsappLateRejection(new Error('database down')), false);
   });
 
   it('calculates bounded exponential backoff with jitter', () => {

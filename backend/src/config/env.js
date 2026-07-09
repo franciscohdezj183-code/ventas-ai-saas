@@ -188,9 +188,9 @@ export const env = {
     outputCostPerMillion: numberEnv('OPENAI_OUTPUT_COST_PER_MILLION', 0)
   },
   conversationEngine: {
-    version: ['legacy', 'ncie'].includes(String(process.env.CONVERSATION_ENGINE_VERSION ?? 'legacy').toLowerCase())
-      ? String(process.env.CONVERSATION_ENGINE_VERSION ?? 'legacy').toLowerCase()
-      : 'legacy',
+    version: ['legacy', 'ncie'].includes(String(process.env.CONVERSATION_ENGINE_VERSION ?? 'ncie').toLowerCase())
+      ? String(process.env.CONVERSATION_ENGINE_VERSION ?? 'ncie').toLowerCase()
+      : 'ncie',
     shadowMode: booleanEnv('CONVERSATION_ENGINE_SHADOW_MODE', false)
   },
   db: {

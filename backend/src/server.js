@@ -3,7 +3,11 @@ import { app } from './app.js';
 import http from 'node:http';
 import { Server } from 'socket.io';
 import { closeDatabase } from './config/database.js';
-import { shutdownWhatsappSessions } from './whatsapp/whatsapp-session.manager.js';
+import {
+  restoreSessionsOnBoot,
+  shutdownWhatsappSessions
+} from './whatsapp/whatsapp-session.manager.js';
+import { isExpectedWhatsappLateRejection } from './whatsapp/whatsapp-startup.coordinator.js';
 import { initializeWhatsappSocket } from './whatsapp/whatsapp-socket.gateway.js';
 import {
   startHumanHandoffExpirationJob,
@@ -44,6 +48,16 @@ server.listen(env.port, () => {
 if (process.env.HANDOFF_JOB_ENABLED !== 'false') {
   startHumanHandoffExpirationJob();
 }
+
+restoreSessionsOnBoot()
+  .then((sessions) => {
+    logger.info('whatsapp_restore_sessions_completed', {
+      restored: sessions.length
+    });
+  })
+  .catch((error) => {
+    logger.error('whatsapp_restore_sessions_boot_error', { error });
+  });
 
 let shuttingDown = false;
 
@@ -86,6 +100,13 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 process.on('unhandledRejection', (error) => {
+  if (isExpectedWhatsappLateRejection(error)) {
+    logger.info('whatsapp_late_rejection_ignored', {
+      reason: error?.message ?? String(error ?? 'unknown')
+    });
+    return;
+  }
+
   logger.error('unhandled_rejection', { error });
 });
 

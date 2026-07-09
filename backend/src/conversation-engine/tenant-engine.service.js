@@ -90,17 +90,6 @@ function globalDefaultConfig(empresaId = null) {
   };
 }
 
-function stableBucket(value) {
-  const input = String(value ?? '');
-  let hash = 0;
-
-  for (let index = 0; index < input.length; index += 1) {
-    hash = ((hash << 5) - hash + input.charCodeAt(index)) | 0;
-  }
-
-  return Math.abs(hash) % 100;
-}
-
 export function normalizeTenantEngineConfig(row = {}) {
   const configSource = row.config_source ?? 'tenant';
 
@@ -152,14 +141,11 @@ export function selectTenantEngine({ config, conversationKey }) {
     };
   }
 
-  const percentage = normalizedConfig.ncie_canary_percentage;
-  const canarySelected = percentage >= 100 || (percentage > 0 && stableBucket(conversationKey) < percentage);
-
   return {
-    engine: canarySelected ? ENGINE_VERSIONS.NCIE : ENGINE_VERSIONS.LEGACY,
-    responseEngine: canarySelected ? ENGINE_VERSIONS.NCIE : ENGINE_VERSIONS.LEGACY,
-    shouldRunNcie: canarySelected,
-    canarySelected,
+    engine: ENGINE_VERSIONS.NCIE,
+    responseEngine: ENGINE_VERSIONS.NCIE,
+    shouldRunNcie: true,
+    canarySelected: true,
     config: normalizedConfig
   };
 }

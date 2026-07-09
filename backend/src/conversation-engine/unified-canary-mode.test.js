@@ -222,6 +222,13 @@ describe('Unified Planner Canary Mode phase 6B', () => {
     assert.match(normalize(result.respuesta), /impresion de lona|medidas/);
   });
 
+  it('uses unified planner for any empresa when no canary list is configured', async () => {
+    const { result } = await runCase({ empresaId: 42 });
+
+    assert.equal(result.ncie?.unifiedCanary, true);
+    assert.equal(result.intencion, 'START_SERVICE_QUOTE');
+  });
+
   it('uses unified planner when empresa is in canary list', async () => {
     enableCanary('5,7,10');
     const { result, mcpClient, contextStore } = await runCase({ empresaId: 5 });

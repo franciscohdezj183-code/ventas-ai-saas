@@ -60,6 +60,17 @@ export function isTargetClosedError(error) {
     || (message.includes('store') && message.includes('socket'));
 }
 
+export function isExpectedWhatsappLateRejection(error) {
+  const message = String(error?.message ?? error ?? '').toLowerCase();
+  const stack = String(error?.stack ?? '').toLowerCase();
+  const fromWhatsappRuntime = stack.includes('whatsapp-web.js')
+    || stack.includes('puppeteer-core')
+    || stack.includes('@puppeteer');
+  const duplicateBinding = message.includes('onqrchangedevent') && message.includes('already exists');
+
+  return fromWhatsappRuntime && (isTargetClosedError(error) || duplicateBinding);
+}
+
 export function isLockedLocalAuthError(error) {
   const code = String(error?.code ?? '').toUpperCase();
   const message = String(error?.message ?? error ?? '').toUpperCase();
