@@ -53,6 +53,7 @@ export function isTargetClosedError(error) {
   const message = String(error?.message ?? error ?? '').toLowerCase();
   return message.includes('target closed')
     || message.includes('execution context was destroyed')
+    || message.includes('detached frame')
     || message.includes('protocol error')
     || message.includes("reading 'getchats'")
     || message.includes("reading 'socket'")

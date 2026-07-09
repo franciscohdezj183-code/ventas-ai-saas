@@ -276,16 +276,19 @@ async function waitForPendingClientDestroy(companyId) {
 }
 
 async function removeCompanyLocalAuthQuietly(companyId) {
+  const sessionPath = getCompanyLocalAuthPath(companyId);
+
   if (process.env.WHATSAPP_ALLOW_AUTH_DELETE !== 'true') {
     logger.info('whatsapp_auth_delete_skipped', {
       empresaId: companyId,
-      reason: 'WHATSAPP_ALLOW_AUTH_DELETE is not true'
+      reason: 'WHATSAPP_ALLOW_AUTH_DELETE is not true',
+      sessionPath
     });
     return false;
   }
 
   try {
-    await fs.rm(getCompanyLocalAuthPath(companyId), {
+    await fs.rm(sessionPath, {
       recursive: true,
       force: true,
       maxRetries: 5,
@@ -296,6 +299,41 @@ async function removeCompanyLocalAuthQuietly(companyId) {
   } catch (error) {
     logger.error('whatsapp_company_localauth_remove_error', {
       empresaId: companyId,
+      lockedLocalAuth: isLockedLocalAuthError(error),
+      error
+    });
+    return false;
+  }
+}
+
+async function archiveCompanyLocalAuthQuietly(companyId) {
+  const sessionPath = getCompanyLocalAuthPath(companyId);
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const archivedPath = `${sessionPath}.corrupt-${timestamp}`;
+
+  try {
+    await fs.access(sessionPath);
+  } catch {
+    logger.info('whatsapp_auth_archive_skipped_missing_path', {
+      empresaId: companyId,
+      sessionPath
+    });
+    return false;
+  }
+
+  try {
+    await fs.rename(sessionPath, archivedPath);
+    logger.warn('whatsapp_auth_archived_for_new_link', {
+      empresaId: companyId,
+      previousPath: sessionPath,
+      archivedPath
+    });
+    return true;
+  } catch (error) {
+    logger.error('whatsapp_auth_archive_error', {
+      empresaId: companyId,
+      sessionPath,
+      archivedPath,
       lockedLocalAuth: isLockedLocalAuthError(error),
       error
     });
@@ -646,6 +684,7 @@ async function startSessionNow(companyId, requestedGeneration = getOperationGene
 
       logger.error('whatsapp_initialize_error', {
         empresaId: id,
+        message: error instanceof Error ? error.message : String(error ?? 'unknown'),
         targetClosed: isTargetClosedError(error),
         lockedLocalAuth: isLockedLocalAuthError(error),
         error
@@ -688,11 +727,10 @@ export async function requestStartSession(companyId) {
   const storedSession = existing ? null : await getStoredWhatsappSessionStatus(id);
 
   if (storedSession && ACTIVE_SESSION_STATUSES.has(storedSession.status)) {
-    logger.info('whatsapp_manual_start_skipped_existing_active_session', {
+    logger.info('whatsapp_manual_start_rehydrating_stored_active_session', {
       empresaId: id,
       status: storedSession.status
     });
-    return storedSession;
   }
 
   const session = upsertSession(id, {
@@ -763,12 +801,11 @@ export async function restartSession(companyId) {
   const storedSession = existing ? null : await getStoredWhatsappSessionStatus(id);
 
   if (storedSession && ACTIVE_SESSION_STATUSES.has(storedSession.status)) {
-    logger.info('whatsapp_manual_start_skipped_existing_active_session', {
+    logger.info('whatsapp_restart_recreating_stored_active_session', {
       empresaId: id,
       action: 'restart',
       status: storedSession.status
     });
-    return storedSession;
   }
 
   const requestedGeneration = invalidatePendingOperations(id);
@@ -828,7 +865,12 @@ async function destroySessionNow(companyId) {
   const id = normalizeCompanyId(companyId);
   await disconnectSessionNow(id);
   removeSession(id);
-  await removeCompanyLocalAuthQuietly(id);
+  const archived = process.env.WHATSAPP_ARCHIVE_AUTH_ON_DESTROY !== 'false'
+    ? await archiveCompanyLocalAuthQuietly(id)
+    : false;
+  if (!archived) {
+    await removeCompanyLocalAuthQuietly(id);
+  }
 
   const session = upsertSession(id, {
     status: WHATSAPP_SESSION_STATUSES.DESTROYED,

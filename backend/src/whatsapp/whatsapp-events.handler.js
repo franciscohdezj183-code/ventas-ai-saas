@@ -15,6 +15,7 @@ import {
   emitWhatsappQr,
   emitWhatsappStatus
 } from './whatsapp-socket.gateway.js';
+import { saveWhatsappSessionStatus } from './whatsapp-session-status.repository.js';
 import { WHATSAPP_SESSION_STATUSES, normalizeCompanyId } from './whatsapp.types.js';
 import {
   backoffWithJitter,
@@ -82,6 +83,20 @@ function markClientAuthenticated(empresaId) {
   });
   logger.info('whatsapp_authenticated_waiting_ready', { empresaId });
   return session;
+}
+
+function markClientReadyOnce(empresaId, client, source) {
+  const currentSession = getSession(empresaId);
+
+  if (currentSession?.client !== client) {
+    return null;
+  }
+
+  if (currentSession.status === WHATSAPP_SESSION_STATUSES.READY) {
+    return currentSession;
+  }
+
+  return markClientReady(empresaId, client, source);
 }
 
 function scheduleReadyStateProbe(empresaId, client, onReadyDetected, attemptsLeft = 60) {
@@ -461,14 +476,19 @@ export function registerWhatsappClientEvents({
       return;
     }
 
-    const qrImage = await qrcode.toDataURL(qr);
-    const session = setQr(empresaId, qr, qrImage);
-    emitWhatsappQr(empresaId, { qrText: qr, qrImage, status: session.status });
-    emitWhatsappStatus(empresaId, session);
-    saveWhatsappSessionStatus(session).catch((error) => {
-      logger.error('whatsapp_status_persist_error', { empresaId, error });
-    });
-    logger.info('whatsapp_qr_ready', { empresaId });
+    try {
+      const qrImage = await qrcode.toDataURL(qr);
+      const session = setQr(empresaId, qr, qrImage);
+      emitWhatsappQr(empresaId, { qrText: qr, qrImage, status: session.status });
+      emitWhatsappStatus(empresaId, session);
+      saveWhatsappSessionStatus(session).catch((error) => {
+        logger.error('whatsapp_status_persist_error', { empresaId, error });
+      });
+      logger.info('whatsapp_qr_ready', { empresaId });
+    } catch (error) {
+      logger.error('whatsapp_qr_generation_error', { empresaId, error });
+      emitWhatsappError(empresaId, error);
+    }
   });
 
   client.on('authenticated', () => {
@@ -505,7 +525,7 @@ export function registerWhatsappClientEvents({
       return;
     }
 
-    markClientReady(empresaId, client);
+    markClientReadyOnce(empresaId, client, 'ready');
     resumeUnreadMessagePoll();
     onReady?.({ empresaId, client });
   });
@@ -548,6 +568,15 @@ export function registerWhatsappClientEvents({
   client.on('change_state', (state) => {
     emitWhatsappLog(empresaId, { event: 'change_state', state });
     logger.info('whatsapp_change_state', { empresaId, state });
+
+    if (state === 'CONNECTED') {
+      const markedSession = markClientReadyOnce(empresaId, client, 'change_state_connected');
+      if (markedSession) {
+        resumeUnreadMessagePoll();
+        onReady?.({ empresaId, client });
+      }
+    }
+
     if (state === 'CONNECTED' && getSession(empresaId)?.status === WHATSAPP_SESSION_STATUSES.READY) {
       resumeUnreadMessagePoll();
     }

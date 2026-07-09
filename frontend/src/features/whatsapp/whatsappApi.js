@@ -16,15 +16,13 @@ export function resolveSocketUrl() {
 }
 
 export function resolveSocketPath() {
-  const configuredApiUrl = import.meta.env.VITE_API_URL;
+  const configuredSocketPath = import.meta.env.VITE_SOCKET_PATH;
 
-  if (!configuredApiUrl) {
-    return '/socket.io';
+  if (configuredSocketPath) {
+    return configuredSocketPath.startsWith('/') ? configuredSocketPath : `/${configuredSocketPath}`;
   }
 
-  const pathname = new URL(configuredApiUrl).pathname.replace(/\/$/, '');
-
-  return `${pathname}/socket.io`;
+  return '/socket.io';
 }
 
 export function getWhatsappSocketToken() {

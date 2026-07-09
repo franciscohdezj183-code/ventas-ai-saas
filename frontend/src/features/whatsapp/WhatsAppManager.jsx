@@ -592,8 +592,10 @@ export function WhatsAppManager() {
     }
 
     const selectedId = canSelectCompany ? Number(empresaId) : (user?.empresaId ?? user?.empresa?.id);
-    const socket = io(resolveSocketUrl(), {
-      path: resolveSocketPath(),
+    const socketUrl = resolveSocketUrl();
+    const socketPath = resolveSocketPath();
+    const socket = io(socketUrl, {
+      path: socketPath,
       auth: { token },
       transports: ['websocket', 'polling']
     });
