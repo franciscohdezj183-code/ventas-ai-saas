@@ -1,0 +1,127 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { createMessagingService } from './messaging.service.js';
+import { createProviderRegistry } from './provider-registry.js';
+import { validateStatusSnapshot } from './messaging-provider.js';
+
+function createFakeProvider(overrides = {}) {
+  return {
+    providerName: 'fake-provider',
+    startSession: async () => ({ empresa_id: 1, status: 'INITIALIZING' }),
+    getStatus: () => ({ empresa_id: 1, status: 'CONNECTED' }),
+    getStatusSnapshot: async () => ({ empresa_id: 1, status: 'CONNECTED' }),
+    listStatusSnapshots: async () => [{ empresa_id: 1, status: 'CONNECTED' }],
+    getQr: async () => ({ empresa_id: 1, status: 'QR_READY', qr: 'qr', qr_image: 'image' }),
+    disconnectSession: async () => ({ empresa_id: 1, status: 'DISCONNECTED' }),
+    sendText: async () => ({ status: 'SENT' }),
+    sendMedia: async () => ({ status: 'SENT' }),
+    shutdown: async () => undefined,
+    ...overrides
+  };
+}
+
+test('selects the configured messaging provider', () => {
+  const provider = createFakeProvider({ providerName: 'whatsapp-web' });
+  const selectedProvider = createProviderRegistry({
+    providerName: 'whatsapp-web',
+    providers: {
+      'whatsapp-web': provider
+    }
+  });
+
+  assert.equal(selectedProvider, provider);
+  assert.equal(selectedProvider.providerName, 'whatsapp-web');
+});
+
+test('throws a clear error for an unknown messaging provider', () => {
+  assert.throws(
+    () => createProviderRegistry({
+      providerName: 'baileys',
+      providers: {
+        'whatsapp-web': createFakeProvider({ providerName: 'whatsapp-web' })
+      }
+    }),
+    /Unsupported WhatsApp provider "baileys". Supported providers: whatsapp-web/
+  );
+});
+
+test('delegates sendText to the active provider', async () => {
+  const calls = [];
+  const service = createMessagingService(createFakeProvider({
+    sendText: async (...args) => {
+      calls.push(args);
+      return { status: 'SENT' };
+    }
+  }));
+
+  const result = await service.sendText(12, '5215550000000', 'Hola');
+
+  assert.deepEqual(calls, [[12, '5215550000000', 'Hola']]);
+  assert.deepEqual(result, { status: 'SENT' });
+});
+
+test('delegates startSession to the active provider', async () => {
+  const calls = [];
+  const service = createMessagingService(createFakeProvider({
+    startSession: async (...args) => {
+      calls.push(args);
+      return { empresa_id: 12, status: 'INITIALIZING' };
+    }
+  }));
+
+  const result = await service.startSession(12);
+
+  assert.deepEqual(calls, [[12]]);
+  assert.equal(result.status, 'INITIALIZING');
+});
+
+test('delegates disconnectSession to the active provider', async () => {
+  const calls = [];
+  const service = createMessagingService(createFakeProvider({
+    disconnectSession: async (...args) => {
+      calls.push(args);
+      return { empresa_id: 12, status: 'DISCONNECTED' };
+    }
+  }));
+
+  const result = await service.disconnectSession(12);
+
+  assert.deepEqual(calls, [[12]]);
+  assert.equal(result.status, 'DISCONNECTED');
+});
+
+test('propagates provider errors without wrapping them', async () => {
+  const providerError = new Error('provider failed');
+  const service = createMessagingService(createFakeProvider({
+    sendText: async () => {
+      throw providerError;
+    }
+  }));
+
+  await assert.rejects(() => service.sendText(12, '5215550000000', 'Hola'), providerError);
+});
+
+test('keeps WhatsApp status snapshot format compatible', () => {
+  const snapshot = {
+    empresa_id: 12,
+    status: 'CONNECTED',
+    qr: null,
+    qr_image: null,
+    phone: '5215550000000',
+    connected_at: new Date().toISOString(),
+    last_error: null,
+    reconnect_attempt: 0,
+    next_reconnect_at: null,
+    events: [],
+    updated_at: new Date().toISOString()
+  };
+
+  assert.equal(validateStatusSnapshot(snapshot), snapshot);
+});
+
+test('rejects unsupported WhatsApp status values', () => {
+  assert.throws(
+    () => validateStatusSnapshot({ empresa_id: 12, status: 'UNKNOWN' }),
+    /Unsupported WhatsApp status: UNKNOWN/
+  );
+});

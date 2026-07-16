@@ -129,8 +129,8 @@ async function sendWhatsappText(empresaId, phone, message) {
     return;
   }
 
-  const { sendWhatsappMessage } = await import('../modules/whatsapp/whatsapp.service.js');
-  await sendWhatsappMessage(empresaId, phone, message);
+  const { messagingService } = await import('../messaging/messaging.service.js');
+  await messagingService.sendText(empresaId, phone, message);
 }
 
 async function getCompanyConfig(empresaId, mcpClientInstance = mcpClient) {

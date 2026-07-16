@@ -96,6 +96,7 @@ export const env = {
     expiresIn: process.env.JWT_EXPIRES_IN ?? '1d'
   },
   whatsapp: {
+    provider: process.env.WHATSAPP_PROVIDER ?? 'whatsapp-web',
     sessionPath: process.env.WHATSAPP_SESSION_PATH ?? 'storage/whatsapp',
     headless: booleanEnv('WHATSAPP_HEADLESS', true)
   },

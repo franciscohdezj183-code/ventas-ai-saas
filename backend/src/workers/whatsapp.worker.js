@@ -1,9 +1,5 @@
 import { closeDatabase, query } from '../config/database.js';
-import {
-  getWhatsappStatus,
-  shutdownWhatsappSessions,
-  startWhatsappSession
-} from '../modules/whatsapp/whatsapp.service.js';
+import { messagingService } from '../messaging/messaging.service.js';
 import {
   startHumanHandoffExpirationJob,
   stopHumanHandoffExpirationJob
@@ -41,14 +37,14 @@ async function listWhatsappEnabledCompanies() {
 }
 
 async function ensureCompanySession(company) {
-  const status = getWhatsappStatus(company.id);
+  const status = messagingService.getStatus(company.id);
 
   if (['INITIALIZING', 'QR_READY', 'AUTHENTICATED', 'CONNECTED', 'RECONNECTING'].includes(status.status)) {
     return status;
   }
 
   try {
-    const nextStatus = await startWhatsappSession(company.id);
+    const nextStatus = await messagingService.startSession(company.id);
     logger.info('whatsapp_worker_session_started', {
       empresaId: company.id,
       empresa: company.nombre,
@@ -61,7 +57,7 @@ async function ensureCompanySession(company) {
       empresa: company.nombre,
       error
     });
-    return getWhatsappStatus(company.id);
+    return messagingService.getStatus(company.id);
   }
 }
 
@@ -121,7 +117,7 @@ async function shutdown(signal) {
     if (process.env.HANDOFF_JOB_ENABLED !== 'false') {
       stopHumanHandoffExpirationJob();
     }
-    await shutdownWhatsappSessions();
+    await messagingService.shutdown();
     await closeDatabase();
     logger.info('whatsapp_worker_shutdown_completed');
     process.exit(0);

@@ -1,7 +1,7 @@
 import { env } from './config/env.js';
 import { app } from './app.js';
 import { closeDatabase } from './config/database.js';
-import { shutdownWhatsappSessions } from './modules/whatsapp/whatsapp.service.js';
+import { messagingService } from './messaging/messaging.service.js';
 import {
   startHumanHandoffExpirationJob,
   stopHumanHandoffExpirationJob
@@ -40,7 +40,7 @@ async function shutdown(signal) {
       if (process.env.HANDOFF_JOB_ENABLED !== 'false') {
         stopHumanHandoffExpirationJob();
       }
-      await shutdownWhatsappSessions();
+      await messagingService.shutdown();
       await closeDatabase();
       logger.info('server_shutdown_completed');
       process.exit(0);

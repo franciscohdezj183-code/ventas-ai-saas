@@ -5,7 +5,7 @@ import { createCompany } from '../companies/companies.service.js';
 import { upsertCompanySettings } from '../company-settings/company-settings.service.js';
 import { createProduct } from '../products/products.service.js';
 import { createUser } from '../users/users.service.js';
-import { getWhatsappStatusSnapshot } from '../whatsapp/whatsapp.service.js';
+import { messagingService } from '../../messaging/messaging.service.js';
 
 function bool(value) {
   return value === true || value === 1 || value === '1';
@@ -178,7 +178,7 @@ async function getCompanyOnboardingData(empresaId) {
     company: companyRows[0] ?? null,
     catalog: catalogRows[0] ?? { productos: 0, servicios: 0, categorias: 0 },
     prompt: promptRows[0] ?? null,
-    whatsapp: await getWhatsappStatusSnapshot(empresaId).catch(() => null)
+    whatsapp: await messagingService.getStatusSnapshot(empresaId).catch(() => null)
   };
 }
 

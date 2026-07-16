@@ -4,7 +4,7 @@ import {
   isSuperAdmin
 } from '../../middlewares/company-scope.middleware.js';
 import { getMonthlyAIUsage } from '../ai-usage/ai-usage.service.js';
-import { listWhatsappStatuses } from '../whatsapp/whatsapp.service.js';
+import { messagingService } from '../../messaging/messaging.service.js';
 
 const DEFAULT_RANGE_DAYS = 30;
 
@@ -114,8 +114,9 @@ async function scalarCount(sql, params = []) {
   return Number(rows[0]?.total ?? 0);
 }
 
-function scopedWhatsappStatuses(auth) {
-  return listWhatsappStatuses().filter(
+async function scopedWhatsappStatuses(auth) {
+  const statuses = await messagingService.listStatusSnapshots();
+  return statuses.filter(
     (status) => isSuperAdmin(auth) || Number(status.empresa_id) === getAuthenticatedEmpresaId(auth)
   );
 }
@@ -155,7 +156,7 @@ export async function getDashboardSummary(auth, filters = {}) {
     scalarCount(`SELECT COUNT(*) AS total FROM empresas e ${activeCompanyWhere.clause}`, activeCompanyWhere.params)
   ]);
 
-  const whatsappConnected = scopedWhatsappStatuses(auth).filter((status) => status.status === 'CONNECTED').length;
+  const whatsappConnected = (await scopedWhatsappStatuses(auth)).filter((status) => status.status === 'CONNECTED').length;
   const conversionRate = totalLeads > 0 ? Number(((leadsGanados / totalLeads) * 100).toFixed(2)) : 0;
 
   return {
@@ -193,7 +194,7 @@ export async function getOperationalMetrics(auth) {
     scalarCount(`SELECT COUNT(*) AS total FROM empresas e ${activeCompanyWhere.clause}`, activeCompanyWhere.params)
   ]);
 
-  const whatsappStatuses = scopedWhatsappStatuses(auth);
+  const whatsappStatuses = await scopedWhatsappStatuses(auth);
   const whatsappConnected = whatsappStatuses.filter((status) => status.status === 'CONNECTED').length;
 
   return {
@@ -882,7 +883,7 @@ export async function getRecentErrors(auth, filters = {}) {
     notificationWhere.params
   );
 
-  const whatsappErrors = listWhatsappStatuses()
+  const whatsappErrors = (await messagingService.listStatusSnapshots())
     .filter((status) => status.last_error)
     .filter((status) => isSuperAdmin(auth) || Number(status.empresa_id) === getAuthenticatedEmpresaId(auth))
     .map((status) => ({

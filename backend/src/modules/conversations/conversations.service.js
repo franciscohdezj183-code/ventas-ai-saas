@@ -1,7 +1,7 @@
 import { query } from '../../config/database.js';
 import { appendCompanyScope, companyScopeCondition, getAuthenticatedEmpresaId, isSuperAdmin, resolveScopedEmpresaId } from '../../middlewares/company-scope.middleware.js';
 import { resumeBotForCustomer, isBotPausedForCustomer } from '../../bot/humanHandoffManager.js';
-import { sendWhatsappMessage } from '../whatsapp/whatsapp.service.js';
+import { messagingService } from '../../messaging/messaging.service.js';
 import { CONVERSATION_STATES, markThreadState, normalizeConversationState } from './conversation-status.service.js';
 import { createHttpError } from '../../utils/http-error.js';
 
@@ -298,7 +298,7 @@ export async function sendThreadReply(auth, { empresaId, telefono, mensaje }) {
     throw createHttpError(400, 'Telefono y mensaje son requeridos');
   }
 
-  await sendWhatsappMessage(scopedEmpresaId, cleanPhone, cleanMessage);
+  await messagingService.sendText(scopedEmpresaId, cleanPhone, cleanMessage);
   await query(
     `INSERT INTO conversaciones
       (empresa_id, telefono_cliente, mensaje, respuesta, estado, tipo_mensaje, agente_usuario_id, fecha)

@@ -132,8 +132,8 @@ export async function notifyOwnerForLead({
   });
 
   try {
-    const { sendWhatsappMessage } = await import('../modules/whatsapp/whatsapp.service.js');
-    await sendWhatsappMessage(empresaId, telefonoDestino, notificationMessage);
+    const { messagingService } = await import('../messaging/messaging.service.js');
+    await messagingService.sendText(empresaId, telefonoDestino, notificationMessage);
     await markNotificationSent(notificationId);
     return { notification_id: notificationId, estado: 'ENVIADA' };
   } catch (error) {

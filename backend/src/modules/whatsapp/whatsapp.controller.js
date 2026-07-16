@@ -1,9 +1,4 @@
-import {
-  disconnectWhatsappSession,
-  getWhatsappStatusSnapshot,
-  listWhatsappStatusSnapshots,
-  startWhatsappSession
-} from './whatsapp.service.js';
+import { messagingService } from '../../messaging/messaging.service.js';
 import { resolveScopedEmpresaId } from '../../middlewares/company-scope.middleware.js';
 import { normalizeRole, ROLES } from '../../config/permissions.js';
 import { assertPlanLimit } from '../plans/plan-limits.service.js';
@@ -28,13 +23,13 @@ function resolveCompanyId(req) {
 export async function startSession(req, res, next) {
   try {
     const empresaId = resolveCompanyId(req);
-    const currentStatus = await getWhatsappStatusSnapshot(empresaId);
+    const currentStatus = await messagingService.getStatusSnapshot(empresaId);
 
     if (!['INITIALIZING', 'QR_READY', 'AUTHENTICATED', 'CONNECTED', 'RECONNECTING'].includes(currentStatus.status)) {
       await assertPlanLimit(empresaId, 'whatsapp');
     }
 
-    const status = await startWhatsappSession(empresaId);
+    const status = await messagingService.startSession(empresaId);
     await auditFromRequest(req, {
       accion: 'INICIAR_SESION',
       modulo: 'whatsapp',
@@ -49,7 +44,7 @@ export async function startSession(req, res, next) {
 
 export async function getStatus(req, res, next) {
   try {
-    res.json({ data: sanitizeWhatsappStatus(await getWhatsappStatusSnapshot(resolveCompanyId(req))) });
+    res.json({ data: sanitizeWhatsappStatus(await messagingService.getStatusSnapshot(resolveCompanyId(req))) });
   } catch (error) {
     next(error);
   }
@@ -58,7 +53,7 @@ export async function getStatus(req, res, next) {
 export async function getQr(req, res, next) {
   try {
     const empresaId = resolveCompanyId(req);
-    const status = await getWhatsappStatusSnapshot(empresaId);
+    const status = await messagingService.getStatusSnapshot(empresaId);
     await auditFromRequest(req, {
       accion: 'CONSULTAR_QR',
       modulo: 'whatsapp',
@@ -82,11 +77,11 @@ export async function getQr(req, res, next) {
 export async function listStatuses(req, res, next) {
   try {
     if (normalizeRole(req.auth.user.rol) !== ROLES.SUPER_ADMIN) {
-      res.json({ data: [sanitizeWhatsappStatus(await getWhatsappStatusSnapshot(req.auth.user.empresaId))] });
+      res.json({ data: [sanitizeWhatsappStatus(await messagingService.getStatusSnapshot(req.auth.user.empresaId))] });
       return;
     }
 
-    res.json({ data: (await listWhatsappStatusSnapshots()).map(sanitizeWhatsappStatus) });
+    res.json({ data: (await messagingService.listStatusSnapshots()).map(sanitizeWhatsappStatus) });
   } catch (error) {
     next(error);
   }
@@ -95,7 +90,7 @@ export async function listStatuses(req, res, next) {
 export async function disconnectSession(req, res, next) {
   try {
     const empresaId = resolveCompanyId(req);
-    const status = await disconnectWhatsappSession(empresaId);
+    const status = await messagingService.disconnectSession(empresaId);
     await auditFromRequest(req, {
       accion: 'DESCONECTAR_SESION',
       modulo: 'whatsapp',
