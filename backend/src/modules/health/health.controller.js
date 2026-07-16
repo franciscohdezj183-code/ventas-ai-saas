@@ -1,6 +1,7 @@
 import { checkDatabaseConnection } from '../../config/database.js';
 import { env } from '../../config/env.js';
 import { messagingService } from '../../messaging/messaging.service.js';
+import { getQueueHealth, isQueueHealthDegraded } from '../../queues/queue-health.service.js';
 
 export async function getHealth(req, res, next) {
   const checks = {
@@ -8,6 +9,10 @@ export async function getHealth(req, res, next) {
     whatsapp: {
       total_sessions: 0,
       connected_sessions: 0
+    },
+    queues: {
+      enabled: false,
+      redis_status: 'disabled'
     }
   };
 
@@ -31,7 +36,19 @@ export async function getHealth(req, res, next) {
     };
   }
 
-  const status = checks.database === 'connected' ? 'ok' : 'degraded';
+  try {
+    checks.queues = await getQueueHealth();
+  } catch {
+    checks.queues = {
+      enabled: env.queue.enabled,
+      redis_status: env.queue.enabled ? 'error' : 'disabled',
+      command_queue: 'unknown',
+      inbound_queue: 'unknown',
+      outbound_queue: 'unknown'
+    };
+  }
+
+  const status = checks.database === 'connected' && !isQueueHealthDegraded(checks.queues) ? 'ok' : 'degraded';
 
   res.status(status === 'ok' ? 200 : 503).json({
     status,

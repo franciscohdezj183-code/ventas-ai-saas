@@ -30,6 +30,11 @@ function booleanEnv(name, fallback = true) {
   return value !== 'false';
 }
 
+function stringEnv(name, fallback) {
+  const value = process.env[name];
+  return value === undefined || value === '' ? fallback : value;
+}
+
 function validateUrl(value, name) {
   try {
     return new URL(value).origin;
@@ -52,6 +57,34 @@ function validateEnv(nextEnv) {
   if (!nextEnv.db.host) errors.push('DB_HOST is required');
   if (!nextEnv.db.user) errors.push('DB_USER is required');
   if (!nextEnv.db.database) errors.push('DB_NAME is required');
+
+  if (nextEnv.queue.enabled) {
+    try {
+      new URL(nextEnv.queue.redisUrl);
+    } catch {
+      errors.push('REDIS_URL must be a valid URL when QUEUE_ENABLED=true');
+    }
+  }
+
+  if (!Number.isInteger(nextEnv.queue.redisConnectTimeoutMs) || nextEnv.queue.redisConnectTimeoutMs <= 0) {
+    errors.push('REDIS_CONNECT_TIMEOUT_MS must be a positive integer');
+  }
+
+  if (!Number.isInteger(nextEnv.queue.removeOnComplete) || nextEnv.queue.removeOnComplete < 0) {
+    errors.push('QUEUE_REMOVE_ON_COMPLETE must be a non-negative integer');
+  }
+
+  if (!Number.isInteger(nextEnv.queue.removeOnFail) || nextEnv.queue.removeOnFail < 0) {
+    errors.push('QUEUE_REMOVE_ON_FAIL must be a non-negative integer');
+  }
+
+  if (!Number.isInteger(nextEnv.queue.attempts) || nextEnv.queue.attempts <= 0) {
+    errors.push('QUEUE_ATTEMPTS must be a positive integer');
+  }
+
+  if (!Number.isInteger(nextEnv.queue.backoffMs) || nextEnv.queue.backoffMs < 0) {
+    errors.push('QUEUE_BACKOFF_MS must be a non-negative integer');
+  }
 
   if (nextEnv.nodeEnv === 'production') {
     if (!nextEnv.apiUrl.startsWith('https://')) {
@@ -113,6 +146,16 @@ export const env = {
     user: process.env.DB_USER ?? 'root',
     password: process.env.DB_PASSWORD ?? '',
     database: process.env.DB_NAME ?? 'ventas_ai_saas'
+  },
+  queue: {
+    enabled: booleanEnv('QUEUE_ENABLED', false),
+    redisUrl: stringEnv('REDIS_URL', 'redis://127.0.0.1:6379'),
+    redisPrefix: stringEnv('REDIS_PREFIX', 'nexus'),
+    redisConnectTimeoutMs: numberEnv('REDIS_CONNECT_TIMEOUT_MS', 5000),
+    removeOnComplete: numberEnv('QUEUE_REMOVE_ON_COMPLETE', 1000),
+    removeOnFail: numberEnv('QUEUE_REMOVE_ON_FAIL', 5000),
+    attempts: numberEnv('QUEUE_ATTEMPTS', 5),
+    backoffMs: numberEnv('QUEUE_BACKOFF_MS', 2000)
   }
 };
 
