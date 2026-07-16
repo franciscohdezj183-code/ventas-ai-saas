@@ -8,6 +8,7 @@ import { env } from '../../config/env.js';
 import { query } from '../../config/database.js';
 import { createHttpError } from '../../utils/http-error.js';
 import { decryptField, encryptField } from '../../utils/crypto-field.js';
+import { logger } from '../../utils/logger.js';
 import { processIncomingCustomerMessage } from '../ai/ai.service.js';
 import {
   handleOwnerResponse,
@@ -280,25 +281,288 @@ function cleanWhatsappPhone(phone) {
     .replace(/\D/g, '');
 }
 
-async function getIncomingPhoneCandidates(message) {
-  const candidates = new Set([
-    cleanWhatsappPhone(message.from),
-    cleanWhatsappPhone(message.author)
-  ]);
+function isWhatsappLid(value) {
+  return String(value ?? '').endsWith('@lid');
+}
+
+function isWhatsappPhoneId(value) {
+  return String(value ?? '').endsWith('@c.us');
+}
+
+function cleanWhatsappLid(value) {
+  return isWhatsappLid(value) ? String(value).replace('@lid', '').replace(/\D/g, '') : '';
+}
+
+function cleanWhatsappPhoneId(value) {
+  if (!value) {
+    return null;
+  }
+
+  const rawValue = String(value);
+
+  if (isWhatsappLid(rawValue)) {
+    return null;
+  }
+
+  if (isWhatsappPhoneId(rawValue)) {
+    return cleanWhatsappPhone(rawValue);
+  }
+
+  const cleanValue = rawValue.replace(/\D/g, '');
+  return cleanValue || null;
+}
+
+function temporaryLidIdentity(value) {
+  const lid = cleanWhatsappLid(value);
+  return lid ? `lid:${lid}` : 'lid:unresolved';
+}
+
+function maskIdentifier(value) {
+  const rawValue = String(value ?? '');
+
+  if (!rawValue) {
+    return null;
+  }
+
+  if (rawValue.length <= 8) {
+    return `${rawValue.slice(0, 2)}***`;
+  }
+
+  return `${rawValue.slice(0, 4)}***${rawValue.slice(-5)}`;
+}
+
+function safeSerialize(value, seen = new WeakSet()) {
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  if (typeof value !== 'object') {
+    return value;
+  }
+
+  if (seen.has(value)) {
+    return '[Circular]';
+  }
+
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.slice(0, 20).map((item) => safeSerialize(item, seen));
+  }
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => !/token|secret|password|authorization|cookie/i.test(key))
+      .slice(0, 30)
+      .map(([key, item]) => [key, safeSerialize(item, seen)])
+  );
+}
+
+export function normalizeWhatsappError(error) {
+  const message = typeof error?.message === 'string' && error.message.trim()
+    ? error.message
+    : String(error ?? 'Unknown WhatsApp error');
+
+  return {
+    name: error?.name ?? (error instanceof Error ? 'Error' : typeof error),
+    message,
+    stack: error?.stack,
+    code: error?.code,
+    status: error?.status ?? error?.statusCode,
+    data: safeSerialize(error?.data ?? error?.response?.data),
+    serialized: safeSerialize(error)
+  };
+}
+
+export function whatsappErrorSummary(error) {
+  const normalizedError = normalizeWhatsappError(error);
+  const message = normalizedError.message === 'r'
+    ? 'WhatsApp envio un error no descriptivo durante la operacion'
+    : normalizedError.message;
+
+  return `${normalizedError.name ?? 'WhatsAppError'}: ${message}`;
+}
+
+function logWhatsappEvent(level, message, meta = {}) {
+  logger[level](message, {
+    ...meta,
+    whatsappChatId: maskIdentifier(meta.whatsappChatId),
+    rawFrom: maskIdentifier(meta.rawFrom),
+    rawAuthor: maskIdentifier(meta.rawAuthor),
+    resolvedPhoneId: maskIdentifier(meta.resolvedPhoneId),
+    phone: maskIdentifier(meta.phone)
+  });
+}
+
+function readContactPhone(contact) {
+  const serialized = contact?.id?._serialized;
+
+  if (isWhatsappPhoneId(serialized)) {
+    return {
+      phone: cleanWhatsappPhoneId(serialized),
+      resolvedPhoneId: serialized,
+      source: 'contact_id_serialized'
+    };
+  }
+
+  if (contact?.number) {
+    const phone = cleanWhatsappPhoneId(contact.number);
+
+    if (phone) {
+      return {
+        phone,
+        resolvedPhoneId: isWhatsappPhoneId(contact.number) ? contact.number : `${phone}@c.us`,
+        source: 'contact_number'
+      };
+    }
+  }
+
+  if (!isWhatsappLid(serialized) && contact?.id?.user) {
+    const phone = cleanWhatsappPhoneId(contact.id.user);
+
+    if (phone) {
+      return {
+        phone,
+        resolvedPhoneId: `${phone}@c.us`,
+        source: 'contact_id_user'
+      };
+    }
+  }
+
+  return null;
+}
+
+export async function resolveIncomingWhatsappIdentity({ client, message }) {
+  const rawFrom = message?.from ?? null;
+  const rawAuthor = message?.author ?? null;
+  const whatsappChatId = rawFrom;
+  const ids = [rawFrom, rawAuthor].filter(Boolean);
+  const phoneId = ids.find(isWhatsappPhoneId);
+
+  if (phoneId) {
+    return {
+      whatsappChatId,
+      phone: cleanWhatsappPhoneId(phoneId),
+      rawFrom,
+      rawAuthor,
+      source: phoneId === rawFrom ? 'from_c_us' : 'author_c_us',
+      resolvedPhoneId: phoneId
+    };
+  }
+
+  const lid = ids.find(isWhatsappLid);
+
+  if (lid && typeof client?.getContactLidAndPhone === 'function') {
+    try {
+      const lidContacts = await client.getContactLidAndPhone([lid]);
+      const resolved = (Array.isArray(lidContacts) ? lidContacts : [])
+        .find((item) => item?.pn && (item.lid === lid || item.lid === cleanWhatsappLid(lid) || !item.lid));
+
+      if (isWhatsappPhoneId(resolved?.pn)) {
+        return {
+          whatsappChatId,
+          phone: cleanWhatsappPhoneId(resolved.pn),
+          rawFrom,
+          rawAuthor,
+          source: 'lid_lookup',
+          resolvedPhoneId: resolved.pn
+        };
+      }
+    } catch (error) {
+      logWhatsappEvent('warn', 'whatsapp_identity_lid_lookup_failed', {
+        whatsappChatId,
+        rawFrom,
+        rawAuthor,
+        error: normalizeWhatsappError(error)
+      });
+    }
+  }
 
   try {
     const contact = await Promise.race([
       message.getContact(),
       new Promise((resolve) => setTimeout(() => resolve(null), 1500))
     ]);
-    candidates.add(cleanWhatsappPhone(contact?.number));
-    candidates.add(cleanWhatsappPhone(contact?.id?._serialized));
-    candidates.add(cleanWhatsappPhone(contact?.id?.user));
-  } catch {
-    // Keep the raw WhatsApp id if contact metadata is not available.
+    const contactPhone = readContactPhone(contact);
+
+    if (contactPhone) {
+      return {
+        whatsappChatId,
+        rawFrom,
+        rawAuthor,
+        ...contactPhone
+      };
+    }
+  } catch (error) {
+    logWhatsappEvent('warn', 'whatsapp_identity_contact_lookup_failed', {
+      whatsappChatId,
+      rawFrom,
+      rawAuthor,
+      error: normalizeWhatsappError(error)
+    });
   }
 
-  return Array.from(candidates).filter(Boolean);
+  return {
+    whatsappChatId,
+    phone: null,
+    rawFrom,
+    rawAuthor,
+    source: lid ? 'unresolved_lid' : 'unresolved',
+    resolvedPhoneId: null
+  };
+}
+
+function buildIncomingPhoneCandidates(identity) {
+  return [identity.phone].filter(Boolean);
+}
+
+export async function deliverWhatsappResponse({
+  client,
+  message,
+  whatsappChatId,
+  resolvedPhoneId,
+  response
+}) {
+  const cleanResponse = String(response ?? '').trim();
+
+  if (!cleanResponse) {
+    return { sent: false, attempts: [] };
+  }
+
+  const primaryDestination = whatsappChatId || message?.from;
+  const attempts = [];
+
+  try {
+    await client.sendMessage(primaryDestination, cleanResponse);
+    attempts.push({ method: 'whatsappChatId', destination: primaryDestination, success: true });
+    return { sent: true, attempts };
+  } catch (error) {
+    attempts.push({
+      method: 'whatsappChatId',
+      destination: primaryDestination,
+      success: false,
+      error: normalizeWhatsappError(error)
+    });
+  }
+
+  if (resolvedPhoneId && resolvedPhoneId !== primaryDestination && isWhatsappPhoneId(resolvedPhoneId)) {
+    try {
+      await client.sendMessage(resolvedPhoneId, cleanResponse);
+      attempts.push({ method: 'resolvedPhoneId', destination: resolvedPhoneId, success: true });
+      return { sent: true, attempts };
+    } catch (error) {
+      attempts.push({
+        method: 'resolvedPhoneId',
+        destination: resolvedPhoneId,
+        success: false,
+        error: normalizeWhatsappError(error)
+      });
+    }
+  }
+
+  const failedError = new Error('No se pudo enviar la respuesta de WhatsApp al chat original ni al telefono resuelto');
+  failedError.attempts = attempts;
+  throw failedError;
 }
 
 function getSession(companyId) {
@@ -359,7 +623,7 @@ async function mediaFromImageSource(source) {
   return MessageMedia.fromUrl(source, { unsafeMime: true });
 }
 
-async function replyWithMedia(message, mediaItems = []) {
+async function replyWithMedia(message, mediaItems = [], context = {}) {
   const chat = await message.getChat();
   let sentCount = 0;
 
@@ -374,8 +638,13 @@ async function replyWithMedia(message, mediaItems = []) {
         caption: item.caption ?? ''
       });
       sentCount += 1;
-    } catch {
-      // If media fails, keep the normal text response path alive.
+    } catch (error) {
+      logWhatsappEvent('warn', 'whatsapp_media_send_failed', {
+        empresaId: context.empresaId,
+        whatsappChatId: context.whatsappChatId,
+        mediaType: item.type,
+        error: normalizeWhatsappError(error)
+      });
     }
   }
 
@@ -473,8 +742,40 @@ function attachClientEvents(session) {
         return;
       }
 
-      const incomingPhoneCandidates = await getIncomingPhoneCandidates(message);
-      const incomingPhone = incomingPhoneCandidates[0];
+      logWhatsappEvent('info', 'whatsapp_incoming_message_received', {
+        empresaId: session.companyId,
+        whatsappChatId: message.from,
+        rawFrom: message.from,
+        rawAuthor: message.author,
+        messageType: message.type,
+        bodyLength: String(message.body ?? '').length
+      });
+
+      const identity = await resolveIncomingWhatsappIdentity({ client: session.client, message });
+      const incomingPhone = identity.phone;
+      const conversationPhone = incomingPhone ?? temporaryLidIdentity(identity.whatsappChatId);
+      const incomingPhoneCandidates = buildIncomingPhoneCandidates(identity);
+
+      if (incomingPhone) {
+        logWhatsappEvent('info', 'whatsapp_identity_resolved', {
+          empresaId: session.companyId,
+          whatsappChatId: identity.whatsappChatId,
+          rawFrom: identity.rawFrom,
+          rawAuthor: identity.rawAuthor,
+          phone: identity.phone,
+          resolvedPhoneId: identity.resolvedPhoneId,
+          source: identity.source
+        });
+      } else {
+        logWhatsappEvent('warn', 'whatsapp_identity_resolution_failed', {
+          empresaId: session.companyId,
+          whatsappChatId: identity.whatsappChatId,
+          rawFrom: identity.rawFrom,
+          rawAuthor: identity.rawAuthor,
+          source: identity.source
+        });
+      }
+
       let ownerResponse = { handled: false };
 
       for (const phoneCandidate of incomingPhoneCandidates) {
@@ -491,10 +792,13 @@ function attachClientEvents(session) {
 
       if (ownerResponse.handled) {
         if (ownerResponse.mensaje_cliente && ownerResponse.telefono_cliente) {
-          await session.client.sendMessage(
-            ownerResponse.whatsapp_chat_id || normalizePhoneForWhatsapp(ownerResponse.telefono_cliente),
-            ownerResponse.mensaje_cliente
-          );
+          await deliverWhatsappResponse({
+            client: session.client,
+            message,
+            whatsappChatId: ownerResponse.whatsapp_chat_id || identity.whatsappChatId,
+            resolvedPhoneId: identity.resolvedPhoneId || normalizePhoneForWhatsapp(ownerResponse.telefono_cliente),
+            response: ownerResponse.mensaje_cliente
+          });
         }
 
         return;
@@ -506,12 +810,14 @@ function attachClientEvents(session) {
         }
       }
 
-      await markCustomerActivity({
-        empresa_id: session.companyId,
-        telefono_cliente: incomingPhone
-      });
+      if (incomingPhone) {
+        await markCustomerActivity({
+          empresa_id: session.companyId,
+          telefono_cliente: incomingPhone
+        });
+      }
 
-      if (await isBotPausedForCustomer({ empresa_id: session.companyId, telefono_cliente: incomingPhone })) {
+      if (incomingPhone && await isBotPausedForCustomer({ empresa_id: session.companyId, telefono_cliente: incomingPhone })) {
         await notifyOwnerOfCustomerMessage({
           empresa_id: session.companyId,
           telefono_cliente: incomingPhone,
@@ -522,21 +828,67 @@ function attachClientEvents(session) {
 
       const result = await processIncomingCustomerMessage({
         empresaId: session.companyId,
-        phone: incomingPhone,
+        phone: conversationPhone,
         message: message.body,
-        whatsappChatId: message.from
+        whatsappChatId: identity.whatsappChatId
       });
-      const chat = await message.getChat();
 
-      const sentMediaCount = result.medios?.length ? await replyWithMedia(message, result.medios) : 0;
+      const sentMediaCount = result.medios?.length
+        ? await replyWithMedia(message, result.medios, {
+          empresaId: session.companyId,
+          whatsappChatId: identity.whatsappChatId
+        })
+        : 0;
 
       if (sentMediaCount === 0 && result.respuesta) {
-        await chat.sendMessage(result.respuesta);
+        logWhatsappEvent('info', 'whatsapp_response_send_started', {
+          empresaId: session.companyId,
+          whatsappChatId: identity.whatsappChatId,
+          resolvedPhoneId: identity.resolvedPhoneId,
+          attempt: 1,
+          method: 'whatsappChatId'
+        });
+
+        try {
+          const delivery = await deliverWhatsappResponse({
+            client: session.client,
+            message,
+            whatsappChatId: identity.whatsappChatId,
+            resolvedPhoneId: identity.resolvedPhoneId,
+            response: result.respuesta
+          });
+
+          delivery.attempts.forEach((attempt, index) => {
+            logWhatsappEvent(attempt.success ? 'info' : 'warn', attempt.success ? 'whatsapp_response_sent' : 'whatsapp_response_send_failed', {
+              empresaId: session.companyId,
+              whatsappChatId: identity.whatsappChatId,
+              resolvedPhoneId: identity.resolvedPhoneId,
+              attempt: index + 1,
+              method: attempt.method,
+              error: attempt.error
+            });
+          });
+        } catch (error) {
+          const attempts = Array.isArray(error.attempts) ? error.attempts : [];
+
+          attempts.forEach((attempt, index) => {
+            logWhatsappEvent('error', 'whatsapp_response_send_failed', {
+              empresaId: session.companyId,
+              whatsappChatId: identity.whatsappChatId,
+              resolvedPhoneId: identity.resolvedPhoneId,
+              attempt: index + 1,
+              method: attempt.method,
+              error: attempt.error
+            });
+          });
+
+          throw error;
+        }
       }
     } catch (error) {
-      session.state.last_error = error.message;
+      session.state.last_error = whatsappErrorSummary(error);
       session.state.updated_at = new Date().toISOString();
-      pushSessionEvent(session, 'ERROR', error.message);
+      pushSessionEvent(session, 'ERROR', session.state.last_error);
     }
   });
 }

@@ -7,6 +7,12 @@ import { isPlanLimitAvailable } from '../plans/plan-limits.service.js';
 import { registerAIUsage } from '../ai-usage/ai-usage.service.js';
 
 function normalizePhone(value) {
+  const rawValue = String(value ?? '').trim();
+
+  if (/^lid:[0-9a-z_-]+$/i.test(rawValue)) {
+    return rawValue.toLowerCase();
+  }
+
   return String(value ?? '')
     .replace('@c.us', '')
     .replace(/\D/g, '');
