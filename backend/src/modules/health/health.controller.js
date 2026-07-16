@@ -58,7 +58,9 @@ export async function getHealth(req, res, next) {
     };
   }
 
-  const status = checks.database === 'connected' && !isQueueHealthDegraded(checks.queues) ? 'ok' : 'degraded';
+  const commandsDegraded = checks.whatsapp_commands.via_queue &&
+    !['disabled', 'ready'].includes(checks.whatsapp_commands.queue_status);
+  const status = checks.database === 'connected' && !isQueueHealthDegraded(checks.queues) && !commandsDegraded ? 'ok' : 'degraded';
 
   res.status(status === 'ok' ? 200 : 503).json({
     status,

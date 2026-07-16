@@ -87,8 +87,12 @@ async function monitorWhatsappCompanies() {
 }
 
 async function startWorker() {
-  if (process.env.WHATSAPP_COMMANDS_VIA_QUEUE === 'true') {
-    throw new Error('Do not run legacy whatsapp.worker.js when WHATSAPP_COMMANDS_VIA_QUEUE=true');
+  if (
+    process.env.WHATSAPP_COMMANDS_VIA_QUEUE === 'true' ||
+    process.env.WHATSAPP_INBOUND_VIA_QUEUE === 'true' ||
+    process.env.WHATSAPP_OUTBOUND_VIA_QUEUE === 'true'
+  ) {
+    throw new Error('Do not run legacy whatsapp.worker.js when WhatsApp queue mode is enabled');
   }
 
   logger.info('whatsapp_process_role', { process_role: 'legacy_whatsapp_worker' });

@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   deliverWhatsappResponse,
+  enqueueNormalizedInboundMessage,
+  normalizeInboundWhatsappMessage,
   normalizeWhatsappError,
   resolveIncomingWhatsappIdentity,
   whatsappErrorSummary
@@ -242,4 +244,94 @@ test('keeps compatibility with existing incoming @c.us messages', async () => {
       source: 'from_c_us'
     }
   );
+});
+
+test('normalizes inbound WhatsApp message without carrying whatsapp-web objects', async () => {
+  const normalized = await normalizeInboundWhatsappMessage({
+    empresaId: 5,
+    client: {},
+    message: createMessage({
+      id: { _serialized: 'false_5215550000000@c.us_ABC123' },
+      from: '5215550000000@c.us',
+      type: 'chat',
+      timestamp: 1784210400,
+      body: 'hola'
+    })
+  });
+
+  assert.equal(normalized.empresaId, 5);
+  assert.equal(normalized.provider, 'whatsapp-web');
+  assert.equal(normalized.messageId, 'false_5215550000000-c-us_ABC123');
+  assert.equal(normalized.messageType, 'text');
+  assert.equal(normalized.whatsappChatId, '5215550000000@c.us');
+  assert.equal(normalized.phone, '5215550000000');
+  assert.equal(normalized.body, 'hola');
+  assert.equal(typeof normalized.metadata, 'object');
+  assert.equal('client' in normalized, false);
+  assert.equal('message' in normalized, false);
+});
+
+test('normalizes realistic @lid inbound message after lookup timeout using provisional identity', async () => {
+  let contactFallbackCalls = 0;
+  const normalized = await normalizeInboundWhatsappMessage({
+    empresaId: 5,
+    lookupTimeoutMs: 5,
+    client: {
+      getContactLidAndPhone: async () => new Promise(() => {})
+    },
+    message: createMessage({
+      id: { _serialized: 'false_113950146457660@lid_3EB0A9F4D5C7B8A9012' },
+      from: '113950146457660@lid',
+      author: undefined,
+      type: 'chat',
+      timestamp: 1784210880,
+      body: 'hola, tienes catalogo?',
+      getContact: async () => {
+        contactFallbackCalls += 1;
+        throw new Error('contact fallback should not block timeout path');
+      }
+    })
+  });
+
+  assert.equal(normalized.empresaId, 5);
+  assert.equal(normalized.whatsappChatId, '113950146457660@lid');
+  assert.equal(normalized.phone, 'lid:113950146457660');
+  assert.equal(normalized.resolvedPhoneId, null);
+  assert.equal(normalized.metadata.source, 'lid_lookup_timeout');
+  assert.equal(normalized.messageType, 'text');
+  assert.equal(normalized.eventId, '5-false_113950146457660-lid_3EB0A9F4D5C7B8A9012');
+  assert.equal(contactFallbackCalls, 0);
+});
+
+test('enqueueNormalizedInboundMessage uses initialized inbound queue instance', async () => {
+  const calls = [];
+  const job = await enqueueNormalizedInboundMessage({
+    eventId: '5-false_113950146457660-lid_3EB0A9F4D5C7B8A9012',
+    empresaId: 5,
+    provider: 'whatsapp-web',
+    messageId: 'false_113950146457660-lid_3EB0A9F4D5C7B8A9012',
+    whatsappChatId: '113950146457660@lid',
+    resolvedPhoneId: null,
+    phone: 'lid:113950146457660',
+    messageType: 'text',
+    body: 'hola',
+    receivedAt: '2026-07-16T23:08:00.000Z',
+    metadata: { source: 'lid_lookup_timeout' }
+  }, {
+    registry: {
+      status: 'ready',
+      whatsappInboundQueue: {
+        status: 'ready',
+        async enqueue(payload) {
+          calls.push(payload);
+          return { id: 'whatsapp-inbound-5-realistic-lid' };
+        }
+      }
+    },
+    loggerInstance: { info() {}, warn() {}, error() {} }
+  });
+
+  assert.equal(job.id, 'whatsapp-inbound-5-realistic-lid');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].whatsappChatId, '113950146457660@lid');
 });

@@ -138,7 +138,9 @@ export function validateWhatsappInboundJob(payload = {}) {
   return {
     eventId: optionalString(payload.eventId, 'eventId') ?? randomUUID(),
     empresaId: requirePositiveInteger(payload.empresaId, 'empresaId'),
+    provider: optionalString(payload.provider, 'provider') ?? 'whatsapp-web',
     whatsappChatId: requireNonEmptyString(payload.whatsappChatId, 'whatsappChatId'),
+    resolvedPhoneId: optionalString(payload.resolvedPhoneId, 'resolvedPhoneId'),
     phone: optionalString(payload.phone, 'phone'),
     messageId: requireNonEmptyString(payload.messageId, 'messageId'),
     messageType,
@@ -159,13 +161,16 @@ export function validateWhatsappOutboundJob(payload = {}) {
   return {
     messageId: optionalString(payload.messageId, 'messageId') ?? randomUUID(),
     empresaId: requirePositiveInteger(payload.empresaId, 'empresaId'),
+    provider: optionalString(payload.provider, 'provider') ?? 'whatsapp-web',
     whatsappChatId: optionalString(payload.whatsappChatId, 'whatsappChatId'),
+    resolvedPhoneId: optionalString(payload.resolvedPhoneId, 'resolvedPhoneId'),
     phone: optionalString(payload.phone, 'phone'),
     type,
     text: optionalString(payload.text, 'text', { maxLength: MAX_TEXT_LENGTH }),
     media: payload.media === undefined ? null : optionalObject(payload.media, 'media'),
     createdAt: requireDate(payload.createdAt ?? new Date().toISOString(), 'createdAt'),
-    correlationId: optionalString(payload.correlationId, 'correlationId')
+    correlationId: optionalString(payload.correlationId, 'correlationId'),
+    source: optionalString(payload.source, 'source') ?? 'unknown'
   };
 }
 

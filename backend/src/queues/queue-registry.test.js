@@ -204,8 +204,8 @@ test('inbound and outbound enqueue helpers validate contracts', async () => {
     createdAt: '2026-07-16T10:00:00.000Z'
   });
 
-  assert.equal(inboundQueue.calls[0].options.jobId, 'whatsapp-inbound:evt-1');
-  assert.equal(outboundQueue.calls[0].options.jobId, 'whatsapp-outbound:out-1');
+  assert.equal(inboundQueue.calls[0].options.jobId, 'whatsapp-inbound-evt-1');
+  assert.equal(outboundQueue.calls[0].options.jobId, 'whatsapp-outbound-out-1');
 });
 
 test('closeQueueRegistry is idempotent', async () => {

@@ -90,8 +90,36 @@ function validateEnv(nextEnv) {
     errors.push('QUEUE_ENABLED must be true when WHATSAPP_COMMANDS_VIA_QUEUE=true');
   }
 
+  if (nextEnv.whatsapp.inboundViaQueue && !nextEnv.queue.enabled) {
+    errors.push('QUEUE_ENABLED must be true when WHATSAPP_INBOUND_VIA_QUEUE=true');
+  }
+
+  if (nextEnv.whatsapp.outboundViaQueue && !nextEnv.queue.enabled) {
+    errors.push('QUEUE_ENABLED must be true when WHATSAPP_OUTBOUND_VIA_QUEUE=true');
+  }
+
+  if (nextEnv.whatsapp.inboundViaQueue && !nextEnv.whatsapp.inboundWorker.enabled) {
+    errors.push('WHATSAPP_INBOUND_WORKER_ENABLED must be true when WHATSAPP_INBOUND_VIA_QUEUE=true');
+  }
+
+  if (nextEnv.whatsapp.inboundViaQueue && !nextEnv.whatsapp.outboundViaQueue) {
+    errors.push('WHATSAPP_OUTBOUND_VIA_QUEUE must be true when WHATSAPP_INBOUND_VIA_QUEUE=true');
+  }
+
   if (nextEnv.whatsapp.commandWorker.enabled && !nextEnv.queue.enabled) {
     errors.push('QUEUE_ENABLED must be true when WHATSAPP_COMMAND_WORKER_ENABLED=true');
+  }
+
+  if (nextEnv.whatsapp.inboundWorker.enabled && !nextEnv.queue.enabled) {
+    errors.push('QUEUE_ENABLED must be true when WHATSAPP_INBOUND_WORKER_ENABLED=true');
+  }
+
+  if (nextEnv.whatsapp.outboundWorker.enabled && !nextEnv.whatsapp.commandWorker.enabled) {
+    errors.push('WHATSAPP_COMMAND_WORKER_ENABLED must be true when WHATSAPP_OUTBOUND_WORKER_ENABLED=true');
+  }
+
+  if (nextEnv.whatsapp.outboundViaQueue && !nextEnv.whatsapp.outboundWorker.enabled) {
+    errors.push('WHATSAPP_OUTBOUND_WORKER_ENABLED must be true when WHATSAPP_OUTBOUND_VIA_QUEUE=true');
   }
 
   if (!Number.isInteger(nextEnv.whatsapp.commandWorker.concurrency) || nextEnv.whatsapp.commandWorker.concurrency <= 0) {
@@ -104,6 +132,18 @@ function validateEnv(nextEnv) {
 
   if (!Number.isInteger(nextEnv.whatsapp.commandWorker.staleMs) || nextEnv.whatsapp.commandWorker.staleMs <= 0) {
     errors.push('WHATSAPP_COMMAND_STALE_MS must be a positive integer');
+  }
+
+  if (!Number.isInteger(nextEnv.whatsapp.inboundWorker.concurrency) || nextEnv.whatsapp.inboundWorker.concurrency <= 0) {
+    errors.push('WHATSAPP_INBOUND_CONCURRENCY must be a positive integer');
+  }
+
+  if (!Number.isInteger(nextEnv.whatsapp.outboundWorker.concurrency) || nextEnv.whatsapp.outboundWorker.concurrency <= 0) {
+    errors.push('WHATSAPP_OUTBOUND_CONCURRENCY must be a positive integer');
+  }
+
+  if (!Number.isInteger(nextEnv.whatsapp.messageMaxAttempts) || nextEnv.whatsapp.messageMaxAttempts <= 0) {
+    errors.push('WHATSAPP_MESSAGE_MAX_ATTEMPTS must be a positive integer');
   }
 
   if (nextEnv.whatsapp.commandsViaQueue && process.env.WHATSAPP_LEGACY_WORKER_ENABLED === 'true') {
@@ -157,11 +197,22 @@ export const env = {
     sessionPath: process.env.WHATSAPP_SESSION_PATH ?? 'storage/whatsapp',
     headless: booleanEnv('WHATSAPP_HEADLESS', true),
     commandsViaQueue: booleanEnv('WHATSAPP_COMMANDS_VIA_QUEUE', false),
+    inboundViaQueue: booleanEnv('WHATSAPP_INBOUND_VIA_QUEUE', false),
+    outboundViaQueue: booleanEnv('WHATSAPP_OUTBOUND_VIA_QUEUE', false),
+    messageMaxAttempts: numberEnv('WHATSAPP_MESSAGE_MAX_ATTEMPTS', 3),
     commandWorker: {
       enabled: booleanEnv('WHATSAPP_COMMAND_WORKER_ENABLED', false),
       concurrency: numberEnv('WHATSAPP_COMMAND_CONCURRENCY', 1),
       timeoutMs: numberEnv('WHATSAPP_COMMAND_TIMEOUT_MS', 120000),
       staleMs: numberEnv('WHATSAPP_COMMAND_STALE_MS', 300000)
+    },
+    inboundWorker: {
+      enabled: booleanEnv('WHATSAPP_INBOUND_WORKER_ENABLED', false),
+      concurrency: numberEnv('WHATSAPP_INBOUND_CONCURRENCY', 5)
+    },
+    outboundWorker: {
+      enabled: booleanEnv('WHATSAPP_OUTBOUND_WORKER_ENABLED', false),
+      concurrency: numberEnv('WHATSAPP_OUTBOUND_CONCURRENCY', 3)
     }
   },
   openai: {

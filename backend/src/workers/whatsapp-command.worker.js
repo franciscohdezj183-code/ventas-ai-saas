@@ -6,12 +6,14 @@ import { closeQueueRegistry, initializeQueueRegistry } from '../queues/queue-reg
 import { createBullQueueName } from '../queues/queue-factory.js';
 import { createQueueNames } from '../queues/queue-names.js';
 import { processWhatsappCommand } from '../queues/workers/whatsapp-command.processor.js';
+import { processWhatsappOutbound } from '../queues/workers/whatsapp-outbound.processor.js';
 import { logger } from '../utils/logger.js';
 
 const HEARTBEAT_INTERVAL_MS = 15000;
 const HEARTBEAT_TTL_SECONDS = 45;
 const workerId = `whatsapp-command-${process.pid}-${Date.now()}`;
 let worker = null;
+let outboundWorker = null;
 let heartbeatTimer = null;
 let shuttingDown = false;
 
@@ -58,6 +60,10 @@ function assertWorkerConfig() {
   if (!env.whatsapp.commandsViaQueue) {
     throw new Error('WHATSAPP_COMMANDS_VIA_QUEUE must be true to run whatsapp-command.worker');
   }
+
+  if (env.whatsapp.outboundViaQueue && !env.whatsapp.outboundWorker.enabled) {
+    throw new Error('WHATSAPP_OUTBOUND_WORKER_ENABLED must be true when WHATSAPP_OUTBOUND_VIA_QUEUE=true');
+  }
 }
 
 async function startWorker() {
@@ -66,6 +72,7 @@ async function startWorker() {
   const registry = await initializeQueueRegistry();
   const queueNames = createQueueNames(env.queue.redisPrefix);
   const bullQueueName = createBullQueueName(queueNames.whatsappCommand, env.queue);
+  const outboundQueueName = createBullQueueName(queueNames.whatsappOutbound, env.queue);
 
   await startHeartbeat(registry.redisClient);
 
@@ -97,6 +104,39 @@ async function startWorker() {
     logger.error('whatsapp_command_worker_error', { error: normalizeError(error) });
   });
   await worker.waitUntilReady();
+
+  if (env.whatsapp.outboundWorker.enabled) {
+    outboundWorker = new Worker(outboundQueueName, processWhatsappOutbound, {
+      connection: registry.redisClient,
+      prefix: String(env.queue.redisPrefix ?? 'nexus').replace(/:+$/g, '') || 'nexus',
+      concurrency: env.whatsapp.outboundWorker.concurrency
+    });
+    outboundWorker.on('completed', (job) => {
+      logger.info('whatsapp_outbound_completed', {
+        jobId: job?.id,
+        empresaId: job?.data?.empresaId
+      });
+    });
+    outboundWorker.on('failed', (job, error) => {
+      logger.error('whatsapp_outbound_failed', {
+        jobId: job?.id,
+        empresaId: job?.data?.empresaId,
+        error: normalizeError(error)
+      });
+    });
+    outboundWorker.on('stalled', (jobId) => {
+      logger.warn('whatsapp_outbound_stalled', { jobId });
+    });
+    outboundWorker.on('error', (error) => {
+      logger.error('whatsapp_outbound_worker_error', { error: normalizeError(error) });
+    });
+    await outboundWorker.waitUntilReady();
+    logger.info('whatsapp_outbound_worker_ready', {
+      workerId,
+      concurrency: env.whatsapp.outboundWorker.concurrency
+    });
+  }
+
   logger.info('whatsapp_command_worker_ready', {
     workerId,
     concurrency: env.whatsapp.commandWorker.concurrency
@@ -118,6 +158,7 @@ async function shutdown(signal) {
 
   try {
     await worker?.close();
+    await outboundWorker?.close();
     await messagingService.shutdown();
     await closeQueueRegistry();
     await closeDatabase();

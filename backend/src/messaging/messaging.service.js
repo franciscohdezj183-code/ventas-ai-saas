@@ -1,6 +1,8 @@
 import { getMessagingProvider } from './provider-registry.js';
+import { env } from '../config/env.js';
+import { enqueueWhatsappOutboundText } from '../modules/whatsapp/whatsapp-outbound.service.js';
 
-export function createMessagingService(provider = getMessagingProvider()) {
+export function createMessagingService(provider = getMessagingProvider(), { enqueueOutbound = enqueueWhatsappOutboundText, config = env } = {}) {
   return {
     get providerName() {
       return provider.providerName;
@@ -30,8 +32,22 @@ export function createMessagingService(provider = getMessagingProvider()) {
       return provider.disconnectSession(empresaId);
     },
 
-    sendText(empresaId, telefono, mensaje) {
+    sendText(empresaId, telefono, mensaje, options = {}) {
+      if (config.whatsapp.outboundViaQueue) {
+        return enqueueOutbound({
+          empresaId,
+          phone: telefono,
+          text: mensaje,
+          correlationId: options.correlationId,
+          source: options.source ?? 'api'
+        });
+      }
+
       return provider.sendText(empresaId, telefono, mensaje);
+    },
+
+    sendTextDirect(empresaId, telefono, mensaje) {
+      return provider.sendTextDirect?.(empresaId, telefono, mensaje) ?? provider.sendText(empresaId, telefono, mensaje);
     },
 
     sendMedia(empresaId, telefono, media) {

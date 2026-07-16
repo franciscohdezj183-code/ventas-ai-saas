@@ -5,6 +5,7 @@ import {
   getWhatsappStatusSnapshot,
   listWhatsappStatusSnapshots,
   sendWhatsappMessage,
+  sendWhatsappTextDirect,
   shutdownWhatsappSessions,
   startWhatsappSession
 } from '../../modules/whatsapp/whatsapp.service.js';
@@ -49,6 +50,10 @@ export const whatsappWebProvider = validateMessagingProvider({
 
   sendText(empresaId, telefono, mensaje) {
     return sendWhatsappMessage(empresaId, telefono, mensaje);
+  },
+
+  sendTextDirect(empresaId, destination, mensaje) {
+    return sendWhatsappTextDirect(empresaId, destination, mensaje);
   },
 
   async sendMedia() {

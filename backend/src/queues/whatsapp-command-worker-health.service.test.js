@@ -32,19 +32,28 @@ test('command worker health reports disabled without touching Redis', async () =
 
   assert.deepEqual(health, {
     via_queue: false,
-    queue_status: 'disabled'
+    queue_status: 'disabled',
+    whatsapp_command_worker: 'disabled',
+    whatsapp_inbound_worker: 'disabled',
+    whatsapp_outbound_worker: 'disabled'
   });
 });
 
 test('command worker health reports ready heartbeat', async () => {
   const health = await getWhatsappCommandWorkerHealth({
-    config: config({ whatsapp: { commandsViaQueue: true, commandWorker: { staleMs: 300000 } } }),
+    config: config({
+      whatsapp: {
+        commandsViaQueue: true,
+        inboundViaQueue: true,
+        outboundViaQueue: true,
+        commandWorker: { enabled: true, staleMs: 300000 }
+      }
+    }),
     registry: {
       whatsappCommandQueue: { status: 'ready' },
       redisClient: {
         async keys(pattern) {
-          assert.equal(pattern, 'nexus:workers:whatsapp-command:*');
-          return ['nexus:workers:whatsapp-command:worker-1'];
+          return [pattern.replace('*', 'worker-1')];
         },
         async get() {
           return JSON.stringify({ updatedAt: '2026-07-16T10:00:00.000Z' });
@@ -56,13 +65,16 @@ test('command worker health reports ready heartbeat', async () => {
 
   assert.deepEqual(health, {
     via_queue: true,
-    queue_status: 'ready'
+    queue_status: 'ready',
+    whatsapp_command_worker: 'ready',
+    whatsapp_inbound_worker: 'ready',
+    whatsapp_outbound_worker: 'ready'
   });
 });
 
 test('command worker health reports stale heartbeat', async () => {
   const health = await getWhatsappCommandWorkerHealth({
-    config: config({ whatsapp: { commandsViaQueue: true, commandWorker: { staleMs: 300000 } } }),
+    config: config({ whatsapp: { commandsViaQueue: true, commandWorker: { enabled: true, staleMs: 300000 } } }),
     registry: {
       whatsappCommandQueue: { status: 'ready' },
       redisClient: {

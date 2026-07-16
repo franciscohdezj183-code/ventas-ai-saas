@@ -52,12 +52,50 @@ test('delegates sendText to the active provider', async () => {
       calls.push(args);
       return { status: 'SENT' };
     }
-  }));
+  }), {
+    config: { whatsapp: { outboundViaQueue: false } }
+  });
 
   const result = await service.sendText(12, '5215550000000', 'Hola');
 
   assert.deepEqual(calls, [[12, '5215550000000', 'Hola']]);
   assert.deepEqual(result, { status: 'SENT' });
+});
+
+test('sendText enqueues outbound when queue mode is enabled', async () => {
+  const calls = [];
+  const service = createMessagingService({
+    providerName: 'test',
+    startSession() {},
+    getStatus() {},
+    getStatusSnapshot() {},
+    listStatusSnapshots() {},
+    getQr() {},
+    disconnectSession() {},
+    sendText() {
+      throw new Error('should not send directly');
+    },
+    sendMedia() {},
+    shutdown() {}
+  }, {
+    config: {
+      whatsapp: {
+        outboundViaQueue: true
+      }
+    },
+    enqueueOutbound: async (payload) => {
+      calls.push(payload);
+      return { queued: true, jobId: 'job-1' };
+    }
+  });
+
+  const result = await service.sendText(5, '5215550000000', 'Hola', { correlationId: 'corr-1' });
+
+  assert.equal(result.queued, true);
+  assert.equal(calls[0].empresaId, 5);
+  assert.equal(calls[0].phone, '5215550000000');
+  assert.equal(calls[0].text, 'Hola');
+  assert.equal(calls[0].correlationId, 'corr-1');
 });
 
 test('delegates startSession to the active provider', async () => {
@@ -96,7 +134,9 @@ test('propagates provider errors without wrapping them', async () => {
     sendText: async () => {
       throw providerError;
     }
-  }));
+  }), {
+    config: { whatsapp: { outboundViaQueue: false } }
+  });
 
   await assert.rejects(() => service.sendText(12, '5215550000000', 'Hola'), providerError);
 });
