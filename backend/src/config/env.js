@@ -86,6 +86,30 @@ function validateEnv(nextEnv) {
     errors.push('QUEUE_BACKOFF_MS must be a non-negative integer');
   }
 
+  if (nextEnv.whatsapp.commandsViaQueue && !nextEnv.queue.enabled) {
+    errors.push('QUEUE_ENABLED must be true when WHATSAPP_COMMANDS_VIA_QUEUE=true');
+  }
+
+  if (nextEnv.whatsapp.commandWorker.enabled && !nextEnv.queue.enabled) {
+    errors.push('QUEUE_ENABLED must be true when WHATSAPP_COMMAND_WORKER_ENABLED=true');
+  }
+
+  if (!Number.isInteger(nextEnv.whatsapp.commandWorker.concurrency) || nextEnv.whatsapp.commandWorker.concurrency <= 0) {
+    errors.push('WHATSAPP_COMMAND_CONCURRENCY must be a positive integer');
+  }
+
+  if (!Number.isInteger(nextEnv.whatsapp.commandWorker.timeoutMs) || nextEnv.whatsapp.commandWorker.timeoutMs <= 0) {
+    errors.push('WHATSAPP_COMMAND_TIMEOUT_MS must be a positive integer');
+  }
+
+  if (!Number.isInteger(nextEnv.whatsapp.commandWorker.staleMs) || nextEnv.whatsapp.commandWorker.staleMs <= 0) {
+    errors.push('WHATSAPP_COMMAND_STALE_MS must be a positive integer');
+  }
+
+  if (nextEnv.whatsapp.commandsViaQueue && process.env.WHATSAPP_LEGACY_WORKER_ENABLED === 'true') {
+    errors.push('WHATSAPP_LEGACY_WORKER_ENABLED cannot be true when WHATSAPP_COMMANDS_VIA_QUEUE=true');
+  }
+
   if (nextEnv.nodeEnv === 'production') {
     if (!nextEnv.apiUrl.startsWith('https://')) {
       errors.push('API_URL must use https in production');
@@ -131,7 +155,14 @@ export const env = {
   whatsapp: {
     provider: process.env.WHATSAPP_PROVIDER ?? 'whatsapp-web',
     sessionPath: process.env.WHATSAPP_SESSION_PATH ?? 'storage/whatsapp',
-    headless: booleanEnv('WHATSAPP_HEADLESS', true)
+    headless: booleanEnv('WHATSAPP_HEADLESS', true),
+    commandsViaQueue: booleanEnv('WHATSAPP_COMMANDS_VIA_QUEUE', false),
+    commandWorker: {
+      enabled: booleanEnv('WHATSAPP_COMMAND_WORKER_ENABLED', false),
+      concurrency: numberEnv('WHATSAPP_COMMAND_CONCURRENCY', 1),
+      timeoutMs: numberEnv('WHATSAPP_COMMAND_TIMEOUT_MS', 120000),
+      staleMs: numberEnv('WHATSAPP_COMMAND_STALE_MS', 300000)
+    }
   },
   openai: {
     apiKey: process.env.OPENAI_API_KEY ?? '',

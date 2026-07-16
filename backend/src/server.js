@@ -13,6 +13,8 @@ let server = null;
 let shuttingDown = false;
 
 async function startServer() {
+  logger.info('whatsapp_process_role', { process_role: 'api' });
+
   if (env.queue.enabled) {
     try {
       await initializeQueueRegistry();

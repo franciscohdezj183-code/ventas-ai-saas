@@ -87,6 +87,11 @@ async function monitorWhatsappCompanies() {
 }
 
 async function startWorker() {
+  if (process.env.WHATSAPP_COMMANDS_VIA_QUEUE === 'true') {
+    throw new Error('Do not run legacy whatsapp.worker.js when WHATSAPP_COMMANDS_VIA_QUEUE=true');
+  }
+
+  logger.info('whatsapp_process_role', { process_role: 'legacy_whatsapp_worker' });
   logger.info('whatsapp_worker_started');
   if (process.env.HANDOFF_JOB_ENABLED !== 'false') {
     startHumanHandoffExpirationJob();

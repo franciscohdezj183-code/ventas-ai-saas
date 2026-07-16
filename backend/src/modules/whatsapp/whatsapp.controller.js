@@ -1,4 +1,5 @@
 import { messagingService } from '../../messaging/messaging.service.js';
+import { whatsappCommandService } from './whatsapp-command.service.js';
 import { resolveScopedEmpresaId } from '../../middlewares/company-scope.middleware.js';
 import { normalizeRole, ROLES } from '../../config/permissions.js';
 import { assertPlanLimit } from '../plans/plan-limits.service.js';
@@ -20,6 +21,10 @@ function resolveCompanyId(req) {
   return resolveScopedEmpresaId(req.auth, req.params.empresaId ?? req.body.empresa_id ?? req.query.empresa_id);
 }
 
+export function sendCommandResponse(res, status) {
+  res.status(status?.queued ? 202 : 200).json({ data: sanitizeWhatsappStatus(status) });
+}
+
 export async function startSession(req, res, next) {
   try {
     const empresaId = resolveCompanyId(req);
@@ -29,14 +34,16 @@ export async function startSession(req, res, next) {
       await assertPlanLimit(empresaId, 'whatsapp');
     }
 
-    const status = await messagingService.startSession(empresaId);
+    const status = await whatsappCommandService.requestStartSession(empresaId, {
+      requestedBy: req.auth?.user?.id ? `user:${req.auth.user.id}` : null
+    });
     await auditFromRequest(req, {
       accion: 'INICIAR_SESION',
       modulo: 'whatsapp',
       descripcion: `Inicio de sesion WhatsApp para empresa #${empresaId}`,
       empresaId
     });
-    res.json({ data: sanitizeWhatsappStatus(status) });
+    sendCommandResponse(res, status);
   } catch (error) {
     next(error);
   }
@@ -90,14 +97,34 @@ export async function listStatuses(req, res, next) {
 export async function disconnectSession(req, res, next) {
   try {
     const empresaId = resolveCompanyId(req);
-    const status = await messagingService.disconnectSession(empresaId);
+    const status = await whatsappCommandService.requestDisconnectSession(empresaId, {
+      requestedBy: req.auth?.user?.id ? `user:${req.auth.user.id}` : null
+    });
     await auditFromRequest(req, {
       accion: 'DESCONECTAR_SESION',
       modulo: 'whatsapp',
       descripcion: `Desconexion de sesion WhatsApp para empresa #${empresaId}`,
       empresaId
     });
-    res.json({ data: sanitizeWhatsappStatus(status) });
+    sendCommandResponse(res, status);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function restartSession(req, res, next) {
+  try {
+    const empresaId = resolveCompanyId(req);
+    const status = await whatsappCommandService.requestRestartSession(empresaId, {
+      requestedBy: req.auth?.user?.id ? `user:${req.auth.user.id}` : null
+    });
+    await auditFromRequest(req, {
+      accion: 'REINICIAR_SESION',
+      modulo: 'whatsapp',
+      descripcion: `Reinicio de sesion WhatsApp para empresa #${empresaId}`,
+      empresaId
+    });
+    sendCommandResponse(res, status);
   } catch (error) {
     next(error);
   }

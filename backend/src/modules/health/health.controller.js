@@ -2,6 +2,7 @@ import { checkDatabaseConnection } from '../../config/database.js';
 import { env } from '../../config/env.js';
 import { messagingService } from '../../messaging/messaging.service.js';
 import { getQueueHealth, isQueueHealthDegraded } from '../../queues/queue-health.service.js';
+import { getWhatsappCommandWorkerHealth } from '../../queues/whatsapp-command-worker-health.service.js';
 
 export async function getHealth(req, res, next) {
   const checks = {
@@ -13,6 +14,10 @@ export async function getHealth(req, res, next) {
     queues: {
       enabled: false,
       redis_status: 'disabled'
+    },
+    whatsapp_commands: {
+      via_queue: false,
+      queue_status: 'disabled'
     }
   };
 
@@ -38,6 +43,7 @@ export async function getHealth(req, res, next) {
 
   try {
     checks.queues = await getQueueHealth();
+    checks.whatsapp_commands = await getWhatsappCommandWorkerHealth();
   } catch {
     checks.queues = {
       enabled: env.queue.enabled,
@@ -45,6 +51,10 @@ export async function getHealth(req, res, next) {
       command_queue: 'unknown',
       inbound_queue: 'unknown',
       outbound_queue: 'unknown'
+    };
+    checks.whatsapp_commands = {
+      via_queue: env.whatsapp.commandsViaQueue,
+      queue_status: env.whatsapp.commandsViaQueue ? 'unavailable' : 'disabled'
     };
   }
 

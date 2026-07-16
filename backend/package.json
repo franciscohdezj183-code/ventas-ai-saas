@@ -8,7 +8,8 @@
     "dev": "nodemon src/server.js",
     "migrate": "node src/database/migrate.js",
     "worker:whatsapp": "node src/workers/whatsapp.worker.js",
-    "test": "set NODE_ENV=test&& node --test src/ai/intentInterpreter.test.js src/middlewares/company-scope.middleware.test.js src/middlewares/roles.middleware.test.js src/mcp/mcpClient.test.js src/messaging/messaging.service.test.js src/modules/whatsapp/whatsapp.service.test.js src/queues/queue-payloads.test.js src/queues/queue-registry.test.js src/bot/messageOrchestrator.test.js src/test/integration.test.js",
+    "worker:whatsapp-commands": "node src/workers/whatsapp-command.worker.js",
+    "test": "set NODE_ENV=test&& node --test src/ai/intentInterpreter.test.js src/middlewares/company-scope.middleware.test.js src/middlewares/roles.middleware.test.js src/mcp/mcpClient.test.js src/messaging/messaging.service.test.js src/modules/whatsapp/whatsapp.service.test.js src/modules/whatsapp/whatsapp-command.service.test.js src/modules/whatsapp/whatsapp.controller.test.js src/queues/queue-payloads.test.js src/queues/queue-registry.test.js src/queues/whatsapp-command-worker-health.service.test.js src/queues/workers/whatsapp-command.processor.test.js src/bot/messageOrchestrator.test.js src/test/integration.test.js",
     "test:db": "set NODE_ENV=test&& set RUN_DB_TESTS=true&& node --test src/test/integration.test.js",
     "start": "node src/server.js"
   },

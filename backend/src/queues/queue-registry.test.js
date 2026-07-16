@@ -177,7 +177,7 @@ test('enqueue helpers validate and use deterministic job ids', async () => {
     payload: {}
   });
 
-  assert.equal(job.id, 'whatsapp-command:empresa-5:start');
+  assert.equal(job.id, 'whatsapp-command-empresa-5-start');
   assert.equal(queue.calls[0].name, 'START_SESSION');
 });
 
