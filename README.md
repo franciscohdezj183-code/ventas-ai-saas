@@ -39,7 +39,7 @@ El proyecto contiene una base funcional avanzada para:
 
 ## Requisitos
 
-- Node.js 18 o superior.
+- Node.js 24 LTS.
 - npm 9 o superior.
 - MySQL 8 o MariaDB compatible.
 - phpMyAdmin opcional para importar `schema.sql`.
