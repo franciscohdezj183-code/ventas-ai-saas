@@ -32,12 +32,16 @@ export async function getHealth(req, res, next) {
     const statuses = await messagingService.listStatusSnapshots();
     checks.whatsapp = {
       total_sessions: statuses.length,
-      connected_sessions: statuses.filter((status) => status.status === 'CONNECTED').length
+      connected_sessions: statuses.filter((status) => status.status === 'CONNECTED').length,
+      active_baileys_sessions: statuses.filter((status) => status.status === 'CONNECTED' && status.provider === 'baileys').length,
+      active_whatsapp_web_sessions: statuses.filter((status) => status.status === 'CONNECTED' && status.provider === 'whatsapp-web').length
     };
   } catch {
     checks.whatsapp = {
       total_sessions: 0,
-      connected_sessions: 0
+      connected_sessions: 0,
+      active_baileys_sessions: 0,
+      active_whatsapp_web_sessions: 0
     };
   }
 

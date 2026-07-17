@@ -160,6 +160,42 @@ function validateEnv(nextEnv) {
     if (!nextEnv.whatsapp.outboundWorker.enabled) errors.push('WHATSAPP_OUTBOUND_WORKER_ENABLED must be true when WHATSAPP_PROVIDER=baileys');
   }
 
+  if (!Number.isInteger(nextEnv.whatsapp.gateway.leaderTtlMs) || nextEnv.whatsapp.gateway.leaderTtlMs < 5000) {
+    errors.push('WHATSAPP_GATEWAY_LEADER_TTL_MS must be at least 5000');
+  }
+
+  if (!Number.isInteger(nextEnv.whatsapp.gateway.leaderRenewMs) || nextEnv.whatsapp.gateway.leaderRenewMs <= 0) {
+    errors.push('WHATSAPP_GATEWAY_LEADER_RENEW_MS must be a positive integer');
+  }
+
+  if (nextEnv.whatsapp.gateway.leaderRenewMs >= Math.floor(nextEnv.whatsapp.gateway.leaderTtlMs / 2)) {
+    errors.push('WHATSAPP_GATEWAY_LEADER_RENEW_MS must be less than half of WHATSAPP_GATEWAY_LEADER_TTL_MS');
+  }
+
+  if (!Number.isInteger(nextEnv.whatsapp.gateway.standbyRetryMs) || nextEnv.whatsapp.gateway.standbyRetryMs <= 0) {
+    errors.push('WHATSAPP_GATEWAY_STANDBY_RETRY_MS must be a positive integer');
+  }
+
+  if (!Number.isInteger(nextEnv.whatsapp.sessionLease.ttlMs) || nextEnv.whatsapp.sessionLease.ttlMs < 5000) {
+    errors.push('WHATSAPP_SESSION_LEASE_TTL_MS must be at least 5000');
+  }
+
+  if (!Number.isInteger(nextEnv.whatsapp.sessionLease.renewMs) || nextEnv.whatsapp.sessionLease.renewMs <= 0) {
+    errors.push('WHATSAPP_SESSION_LEASE_RENEW_MS must be a positive integer');
+  }
+
+  if (nextEnv.whatsapp.sessionLease.renewMs >= Math.floor(nextEnv.whatsapp.sessionLease.ttlMs / 2)) {
+    errors.push('WHATSAPP_SESSION_LEASE_RENEW_MS must be less than half of WHATSAPP_SESSION_LEASE_TTL_MS');
+  }
+
+  if (!Number.isInteger(nextEnv.whatsapp.restore.concurrency) || nextEnv.whatsapp.restore.concurrency <= 0) {
+    errors.push('WHATSAPP_RESTORE_CONCURRENCY must be a positive integer');
+  }
+
+  if (!Number.isInteger(nextEnv.whatsapp.restore.delayMs) || nextEnv.whatsapp.restore.delayMs < 0) {
+    errors.push('WHATSAPP_RESTORE_DELAY_MS must be a non-negative integer');
+  }
+
   if (!['file', 'mysql'].includes(nextEnv.whatsapp.baileys.authStore)) {
     errors.push('BAILEYS_AUTH_STORE must be file or mysql');
   }
@@ -252,6 +288,19 @@ export const env = {
       reconnectMaxAttempts: numberEnv('BAILEYS_RECONNECT_MAX_ATTEMPTS', 5),
       reconnectBaseDelayMs: numberEnv('BAILEYS_RECONNECT_BASE_DELAY_MS', 2000),
       qrTtlMs: numberEnv('BAILEYS_QR_TTL_MS', 60000)
+    },
+    gateway: {
+      leaderTtlMs: numberEnv('WHATSAPP_GATEWAY_LEADER_TTL_MS', 30000),
+      leaderRenewMs: numberEnv('WHATSAPP_GATEWAY_LEADER_RENEW_MS', 10000),
+      standbyRetryMs: numberEnv('WHATSAPP_GATEWAY_STANDBY_RETRY_MS', 5000)
+    },
+    sessionLease: {
+      ttlMs: numberEnv('WHATSAPP_SESSION_LEASE_TTL_MS', 30000),
+      renewMs: numberEnv('WHATSAPP_SESSION_LEASE_RENEW_MS', 10000)
+    },
+    restore: {
+      concurrency: numberEnv('WHATSAPP_RESTORE_CONCURRENCY', 3),
+      delayMs: numberEnv('WHATSAPP_RESTORE_DELAY_MS', 500)
     }
   },
   openai: {

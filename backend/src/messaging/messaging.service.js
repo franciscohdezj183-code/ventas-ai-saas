@@ -1,50 +1,97 @@
 import { getMessagingProvider } from './provider-registry.js';
 import { env } from '../config/env.js';
 import { enqueueWhatsappOutboundText } from '../modules/whatsapp/whatsapp-outbound.service.js';
+import { companyProviderService } from './company-provider.service.js';
 
-export function createMessagingService(provider = getMessagingProvider(), { enqueueOutbound = enqueueWhatsappOutboundText, config = env } = {}) {
+function isProviderLike(value) {
+  return value && typeof value === 'object' && typeof value.startSession === 'function';
+}
+
+function withProviderName(status, providerName) {
+  return status && typeof status === 'object'
+    ? { ...status, provider: status.provider ?? providerName }
+    : status;
+}
+
+export function createMessagingService(provider = null, {
+  enqueueOutbound = enqueueWhatsappOutboundText,
+  config = env,
+  companyProvider = companyProviderService,
+  fallbackProvider = getMessagingProvider()
+} = {}) {
+  const directProvider = isProviderLike(provider) ? provider : null;
+
+  async function resolveProvider(empresaId) {
+    return directProvider ?? companyProvider.getProvider(empresaId);
+  }
+
+  async function resolveProviderName(empresaId) {
+    return directProvider?.providerName ?? companyProvider.getProviderName(empresaId);
+  }
+
   return {
     get providerName() {
-      return provider.providerName;
+      return directProvider?.providerName ?? 'per-company';
     },
 
-    startSession(empresaId) {
-      return provider.startSession(empresaId);
+    async startSession(empresaId) {
+      const selectedProvider = await resolveProvider(empresaId);
+      return withProviderName(await selectedProvider.startSession(empresaId), selectedProvider.providerName);
     },
 
-    getStatus(empresaId) {
-      return provider.getStatus(empresaId);
+    async getStatus(empresaId) {
+      const selectedProvider = await resolveProvider(empresaId);
+      return withProviderName(await selectedProvider.getStatus(empresaId), selectedProvider.providerName);
     },
 
-    getStatusSnapshot(empresaId) {
-      return provider.getStatusSnapshot(empresaId);
+    async getStatusSnapshot(empresaId) {
+      const selectedProvider = await resolveProvider(empresaId);
+      return withProviderName(await selectedProvider.getStatusSnapshot(empresaId), selectedProvider.providerName);
     },
 
-    listStatusSnapshots() {
-      return provider.listStatusSnapshots();
+    async listStatusSnapshots() {
+      if (directProvider) {
+        return (await directProvider.listStatusSnapshots()).map((status) => withProviderName(status, directProvider.providerName));
+      }
+
+      const restorable = await companyProvider.listRestorableSessions();
+      const snapshots = [];
+
+      for (const configRow of restorable) {
+        const selectedProvider = await companyProvider.getProvider(configRow.empresaId);
+        snapshots.push(withProviderName(await selectedProvider.getStatusSnapshot(configRow.empresaId), selectedProvider.providerName));
+      }
+
+      return snapshots;
     },
 
-    getQr(empresaId) {
-      return provider.getQr(empresaId);
+    async getQr(empresaId) {
+      const selectedProvider = await resolveProvider(empresaId);
+      return withProviderName(await selectedProvider.getQr(empresaId), selectedProvider.providerName);
     },
 
-    disconnectSession(empresaId) {
-      return provider.disconnectSession(empresaId);
+    async disconnectSession(empresaId) {
+      const selectedProvider = await resolveProvider(empresaId);
+      return withProviderName(await selectedProvider.disconnectSession(empresaId), selectedProvider.providerName);
     },
 
     async restartSession(empresaId) {
-      if (typeof provider.restartSession === 'function') {
-        return provider.restartSession(empresaId);
+      const selectedProvider = await resolveProvider(empresaId);
+
+      if (typeof selectedProvider.restartSession === 'function') {
+        return withProviderName(await selectedProvider.restartSession(empresaId), selectedProvider.providerName);
       }
 
-      await provider.disconnectSession(empresaId);
-      return provider.startSession(empresaId);
+      await selectedProvider.disconnectSession(empresaId);
+      return withProviderName(await selectedProvider.startSession(empresaId), selectedProvider.providerName);
     },
 
-    sendText(empresaId, telefono, mensaje, options = {}) {
+    async sendText(empresaId, telefono, mensaje, options = {}) {
       if (config.whatsapp.outboundViaQueue) {
+        const providerName = options.provider ?? await resolveProviderName(empresaId);
         return enqueueOutbound({
           empresaId,
+          provider: providerName,
           phone: telefono,
           text: mensaje,
           correlationId: options.correlationId,
@@ -52,19 +99,33 @@ export function createMessagingService(provider = getMessagingProvider(), { enqu
         });
       }
 
-      return provider.sendText(empresaId, telefono, mensaje);
+      const selectedProvider = await resolveProvider(empresaId);
+      return selectedProvider.sendText(empresaId, telefono, mensaje);
     },
 
-    sendTextDirect(empresaId, telefono, mensaje) {
-      return provider.sendTextDirect?.(empresaId, telefono, mensaje) ?? provider.sendText(empresaId, telefono, mensaje);
+    async sendTextDirect(empresaId, telefono, mensaje) {
+      const selectedProvider = await resolveProvider(empresaId);
+      return selectedProvider.sendTextDirect?.(empresaId, telefono, mensaje) ?? selectedProvider.sendText(empresaId, telefono, mensaje);
     },
 
-    sendMedia(empresaId, telefono, media) {
-      return provider.sendMedia(empresaId, telefono, media);
+    async sendMedia(empresaId, telefono, media) {
+      const selectedProvider = await resolveProvider(empresaId);
+      return selectedProvider.sendMedia(empresaId, telefono, media);
     },
 
-    shutdown() {
-      return provider.shutdown();
+    async shutdown() {
+      if (directProvider) {
+        return directProvider.shutdown();
+      }
+
+      const providers = new Map();
+
+      for (const configRow of await companyProvider.listRestorableSessions()) {
+        const selectedProvider = await companyProvider.getProvider(configRow.empresaId);
+        providers.set(selectedProvider.providerName, selectedProvider);
+      }
+
+      await Promise.allSettled(Array.from(providers.values()).map((selectedProvider) => selectedProvider.shutdown()));
     }
   };
 }

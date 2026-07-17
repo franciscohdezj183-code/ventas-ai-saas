@@ -3,6 +3,8 @@ import { env } from '../../config/env.js';
 import { messagingService } from '../../messaging/messaging.service.js';
 import { QueuePayloadValidationError, validateWhatsappCommandJob } from '../queue-payloads.js';
 import { logger } from '../../utils/logger.js';
+import { companyProviderService } from '../../messaging/company-provider.service.js';
+import { whatsappSessionLeaseService } from '../whatsapp-session-lease.service.js';
 
 const companyLocks = new Map();
 
@@ -70,15 +72,27 @@ async function withCompanyCommandLock(empresaId, operation) {
 export function createWhatsappCommandProcessor({
   service = messagingService,
   config = env,
-  loggerInstance = logger
+  loggerInstance = logger,
+  companyProvider = null,
+  sessionLease = null
 } = {}) {
   async function executeCommand(commandJob) {
     switch (commandJob.command) {
       case 'START_SESSION':
+        await companyProvider?.setDesiredState?.(commandJob.empresaId, 'CONNECTED');
+        await sessionLease?.acquire?.(commandJob.empresaId);
         return service.startSession(commandJob.empresaId);
       case 'DISCONNECT_SESSION':
-        return service.disconnectSession(commandJob.empresaId);
+        try {
+          const result = await service.disconnectSession(commandJob.empresaId);
+          await companyProvider?.setDesiredState?.(commandJob.empresaId, 'DISCONNECTED');
+          return result;
+        } finally {
+          await sessionLease?.release?.(commandJob.empresaId);
+        }
       case 'RESTART_SESSION':
+        await companyProvider?.setDesiredState?.(commandJob.empresaId, 'CONNECTED');
+        await sessionLease?.acquire?.(commandJob.empresaId);
         if (typeof service.restartSession === 'function') {
           return service.restartSession(commandJob.empresaId);
         }
@@ -157,4 +171,7 @@ export function createWhatsappCommandProcessor({
   };
 }
 
-export const processWhatsappCommand = createWhatsappCommandProcessor();
+export const processWhatsappCommand = createWhatsappCommandProcessor({
+  companyProvider: companyProviderService,
+  sessionLease: whatsappSessionLeaseService
+});

@@ -2,6 +2,8 @@ import { UnrecoverableError } from 'bullmq';
 import { validateWhatsappOutboundJob } from '../queue-payloads.js';
 import { messagingService } from '../../messaging/messaging.service.js';
 import { logger } from '../../utils/logger.js';
+import { companyProviderService } from '../../messaging/company-provider.service.js';
+import { whatsappSessionLeaseService } from '../whatsapp-session-lease.service.js';
 
 function maskIdentifier(value) {
   const rawValue = String(value ?? '');
@@ -28,7 +30,9 @@ function normalizeError(error) {
 
 export function createWhatsappOutboundProcessor({
   service = messagingService,
-  loggerInstance = logger
+  loggerInstance = logger,
+  companyProvider = null,
+  sessionLease = null
 } = {}) {
   return async function processWhatsappOutbound(job) {
     let outboundJob;
@@ -50,6 +54,33 @@ export function createWhatsappOutboundProcessor({
         type: outboundJob.type
       });
       return { sent: false, unsupported: true };
+    }
+
+    if (companyProvider?.getProviderName) {
+      const configuredProvider = await companyProvider.getProviderName(outboundJob.empresaId);
+
+      if (configuredProvider !== outboundJob.provider) {
+        const error = new Error('El provider del job outbound no coincide con el provider configurado');
+        error.code = 'WHATSAPP_OUTBOUND_PROVIDER_MISMATCH';
+        loggerInstance.error('whatsapp_outbound_failed', {
+          jobId: job?.id,
+          empresaId: outboundJob.empresaId,
+          provider: outboundJob.provider,
+          configuredProvider
+        });
+        throw error;
+      }
+    }
+
+    if (sessionLease?.owns && !sessionLease.owns(outboundJob.empresaId)) {
+      const error = new Error('El gateway no posee el lease de la sesion WhatsApp');
+      error.code = 'WHATSAPP_SESSION_LEASE_REQUIRED';
+      loggerInstance.warn('whatsapp_outbound_send_deferred', {
+        jobId: job?.id,
+        empresaId: outboundJob.empresaId,
+        reason: error.code
+      });
+      throw error;
     }
 
     const attempts = [];
@@ -99,4 +130,7 @@ export function createWhatsappOutboundProcessor({
   };
 }
 
-export const processWhatsappOutbound = createWhatsappOutboundProcessor();
+export const processWhatsappOutbound = createWhatsappOutboundProcessor({
+  companyProvider: companyProviderService,
+  sessionLease: whatsappSessionLeaseService
+});

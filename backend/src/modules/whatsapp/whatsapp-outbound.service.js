@@ -16,6 +16,7 @@ function normalizeEmpresaId(empresaId) {
 
 export async function enqueueWhatsappOutboundText({
   empresaId,
+  provider = 'whatsapp-web',
   phone = null,
   whatsappChatId = null,
   resolvedPhoneId = null,
@@ -44,7 +45,7 @@ export async function enqueueWhatsappOutboundText({
   const job = await queueWrapper.enqueue({
     messageId,
     empresaId: id,
-    provider: 'whatsapp-web',
+    provider,
     whatsappChatId,
     resolvedPhoneId,
     phone,

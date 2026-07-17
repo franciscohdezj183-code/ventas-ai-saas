@@ -35,7 +35,9 @@ test('command worker health reports disabled without touching Redis', async () =
     queue_status: 'disabled',
     whatsapp_command_worker: 'disabled',
     whatsapp_inbound_worker: 'disabled',
-    whatsapp_outbound_worker: 'disabled'
+    whatsapp_outbound_worker: 'disabled',
+    gateway_role: 'disabled',
+    gateway_leader_status: 'disabled'
   });
 });
 
@@ -57,19 +59,23 @@ test('command worker health reports ready heartbeat', async () => {
         },
         async get() {
           return JSON.stringify({ updatedAt: '2026-07-16T10:00:00.000Z' });
+        },
+        async pttl() {
+          return 10000;
         }
       }
     },
+    queryFn: async () => [[{ configured_sessions: 2, desired_connected_sessions: 1 }]],
     now: () => new Date('2026-07-16T10:01:00.000Z').getTime()
   });
 
-  assert.deepEqual(health, {
-    via_queue: true,
-    queue_status: 'ready',
-    whatsapp_command_worker: 'ready',
-    whatsapp_inbound_worker: 'ready',
-    whatsapp_outbound_worker: 'ready'
-  });
+  assert.equal(health.queue_status, 'ready');
+  assert.equal(health.whatsapp_command_worker, 'ready');
+  assert.equal(health.whatsapp_inbound_worker, 'ready');
+  assert.equal(health.whatsapp_outbound_worker, 'ready');
+  assert.equal(health.gateway_leader_status, 'active');
+  assert.equal(health.configured_sessions, 2);
+  assert.equal(health.desired_connected_sessions, 1);
 });
 
 test('command worker health reports stale heartbeat', async () => {
@@ -83,9 +89,13 @@ test('command worker health reports stale heartbeat', async () => {
         },
         async get() {
           return JSON.stringify({ updatedAt: '2026-07-16T10:00:00.000Z' });
+        },
+        async pttl() {
+          return -2;
         }
       }
     },
+    queryFn: async () => [[{ configured_sessions: 0, desired_connected_sessions: 0 }]],
     now: () => new Date('2026-07-16T10:10:01.000Z').getTime()
   });
 

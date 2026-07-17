@@ -8,6 +8,9 @@ import { createQueueNames } from '../queues/queue-names.js';
 import { processWhatsappCommand } from '../queues/workers/whatsapp-command.processor.js';
 import { processWhatsappOutbound } from '../queues/workers/whatsapp-outbound.processor.js';
 import { logger } from '../utils/logger.js';
+import { createWhatsappGatewayLeaderService } from '../queues/whatsapp-gateway-leader.service.js';
+import { whatsappSessionRestoreService } from '../queues/whatsapp-session-restore.service.js';
+import { whatsappSessionLeaseService } from '../queues/whatsapp-session-lease.service.js';
 
 const HEARTBEAT_INTERVAL_MS = 15000;
 const HEARTBEAT_TTL_SECONDS = 45;
@@ -15,6 +18,8 @@ const workerId = `whatsapp-command-${process.pid}-${Date.now()}`;
 let worker = null;
 let outboundWorker = null;
 let heartbeatTimer = null;
+let leaderService = null;
+let standbyTimer = null;
 let shuttingDown = false;
 
 function normalizeError(error) {
@@ -75,6 +80,29 @@ async function startWorker() {
   const outboundQueueName = createBullQueueName(queueNames.whatsappOutbound, env.queue);
 
   await startHeartbeat(registry.redisClient);
+  leaderService = createWhatsappGatewayLeaderService({ redisClient: registry.redisClient });
+  leaderService.onLost(async () => {
+    await stopGatewayConsumption({ closeSessions: true });
+    scheduleLeadershipRetry(registry);
+  });
+  whatsappSessionLeaseService.onLost(async () => {
+    await messagingService.shutdown();
+  });
+
+  const acquired = await leaderService.acquire();
+
+  if (!acquired) {
+    scheduleLeadershipRetry(registry);
+    return;
+  }
+
+  await startGatewayConsumption(registry, queueNames, bullQueueName, outboundQueueName);
+}
+
+async function startGatewayConsumption(registry, queueNames, bullQueueName, outboundQueueName) {
+  if (worker || outboundWorker) {
+    return;
+  }
 
   worker = new Worker(bullQueueName, processWhatsappCommand, {
     connection: registry.redisClient,
@@ -141,6 +169,63 @@ async function startWorker() {
     workerId,
     concurrency: env.whatsapp.commandWorker.concurrency
   });
+
+  whatsappSessionRestoreService.restoreDesiredSessions().catch((error) => {
+    logger.error('whatsapp_restore_failed', { error: normalizeError(error) });
+  });
+}
+
+async function stopGatewayConsumption({ closeSessions = false } = {}) {
+  if (standbyTimer) {
+    clearTimeout(standbyTimer);
+    standbyTimer = null;
+  }
+
+  const workers = [worker, outboundWorker];
+  worker = null;
+  outboundWorker = null;
+  whatsappSessionRestoreService.cancel();
+  await Promise.allSettled(workers.filter(Boolean).map((currentWorker) => currentWorker.close()));
+
+  if (closeSessions) {
+    await messagingService.shutdown();
+  }
+
+  await whatsappSessionLeaseService.releaseAll();
+}
+
+function scheduleLeadershipRetry(registry) {
+  if (shuttingDown || standbyTimer) {
+    return;
+  }
+
+  standbyTimer = setTimeout(async () => {
+    standbyTimer = null;
+
+    if (shuttingDown) {
+      return;
+    }
+
+    try {
+      const acquired = await leaderService.acquire();
+
+      if (acquired) {
+        const queueNames = createQueueNames(env.queue.redisPrefix);
+        await startGatewayConsumption(
+          registry,
+          queueNames,
+          createBullQueueName(queueNames.whatsappCommand, env.queue),
+          createBullQueueName(queueNames.whatsappOutbound, env.queue)
+        );
+        return;
+      }
+    } catch (error) {
+      logger.warn('whatsapp_gateway_standby_retry_error', { error: normalizeError(error) });
+    }
+
+    scheduleLeadershipRetry(registry);
+  }, env.whatsapp.gateway.standbyRetryMs);
+  standbyTimer.unref?.();
 }
 
 async function shutdown(signal) {
@@ -157,9 +242,13 @@ async function shutdown(signal) {
   }
 
   try {
-    await worker?.close();
-    await outboundWorker?.close();
-    await messagingService.shutdown();
+    if (standbyTimer) {
+      clearTimeout(standbyTimer);
+      standbyTimer = null;
+    }
+
+    await stopGatewayConsumption({ closeSessions: true });
+    await leaderService?.release();
     await closeQueueRegistry();
     await closeDatabase();
     process.exit(0);

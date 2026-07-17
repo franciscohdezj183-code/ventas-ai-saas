@@ -101,3 +101,50 @@ test('outbound processor rethrows delivery errors for BullMQ retry', async () =>
     /No se pudo enviar/
   );
 });
+
+test('outbound fails clearly when provider does not match configured provider', async () => {
+  const processor = createWhatsappOutboundProcessor({
+    service: {
+      async sendTextDirect() {
+        throw new Error('should not send');
+      }
+    },
+    companyProvider: {
+      async getProviderName() {
+        return 'baileys';
+      }
+    },
+    loggerInstance: { info() {}, warn() {}, error() {} }
+  });
+
+  await assert.rejects(
+    () => processor(outboundJob({ provider: 'whatsapp-web' })),
+    /provider del job outbound no coincide/
+  );
+});
+
+test('outbound requires this gateway to own the session lease when lease service is provided', async () => {
+  const processor = createWhatsappOutboundProcessor({
+    service: {
+      async sendTextDirect() {
+        throw new Error('should not send');
+      }
+    },
+    companyProvider: {
+      async getProviderName() {
+        return 'whatsapp-web';
+      }
+    },
+    sessionLease: {
+      owns() {
+        return false;
+      }
+    },
+    loggerInstance: { info() {}, warn() {}, error() {} }
+  });
+
+  await assert.rejects(
+    () => processor(outboundJob({ provider: 'whatsapp-web' })),
+    /gateway no posee el lease/
+  );
+});

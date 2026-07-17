@@ -6,6 +6,7 @@ import {
   getStatus,
   listStatuses,
   restartSession,
+  setSessionProvider,
   startSession
 } from './whatsapp.controller.js';
 
@@ -19,6 +20,7 @@ whatsappRouter.get('/sessions/:empresaId/status', requirePermission('whatsapp.vi
 whatsappRouter.get('/sessions/:empresaId/qr', requirePermission('whatsapp.manage'), getQr);
 whatsappRouter.post('/sessions/:empresaId/disconnect', requirePermission('whatsapp.manage'), disconnectSession);
 whatsappRouter.post('/sessions/:empresaId/restart', requirePermission('whatsapp.manage'), restartSession);
+whatsappRouter.put('/sessions/:empresaId/provider', requirePermission('whatsapp.manage'), setSessionProvider);
 whatsappRouter.post('/session/start', requirePermission('whatsapp.manage'), startSession);
 whatsappRouter.get('/session/status', requirePermission('whatsapp.view'), getStatus);
 whatsappRouter.get('/session/qr', requirePermission('whatsapp.manage'), getQr);

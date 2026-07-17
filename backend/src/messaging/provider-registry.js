@@ -1,24 +1,60 @@
 import { env } from '../config/env.js';
 import { validateMessagingProvider } from './messaging-provider.js';
-import { whatsappWebProvider } from './providers/whatsapp-web.provider.js';
-import { baileysProvider } from './providers/baileys.provider.js';
 
 const DEFAULT_PROVIDER_NAME = 'whatsapp-web';
+const DEFAULT_PROVIDER_LOADERS = {
+  async 'whatsapp-web'() {
+    return (await import('./providers/whatsapp-web.provider.js')).whatsappWebProvider;
+  },
+  async baileys() {
+    return (await import('./providers/baileys.provider.js')).baileysProvider;
+  }
+};
+
+function createLazyProvider(providerName, loader) {
+  let providerPromise = null;
+
+  async function getProvider() {
+    if (!providerPromise) {
+      providerPromise = Promise.resolve(loader()).then(validateMessagingProvider);
+    }
+
+    return providerPromise;
+  }
+
+  return validateMessagingProvider({
+    providerName,
+    startSession: async (...args) => (await getProvider()).startSession(...args),
+    getStatus: async (...args) => (await getProvider()).getStatus(...args),
+    getStatusSnapshot: async (...args) => (await getProvider()).getStatusSnapshot(...args),
+    listStatusSnapshots: async (...args) => (await getProvider()).listStatusSnapshots(...args),
+    getQr: async (...args) => (await getProvider()).getQr(...args),
+    disconnectSession: async (...args) => (await getProvider()).disconnectSession(...args),
+    restartSession: async (...args) => (await getProvider()).restartSession?.(...args),
+    sendText: async (...args) => (await getProvider()).sendText(...args),
+    sendTextDirect: async (...args) => (await getProvider()).sendTextDirect?.(...args),
+    sendMedia: async (...args) => (await getProvider()).sendMedia(...args),
+    shutdown: async (...args) => (await getProvider()).shutdown(...args)
+  });
+}
 
 export function createProviderRegistry({
   providerName = DEFAULT_PROVIDER_NAME,
-  providers = {
-    'whatsapp-web': whatsappWebProvider,
-    baileys: baileysProvider
-  }
+  providers = null,
+  providerLoaders = DEFAULT_PROVIDER_LOADERS
 } = {}) {
   const configuredProviderName = String(providerName || DEFAULT_PROVIDER_NAME).trim();
-  const provider = providers[configuredProviderName];
+  const source = providers ?? providerLoaders;
+  const provider = source[configuredProviderName];
 
   if (!provider) {
     throw new Error(
-      `Unsupported WhatsApp provider "${configuredProviderName}". Supported providers: ${Object.keys(providers).join(', ')}`
+      `Unsupported WhatsApp provider "${configuredProviderName}". Supported providers: ${Object.keys(source).join(', ')}`
     );
+  }
+
+  if (typeof provider === 'function') {
+    return createLazyProvider(configuredProviderName, provider);
   }
 
   return validateMessagingProvider(provider);

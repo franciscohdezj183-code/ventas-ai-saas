@@ -114,6 +114,56 @@ test('GET_STATUS reads snapshot and does not create a session', async () => {
   assert.equal(startCalls, 0);
 });
 
+test('commands update desired state except GET_STATUS', async () => {
+  const desired = [];
+  const released = [];
+  const acquired = [];
+  const processor = createWhatsappCommandProcessor({
+    service: {
+      async startSession(empresaId) {
+        return { empresa_id: empresaId, status: 'INITIALIZING' };
+      },
+      async restartSession(empresaId) {
+        return { empresa_id: empresaId, status: 'INITIALIZING' };
+      },
+      async disconnectSession(empresaId) {
+        return { empresa_id: empresaId, status: 'DISCONNECTED' };
+      },
+      async getStatusSnapshot(empresaId) {
+        return { empresa_id: empresaId, status: 'CONNECTED' };
+      }
+    },
+    companyProvider: {
+      async setDesiredState(empresaId, state) {
+        desired.push([empresaId, state]);
+      }
+    },
+    sessionLease: {
+      async acquire(empresaId) {
+        acquired.push(empresaId);
+      },
+      async release(empresaId) {
+        released.push(empresaId);
+      }
+    },
+    config: config(),
+    loggerInstance: logger()
+  });
+
+  await processor(job({ command: 'START_SESSION' }));
+  await processor(job({ command: 'RESTART_SESSION' }));
+  await processor(job({ command: 'GET_STATUS' }));
+  await processor(job({ command: 'DISCONNECT_SESSION' }));
+
+  assert.deepEqual(desired, [
+    [5, 'CONNECTED'],
+    [5, 'CONNECTED'],
+    [5, 'DISCONNECTED']
+  ]);
+  assert.deepEqual(acquired, [5, 5]);
+  assert.deepEqual(released, [5]);
+});
+
 test('temporary errors are retried by rethrowing original error', async () => {
   const error = Object.assign(new Error('temporary redis-like failure'), { code: 'ETEMP' });
   const processor = createWhatsappCommandProcessor({

@@ -4,6 +4,8 @@ import { resolveScopedEmpresaId } from '../../middlewares/company-scope.middlewa
 import { normalizeRole, ROLES } from '../../config/permissions.js';
 import { assertPlanLimit } from '../plans/plan-limits.service.js';
 import { auditFromRequest } from '../audit/audit.service.js';
+import { companyProviderService } from '../../messaging/company-provider.service.js';
+import { createHttpError } from '../../utils/http-error.js';
 
 function sanitizeWhatsappStatus(status) {
   if (!status) {
@@ -125,6 +127,31 @@ export async function restartSession(req, res, next) {
       empresaId
     });
     sendCommandResponse(res, status);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function setSessionProvider(req, res, next) {
+  try {
+    if (normalizeRole(req.auth.user.rol) !== ROLES.SUPER_ADMIN) {
+      throw createHttpError(403, 'Solo SUPER_ADMIN puede cambiar el proveedor de WhatsApp');
+    }
+
+    const empresaId = resolveCompanyId(req);
+    const provider = req.body?.provider;
+    const currentStatus = await messagingService.getStatusSnapshot(empresaId);
+    const config = await companyProviderService.setProvider(empresaId, provider, {
+      currentStatus,
+      requestedBy: req.auth?.user?.id ? `user:${req.auth.user.id}` : null
+    });
+    await auditFromRequest(req, {
+      accion: 'CAMBIAR_PROVIDER_WHATSAPP',
+      modulo: 'whatsapp',
+      descripcion: `Cambio de proveedor WhatsApp para empresa #${empresaId}: ${config.effectiveProvider}`,
+      empresaId
+    });
+    res.json({ data: config });
   } catch (error) {
     next(error);
   }
