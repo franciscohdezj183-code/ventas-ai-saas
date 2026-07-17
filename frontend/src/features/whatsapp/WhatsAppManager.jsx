@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Bot,
@@ -25,8 +25,14 @@ import {
   disconnectWhatsappSession,
   fetchWhatsappQr,
   fetchWhatsappStatus,
+  restartWhatsappSession,
   startWhatsappSession
 } from './whatsappApi.js';
+import {
+  createSingleFlight,
+  createWhatsappCommandPoller,
+  isQueuedCommandResponse
+} from './whatsappCommandFlow.js';
 
 const statusCopy = {
   CONNECTED: {
@@ -116,7 +122,20 @@ function getFirstValue(source, keys, fallback = '-') {
   return fallback;
 }
 
-function WhatsAppHeader({ canAct, canSelectCompany, companies, empresaId, isBusy, onCompanyChange, onDisconnect, onRefresh, onRestart, onStart, user }) {
+function WhatsAppHeader({
+  canAct,
+  canSelectCompany,
+  companies,
+  empresaId,
+  isBusy,
+  operationPending,
+  onCompanyChange,
+  onDisconnect,
+  onRefresh,
+  onRestart,
+  onStart,
+  user
+}) {
   return (
     <header className="whatsapp-hero">
       <div className="whatsapp-hero-copy">
@@ -173,6 +192,9 @@ function WhatsAppHeader({ canAct, canSelectCompany, companies, empresaId, isBusy
             <RefreshCcw size={18} aria-hidden="true" />
           </button>
         </div>
+        {operationPending ? (
+          <p className="whatsapp-command-pending">Comando en proceso</p>
+        ) : null}
       </div>
     </header>
   );
@@ -321,14 +343,19 @@ export function WhatsAppManager() {
   const [empresaId, setEmpresaId] = useState('');
   const [error, setError] = useState('');
   const [isBusy, setIsBusy] = useState(false);
+  const [operationPending, setOperationPending] = useState(null);
   const [status, setStatus] = useState(null);
+  const commandSingleFlightRef = useRef(createSingleFlight());
+  const pollerRef = useRef(null);
+  const mountedRef = useRef(false);
+  const statusRequestRef = useRef(null);
 
   const selectedCompanyId = canSelectCompany ? empresaId : undefined;
   const statusInfo = getStatusInfo(status);
   const statusValue = getStatusValue(status);
   const hasQr = Boolean(status?.qr_image);
   const isQrFlow = ['INITIALIZING', 'QR_READY', 'AUTHENTICATED'].includes(statusValue);
-  const canAct = Boolean(user) && !isBusy && (!canSelectCompany || empresaId);
+  const canAct = Boolean(user) && !isBusy && !operationPending && (!canSelectCompany || empresaId);
 
   async function loadCompanies() {
     if (!user || !canSelectCompany) {
@@ -338,20 +365,78 @@ export function WhatsAppManager() {
     setCompanies(await fetchCompanies());
   }
 
-  async function loadStatus() {
+  async function loadStatus(companyId = selectedCompanyId) {
     if (!user) {
       setStatus(null);
       return;
     }
 
-    if (canSelectCompany && !empresaId) {
+    if (canSelectCompany && !companyId) {
       setStatus(null);
       return;
     }
 
-    const nextStatus = await fetchWhatsappStatus(selectedCompanyId);
-    const qr = await fetchWhatsappQr(selectedCompanyId);
-    setStatus({ ...nextStatus, qr_image: qr.qr_image });
+    if (statusRequestRef.current) {
+      return statusRequestRef.current;
+    }
+
+    statusRequestRef.current = Promise.all([
+      fetchWhatsappStatus(companyId),
+      fetchWhatsappQr(companyId)
+    ])
+      .then(([nextStatus, qr]) => {
+        const statusWithQr = { ...nextStatus, qr_image: qr.qr_image };
+        if (mountedRef.current) {
+          setStatus(statusWithQr);
+        }
+        return statusWithQr;
+      })
+      .finally(() => {
+        statusRequestRef.current = null;
+      });
+
+    return statusRequestRef.current;
+  }
+
+  function stopCommandPolling() {
+    pollerRef.current?.stop();
+    pollerRef.current = null;
+  }
+
+  function waitForQueuedCommand(command, companyId = selectedCompanyId) {
+    stopCommandPolling();
+    setOperationPending(command);
+    pollerRef.current = createWhatsappCommandPoller({
+      loadStatus: () => loadStatus(companyId),
+      onStatus: (nextStatus) => {
+        if (mountedRef.current) {
+          setStatus(nextStatus);
+        }
+      },
+      onDone: () => {
+        if (mountedRef.current) {
+          setOperationPending(null);
+        }
+      },
+      onError: (requestError) => {
+        if (mountedRef.current) {
+          setError(getApiError(requestError));
+          setOperationPending(null);
+        }
+      }
+    });
+    pollerRef.current.start();
+  }
+
+  async function applyCommandResult(commandResult, companyId = selectedCompanyId) {
+    if (isQueuedCommandResponse(commandResult)) {
+      waitForQueuedCommand(commandResult, companyId);
+      return;
+    }
+
+    setOperationPending(null);
+    setStatus(commandResult);
+    await loadStatus(companyId);
   }
 
   useEffect(() => {
@@ -359,34 +444,46 @@ export function WhatsAppManager() {
   }, [canSelectCompany, user]);
 
   useEffect(() => {
+    stopCommandPolling();
+    setOperationPending(null);
     loadStatus().catch((requestError) => setError(getApiError(requestError)));
   }, [empresaId, canSelectCompany, user]);
 
+  useEffect(() => {
+    mountedRef.current = true;
+
+    return () => {
+      mountedRef.current = false;
+      stopCommandPolling();
+    };
+  }, []);
+
   async function handleStart() {
-    try {
-      setIsBusy(true);
-      setError('');
-      setStatus(await startWhatsappSession(selectedCompanyId));
-      await loadStatus();
-    } catch (requestError) {
-      setError(getApiError(requestError));
-    } finally {
-      setIsBusy(false);
-    }
+    return commandSingleFlightRef.current(async () => {
+      try {
+        setIsBusy(true);
+        setError('');
+        await applyCommandResult(await startWhatsappSession(selectedCompanyId));
+      } catch (requestError) {
+        setError(getApiError(requestError));
+      } finally {
+        setIsBusy(false);
+      }
+    });
   }
 
   async function handleRestart() {
-    try {
-      setIsBusy(true);
-      setError('');
-      await disconnectWhatsappSession(selectedCompanyId);
-      setStatus(await startWhatsappSession(selectedCompanyId));
-      await loadStatus();
-    } catch (requestError) {
-      setError(getApiError(requestError));
-    } finally {
-      setIsBusy(false);
-    }
+    return commandSingleFlightRef.current(async () => {
+      try {
+        setIsBusy(true);
+        setError('');
+        await applyCommandResult(await restartWhatsappSession(selectedCompanyId));
+      } catch (requestError) {
+        setError(getApiError(requestError));
+      } finally {
+        setIsBusy(false);
+      }
+    });
   }
 
   async function handleRefresh() {
@@ -402,15 +499,17 @@ export function WhatsAppManager() {
   }
 
   async function handleDisconnect() {
-    try {
-      setIsBusy(true);
-      setError('');
-      setStatus(await disconnectWhatsappSession(selectedCompanyId));
-    } catch (requestError) {
-      setError(getApiError(requestError));
-    } finally {
-      setIsBusy(false);
-    }
+    return commandSingleFlightRef.current(async () => {
+      try {
+        setIsBusy(true);
+        setError('');
+        await applyCommandResult(await disconnectWhatsappSession(selectedCompanyId));
+      } catch (requestError) {
+        setError(getApiError(requestError));
+      } finally {
+        setIsBusy(false);
+      }
+    });
   }
 
   return (
@@ -424,6 +523,7 @@ export function WhatsAppManager() {
           companies={companies}
           empresaId={empresaId}
           isBusy={isBusy}
+          operationPending={operationPending}
           onCompanyChange={setEmpresaId}
           onDisconnect={handleDisconnect}
           onRefresh={handleRefresh}

@@ -1,9 +1,16 @@
 import { api } from '../../config/api.js';
 
+function commandResponse(response) {
+  return {
+    ...response.data.data,
+    http_status: response.status
+  };
+}
+
 export async function startWhatsappSession(empresaId) {
   const path = empresaId ? `/whatsapp/sessions/${empresaId}/start` : '/whatsapp/session/start';
   const response = await api.post(path);
-  return response.data.data;
+  return commandResponse(response);
 }
 
 export async function fetchWhatsappStatus(empresaId) {
@@ -23,5 +30,11 @@ export async function disconnectWhatsappSession(empresaId) {
     ? `/whatsapp/sessions/${empresaId}/disconnect`
     : '/whatsapp/session/disconnect';
   const response = await api.post(path);
-  return response.data.data;
+  return commandResponse(response);
+}
+
+export async function restartWhatsappSession(empresaId) {
+  const path = empresaId ? `/whatsapp/sessions/${empresaId}/restart` : '/whatsapp/session/restart';
+  const response = await api.post(path);
+  return commandResponse(response);
 }

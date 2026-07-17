@@ -114,3 +114,60 @@ test('DISCONNECT is deduplicated separately from START', () => {
   assert.notEqual(startId, disconnectId);
   assert.match(disconnectId, /^wa-disconnect-session-empresa-5-/);
 });
+
+test('queue mode true enqueues exactly one RESTART and not DISCONNECT plus START', async () => {
+  const queueWrapper = createQueueWrapper();
+  const providerCalls = [];
+  const service = createWhatsappCommandService({
+    config: config({ whatsapp: { commandsViaQueue: true, commandWorker: { staleMs: 300000 } } }),
+    provider: {
+      async disconnectSession(empresaId) {
+        providerCalls.push(['disconnectSession', empresaId]);
+      },
+      async startSession(empresaId) {
+        providerCalls.push(['startSession', empresaId]);
+      }
+    },
+    getRegistry: () => ({ whatsappCommandQueue: queueWrapper }),
+    now: () => new Date('2026-07-16T10:00:00.000Z').getTime(),
+    uuid: () => 'request-1',
+    loggerInstance: logger()
+  });
+
+  const result = await service.requestRestartSession(5, { requestedBy: 'user:9' });
+  const enqueueCalls = queueWrapper.calls.filter((call) => call.type === 'enqueue');
+
+  assert.equal(result.queued, true);
+  assert.match(result.command_id, /^wa-restart-session-empresa-5-/);
+  assert.deepEqual(providerCalls, []);
+  assert.equal(enqueueCalls.length, 1);
+  assert.equal(enqueueCalls[0].payload.command, 'RESTART_SESSION');
+  assert.equal(queueWrapper.calls.some((call) => call.payload?.command === 'DISCONNECT_SESSION'), false);
+  assert.equal(queueWrapper.calls.some((call) => call.payload?.command === 'START_SESSION'), false);
+});
+
+test('queue mode false keeps compatible restart by disconnecting then starting directly', async () => {
+  const calls = [];
+  const service = createWhatsappCommandService({
+    config: config(),
+    provider: {
+      async disconnectSession(empresaId) {
+        calls.push(['disconnectSession', empresaId]);
+        return { empresa_id: empresaId, status: 'DISCONNECTED' };
+      },
+      async startSession(empresaId) {
+        calls.push(['startSession', empresaId]);
+        return { empresa_id: empresaId, status: 'INITIALIZING' };
+      }
+    }
+  });
+
+  const result = await service.requestRestartSession(5);
+
+  assert.deepEqual(calls, [
+    ['disconnectSession', 5],
+    ['startSession', 5]
+  ]);
+  assert.equal(result.queued, undefined);
+  assert.equal(result.status, 'INITIALIZING');
+});
