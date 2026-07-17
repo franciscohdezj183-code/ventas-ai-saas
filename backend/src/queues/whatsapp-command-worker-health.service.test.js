@@ -18,9 +18,22 @@ function config(overrides = {}) {
   };
 }
 
+const recoveryService = {
+  async aggregateHealth() {
+    return {
+      recovery_scheduled: 0,
+      recovery_connecting: 0,
+      recovery_cooldown: 0,
+      recovery_blocked: 0,
+      reconnect_attempts_total: 0
+    };
+  }
+};
+
 test('command worker health reports disabled without touching Redis', async () => {
   const health = await getWhatsappCommandWorkerHealth({
     config: config(),
+    recoveryService,
     registry: {
       redisClient: {
         async keys() {
@@ -37,7 +50,13 @@ test('command worker health reports disabled without touching Redis', async () =
     whatsapp_inbound_worker: 'disabled',
     whatsapp_outbound_worker: 'disabled',
     gateway_role: 'disabled',
-    gateway_leader_status: 'disabled'
+    gateway_leader_status: 'disabled',
+    recovery_scheduled: 0,
+    recovery_connecting: 0,
+    recovery_cooldown: 0,
+    recovery_blocked: 0,
+    reconnect_attempts_total: 0,
+    restore_pending: 0
   });
 });
 
@@ -51,6 +70,7 @@ test('command worker health reports ready heartbeat', async () => {
         commandWorker: { enabled: true, staleMs: 300000 }
       }
     }),
+    recoveryService,
     registry: {
       whatsappCommandQueue: { status: 'ready' },
       redisClient: {
@@ -81,6 +101,7 @@ test('command worker health reports ready heartbeat', async () => {
 test('command worker health reports stale heartbeat', async () => {
   const health = await getWhatsappCommandWorkerHealth({
     config: config({ whatsapp: { commandsViaQueue: true, commandWorker: { enabled: true, staleMs: 300000 } } }),
+    recoveryService,
     registry: {
       whatsappCommandQueue: { status: 'ready' },
       redisClient: {

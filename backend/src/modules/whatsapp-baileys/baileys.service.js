@@ -19,9 +19,11 @@ import {
   normalizeBaileysInboundMessage
 } from './baileys-message.normalizer.js';
 import {
+  classifyBaileysDisconnect,
   isBaileysLoggedOut,
   normalizeBaileysError
 } from './baileys-status.mapper.js';
+import { whatsappSessionRecoveryService } from '../whatsapp/whatsapp-session-recovery.service.js';
 
 function normalizeEmpresaId(empresaId) {
   const id = Number(empresaId);
@@ -65,6 +67,7 @@ export function createBaileysService({
     getStatus: getPersistedWhatsappStatus,
     listStatuses: listPersistedWhatsappStatuses
   },
+  recoveryStore = whatsappSessionRecoveryService,
   importBaileys = () => import('@whiskeysockets/baileys'),
   socketFactory,
   qrToDataUrl = qrcode.toDataURL,
@@ -137,11 +140,32 @@ export function createBaileysService({
     }
   }
 
+  function clearStableTimer(session) {
+    if (session.stableTimer) {
+      clearTimeoutFn(session.stableTimer);
+      session.stableTimer = null;
+    }
+  }
+
+  function removeSocketListeners(sock, listeners) {
+    if (!sock?.ev || !listeners) {
+      return;
+    }
+
+    for (const [event, handler] of listeners) {
+      if (typeof sock.ev.off === 'function') {
+        sock.ev.off(event, handler);
+      } else if (typeof sock.ev.removeListener === 'function') {
+        sock.ev.removeListener(event, handler);
+      }
+    }
+  }
+
   function cleanupSocket(session) {
     clearQrTimer(session);
-    session.sock?.ev?.removeAllListeners?.('connection.update');
-    session.sock?.ev?.removeAllListeners?.('creds.update');
-    session.sock?.ev?.removeAllListeners?.('messages.upsert');
+    clearStableTimer(session);
+    removeSocketListeners(session.sock, session.socketListeners);
+    session.socketListeners = [];
     session.sock?.end?.();
     session.sock?.ws?.close?.();
     session.sock = null;
@@ -189,13 +213,31 @@ export function createBaileysService({
     }
   }
 
-  function scheduleReconnect(session, reason) {
-    if (shuttingDown || session.manualDisconnect || session.reconnectAttempts >= config.whatsapp.baileys.reconnectMaxAttempts) {
+  async function scheduleReconnect(session, reason, classification) {
+    if (shuttingDown || session.manualDisconnect) {
       return;
     }
 
-    session.reconnectAttempts += 1;
-    const delay = config.whatsapp.baileys.reconnectBaseDelayMs * session.reconnectAttempts;
+    const recovery = await recoveryStore.retryableFailure({
+      empresaId: session.companyId,
+      error: reason,
+      classification: classification?.category
+    });
+    session.reconnectAttempts = recovery.consecutiveFailures;
+
+    if (!recovery.shouldRetry) {
+      updateState(session, {
+        status: 'RECONNECTING',
+        qr: null,
+        qr_image: null,
+        reconnect_attempt: session.reconnectAttempts,
+        next_reconnect_at: recovery.nextRetryAt ? new Date(recovery.nextRetryAt).toISOString() : null,
+        last_error: reason?.message ?? 'Limite de reconexiones alcanzado'
+      }, statusEvent('RECONNECTING', 'Sesion Baileys en cooldown'));
+      return;
+    }
+
+    const delay = recovery.delayMs;
     const nextReconnectAt = new Date(now() + delay).toISOString();
     updateState(session, {
       status: 'RECONNECTING',
@@ -205,11 +247,12 @@ export function createBaileysService({
       next_reconnect_at: nextReconnectAt,
       last_error: reason?.message ?? 'Conexion temporal cerrada'
     }, statusEvent('RECONNECTING', 'Reconexion Baileys programada'));
-    loggerInstance.info('baileys_reconnect_scheduled', {
+    loggerInstance.info('whatsapp_recovery_scheduled', {
       empresaId: session.companyId,
       attempt: session.reconnectAttempts,
       delayMs: delay
     });
+    clearReconnectTimer(session);
     session.reconnectTimer = setTimeoutFn(() => {
       startSessionUnlocked(session.companyId, { fromReconnect: true }).catch((error) => {
         loggerInstance.error('baileys_reconnect_error', { empresaId: session.companyId, error: normalizeBaileysError(error) });
@@ -218,7 +261,28 @@ export function createBaileysService({
     session.reconnectTimer.unref?.();
   }
 
-  async function handleConnectionUpdate(session, update) {
+  function markStableAfterOpen(session, generation) {
+    clearStableTimer(session);
+    session.stableTimer = setTimeoutFn(() => {
+      if (sessions.get(session.companyId) !== session || session.generation !== generation || shuttingDown) {
+        return;
+      }
+
+      session.reconnectAttempts = 0;
+      recoveryStore.connected({ empresaId: session.companyId }).catch(() => {});
+    }, config.whatsapp.reconnect?.stableAfterMs ?? 60000);
+    session.stableTimer.unref?.();
+  }
+
+  async function handleConnectionUpdate(session, update, generation) {
+    if (sessions.get(session.companyId) !== session || session.generation !== generation) {
+      loggerInstance.warn('whatsapp_stale_socket_event_ignored', {
+        empresaId: session.companyId,
+        event: 'connection.update'
+      });
+      return;
+    }
+
     if (update.qr) {
       clearQrTimer(session);
       const qrImage = await qrToDataUrl(update.qr);
@@ -237,7 +301,6 @@ export function createBaileysService({
 
     if (update.connection === 'open') {
       clearQrTimer(session);
-      session.reconnectAttempts = 0;
       const phone = phoneFromUser(session.sock?.user?.id ?? session.authState?.state?.creds?.me?.id);
       updateState(session, {
         status: 'CONNECTED',
@@ -249,28 +312,32 @@ export function createBaileysService({
         reconnect_attempt: 0,
         next_reconnect_at: null
       }, statusEvent('CONNECTED', 'Sesion Baileys conectada'));
+      await recoveryStore.started({ empresaId: session.companyId }).catch(() => {});
+      markStableAfterOpen(session, generation);
       loggerInstance.info('baileys_session_connected', { empresaId: session.companyId, phone: maskIdentifier(phone) });
     }
 
     if (update.connection === 'close') {
       clearQrTimer(session);
+      clearStableTimer(session);
       const { DisconnectReason } = await loadBaileys();
+      const classification = classifyBaileysDisconnect(update.lastDisconnect?.error, DisconnectReason);
       const loggedOut = isBaileysLoggedOut(update.lastDisconnect?.error, DisconnectReason);
       loggerInstance.warn('baileys_session_disconnected', {
         empresaId: session.companyId,
         loggedOut,
+        classification: classification.category,
         error: normalizeBaileysError(update.lastDisconnect?.error)
       });
 
-      if (loggedOut) {
+      if (classification.category === 'terminal') {
         session.manualDisconnect = true;
-        loggerInstance.warn('baileys_auth_logged_out', { empresaId: session.companyId });
-        await authStore.removeAuthState(session.companyId, {
-          authPath: config.whatsapp.baileys.authPath,
-          authStore: config.whatsapp.baileys.authStore,
-          loggerInstance,
-          importBaileys
-        });
+        loggerInstance.warn('baileys_auth_blocked', { empresaId: session.companyId, reason: classification.reason });
+        await recoveryStore.blocked({
+          empresaId: session.companyId,
+          reason: classification.reason,
+          error: update.lastDisconnect?.error
+        }).catch(() => {});
         updateState(session, {
           status: 'AUTH_FAILED',
           qr: null,
@@ -279,6 +346,7 @@ export function createBaileysService({
           next_reconnect_at: null
         }, statusEvent('AUTH_FAILED', 'Credenciales Baileys invalidas'));
         lastStatuses.set(session.companyId, session.state);
+        cleanupSocket(session);
         sessions.delete(session.companyId);
         return;
       }
@@ -290,10 +358,11 @@ export function createBaileysService({
           qr_image: null,
           next_reconnect_at: null
         }, statusEvent('DISCONNECTED', 'Sesion Baileys cerrada'));
+        await recoveryStore.disconnected({ empresaId: session.companyId, error: update.lastDisconnect?.error }).catch(() => {});
         return;
       }
 
-      scheduleReconnect(session, update.lastDisconnect?.error);
+      await scheduleReconnect(session, update.lastDisconnect?.error, classification);
     }
   }
 
@@ -305,22 +374,47 @@ export function createBaileysService({
       printQRInTerminal: false,
       logger: pino({ level: 'silent' })
     });
+    const generation = session.generation;
     session.sock = sock;
-    sock.ev.on('connection.update', (update) => {
-      handleConnectionUpdate(session, update).catch((error) => {
+    const onConnectionUpdate = (update) => {
+      handleConnectionUpdate(session, update, generation).catch((error) => {
         loggerInstance.error('baileys_connection_update_error', { empresaId: session.companyId, error: normalizeBaileysError(error) });
       });
-    });
-    sock.ev.on('creds.update', session.authState.saveCreds);
-    sock.ev.on('messages.upsert', (payload) => {
+    };
+    const onCredsUpdate = session.authState.saveCreds;
+    const onMessagesUpsert = (payload) => {
+      if (sessions.get(session.companyId) !== session || session.generation !== generation) {
+        loggerInstance.warn('whatsapp_stale_socket_event_ignored', {
+          empresaId: session.companyId,
+          event: 'messages.upsert'
+        });
+        return;
+      }
+
       handleMessagesUpsert(session, payload).catch((error) => {
         loggerInstance.error('baileys_inbound_error', { empresaId: session.companyId, error: normalizeBaileysError(error) });
       });
-    });
+    };
+    sock.ev.on('connection.update', onConnectionUpdate);
+    sock.ev.on('creds.update', onCredsUpdate);
+    sock.ev.on('messages.upsert', onMessagesUpsert);
+    session.socketListeners = [
+      ['connection.update', onConnectionUpdate],
+      ['creds.update', onCredsUpdate],
+      ['messages.upsert', onMessagesUpsert]
+    ];
     return sock;
   }
 
   async function startSessionUnlocked(id, { fromReconnect = false } = {}) {
+    const registry = getRegistry();
+
+    if (config.queue?.enabled && registry?.status !== 'ready') {
+      const error = createHttpError(503, 'Redis no esta listo para iniciar sesiones WhatsApp');
+      error.code = 'WHATSAPP_REDIS_NOT_READY';
+      throw error;
+    }
+
     let session = sessions.get(id);
 
     if (session && ['INITIALIZING', 'QR_READY', 'CONNECTED', 'RECONNECTING'].includes(session.state.status) && !fromReconnect) {
@@ -361,6 +455,9 @@ export function createBaileysService({
         reconnectAttempts: 0,
         reconnectTimer: null,
         qrTimer: null,
+        stableTimer: null,
+        generation: 0,
+        socketListeners: [],
         manualDisconnect: false,
         sock: null
       };
@@ -369,7 +466,9 @@ export function createBaileysService({
 
     clearReconnectTimer(session);
     cleanupSocket(session);
+    session.generation += 1;
     session.manualDisconnect = false;
+    await recoveryStore.started({ empresaId: id }).catch(() => {});
     updateState(session, {
       status: 'INITIALIZING',
       last_error: null,
@@ -428,6 +527,7 @@ export function createBaileysService({
           sessions.delete(id);
         }
 
+        await recoveryStore.cancel({ empresaId: id, reason: 'manual_disconnect' }).catch(() => {});
         await authStore.removeAuthState(id, {
           authPath: config.whatsapp.baileys.authPath,
           authStore: config.whatsapp.baileys.authStore,
@@ -447,6 +547,7 @@ export function createBaileysService({
         if (session) {
           clearReconnectTimer(session);
           cleanupSocket(session);
+          session.generation += 1;
           updateState(session, {
             status: 'RECONNECTING',
             qr: null,
@@ -456,6 +557,35 @@ export function createBaileysService({
         }
 
         return startSessionUnlocked(id);
+      });
+    },
+
+    async closeSession(empresaId, reason = 'lease_lost') {
+      return withCompanyLock(empresaId, async (id) => {
+        const session = sessions.get(id);
+
+        if (!session) {
+          return false;
+        }
+
+        session.manualDisconnect = true;
+        clearReconnectTimer(session);
+        cleanupSocket(session);
+        sessions.delete(id);
+        const disconnectedState = {
+          ...session.state,
+          status: 'DISCONNECTED',
+          qr: null,
+          qr_image: null,
+          next_reconnect_at: null,
+          updated_at: new Date(now()).toISOString(),
+          events: [statusEvent('DISCONNECTED', `Sesion Baileys cerrada por ${reason}`), ...(session.state.events ?? [])].slice(0, 12)
+        };
+        lastStatuses.set(id, disconnectedState);
+        await statusStore.persistStatus(disconnectedState).catch(() => {});
+        await recoveryStore.cancel({ empresaId: id, reason }).catch(() => {});
+        loggerInstance.warn('whatsapp_session_lease_lost', { empresaId: id, reason });
+        return true;
       });
     },
 

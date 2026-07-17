@@ -154,6 +154,26 @@ function validateEnv(nextEnv) {
     errors.push('WHATSAPP_IDEMPOTENCY_RETENTION_DAYS must be a positive integer');
   }
 
+  if (!Number.isInteger(nextEnv.whatsapp.reconnect.maxConcurrency) || nextEnv.whatsapp.reconnect.maxConcurrency <= 0) {
+    errors.push('WHATSAPP_RECONNECT_MAX_CONCURRENCY must be a positive integer');
+  }
+
+  if (!Number.isInteger(nextEnv.whatsapp.reconnect.maxDelayMs) || nextEnv.whatsapp.reconnect.maxDelayMs <= 0) {
+    errors.push('WHATSAPP_RECONNECT_MAX_DELAY_MS must be a positive integer');
+  }
+
+  if (!Number.isInteger(nextEnv.whatsapp.reconnect.jitterMs) || nextEnv.whatsapp.reconnect.jitterMs < 0) {
+    errors.push('WHATSAPP_RECONNECT_JITTER_MS must be a non-negative integer');
+  }
+
+  if (!Number.isInteger(nextEnv.whatsapp.reconnect.stableAfterMs) || nextEnv.whatsapp.reconnect.stableAfterMs <= 0) {
+    errors.push('WHATSAPP_RECONNECT_STABLE_AFTER_MS must be a positive integer');
+  }
+
+  if (!Number.isInteger(nextEnv.whatsapp.reconnect.cooldownMs) || nextEnv.whatsapp.reconnect.cooldownMs <= 0) {
+    errors.push('WHATSAPP_RECONNECT_COOLDOWN_MS must be a positive integer');
+  }
+
   if (nextEnv.whatsapp.commandsViaQueue && process.env.WHATSAPP_LEGACY_WORKER_ENABLED === 'true') {
     errors.push('WHATSAPP_LEGACY_WORKER_ENABLED cannot be true when WHATSAPP_COMMANDS_VIA_QUEUE=true');
   }
@@ -202,6 +222,10 @@ function validateEnv(nextEnv) {
 
   if (!Number.isInteger(nextEnv.whatsapp.restore.delayMs) || nextEnv.whatsapp.restore.delayMs < 0) {
     errors.push('WHATSAPP_RESTORE_DELAY_MS must be a non-negative integer');
+  }
+
+  if (!Number.isInteger(nextEnv.whatsapp.restore.spreadMs) || nextEnv.whatsapp.restore.spreadMs < 0) {
+    errors.push('WHATSAPP_RESTORE_SPREAD_MS must be a non-negative integer');
   }
 
   if (!['file', 'mysql'].includes(nextEnv.whatsapp.baileys.authStore)) {
@@ -288,6 +312,13 @@ export const env = {
       enabled: booleanEnv('WHATSAPP_OUTBOUND_WORKER_ENABLED', false),
       concurrency: numberEnv('WHATSAPP_OUTBOUND_CONCURRENCY', 3)
     },
+    reconnect: {
+      maxConcurrency: numberEnv('WHATSAPP_RECONNECT_MAX_CONCURRENCY', 3),
+      maxDelayMs: numberEnv('WHATSAPP_RECONNECT_MAX_DELAY_MS', 60000),
+      jitterMs: numberEnv('WHATSAPP_RECONNECT_JITTER_MS', 1000),
+      stableAfterMs: numberEnv('WHATSAPP_RECONNECT_STABLE_AFTER_MS', 60000),
+      cooldownMs: numberEnv('WHATSAPP_RECONNECT_COOLDOWN_MS', 300000)
+    },
     baileys: {
       authPath: stringEnv('BAILEYS_AUTH_PATH', 'storage/baileys'),
       authStore: stringEnv('BAILEYS_AUTH_STORE', 'file'),
@@ -308,7 +339,8 @@ export const env = {
     },
     restore: {
       concurrency: numberEnv('WHATSAPP_RESTORE_CONCURRENCY', 3),
-      delayMs: numberEnv('WHATSAPP_RESTORE_DELAY_MS', 500)
+      delayMs: numberEnv('WHATSAPP_RESTORE_DELAY_MS', 500),
+      spreadMs: numberEnv('WHATSAPP_RESTORE_SPREAD_MS', 30000)
     },
     idempotency: {
       staleMs: numberEnv('WHATSAPP_IDEMPOTENCY_STALE_MS', 10 * 60 * 1000),

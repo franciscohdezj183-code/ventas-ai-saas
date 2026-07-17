@@ -86,6 +86,16 @@ export function createMessagingService(provider = null, {
       return withProviderName(await selectedProvider.startSession(empresaId), selectedProvider.providerName);
     },
 
+    async closeSession(empresaId, reason = 'lease_lost') {
+      const selectedProvider = await resolveProvider(empresaId);
+
+      if (typeof selectedProvider.closeSession === 'function') {
+        return selectedProvider.closeSession(empresaId, reason);
+      }
+
+      return selectedProvider.disconnectSession(empresaId);
+    },
+
     async sendText(empresaId, telefono, mensaje, options = {}) {
       if (config.whatsapp.outboundViaQueue) {
         const providerName = options.provider ?? await resolveProviderName(empresaId);

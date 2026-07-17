@@ -246,10 +246,12 @@ export function createCompanyProviderService({
         `SELECT c.empresa_id, c.provider, c.desired_state, c.auto_restore
            FROM whatsapp_session_config c
            INNER JOIN empresas e ON e.id = c.empresa_id
+           LEFT JOIN whatsapp_session_recovery r ON r.empresa_id = c.empresa_id
           WHERE c.desired_state = 'CONNECTED'
             AND c.auto_restore = 1
             AND e.activo = 1
-            AND e.estado = 'ACTIVA'`
+            AND e.estado = 'ACTIVA'
+            AND (r.recovery_status IS NULL OR r.recovery_status <> 'BLOCKED')`
       );
 
       return rows

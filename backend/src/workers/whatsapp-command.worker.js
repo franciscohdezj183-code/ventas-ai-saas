@@ -85,8 +85,8 @@ async function startWorker() {
     await stopGatewayConsumption({ closeSessions: true });
     scheduleLeadershipRetry(registry);
   });
-  whatsappSessionLeaseService.onLost(async () => {
-    await messagingService.shutdown();
+  whatsappSessionLeaseService.onLost(async (empresaId, reason) => {
+    await messagingService.closeSession(empresaId, reason);
   });
 
   const acquired = await leaderService.acquire();

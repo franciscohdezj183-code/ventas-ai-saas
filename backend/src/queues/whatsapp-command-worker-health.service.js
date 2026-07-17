@@ -1,6 +1,7 @@
 import { env } from '../config/env.js';
 import { query } from '../config/database.js';
 import { getQueueRegistry } from './queue-registry.js';
+import { whatsappSessionRecoveryService } from '../modules/whatsapp/whatsapp-session-recovery.service.js';
 
 function heartbeatPattern(workerName, queueConfig = env.queue) {
   const prefix = String(queueConfig.redisPrefix ?? 'nexus').replace(/:+$/g, '') || 'nexus';
@@ -45,7 +46,8 @@ export async function getWhatsappCommandWorkerHealth({
   config = env,
   registry = undefined,
   now = Date.now,
-  queryFn = query
+  queryFn = query,
+  recoveryService = whatsappSessionRecoveryService
 } = {}) {
   if (!config.whatsapp.commandsViaQueue) {
     return {
@@ -55,7 +57,13 @@ export async function getWhatsappCommandWorkerHealth({
       whatsapp_inbound_worker: 'disabled',
       whatsapp_outbound_worker: 'disabled',
       gateway_role: 'disabled',
-      gateway_leader_status: 'disabled'
+      gateway_leader_status: 'disabled',
+      recovery_scheduled: 0,
+      recovery_connecting: 0,
+      recovery_cooldown: 0,
+      recovery_blocked: 0,
+      reconnect_attempts_total: 0,
+      restore_pending: 0
     };
   }
 
@@ -70,7 +78,13 @@ export async function getWhatsappCommandWorkerHealth({
       whatsapp_inbound_worker: config.whatsapp.inboundViaQueue ? 'unavailable' : 'disabled',
       whatsapp_outbound_worker: config.whatsapp.outboundViaQueue ? 'unavailable' : 'disabled',
       gateway_role: 'unknown',
-      gateway_leader_status: 'unavailable'
+      gateway_leader_status: 'unavailable',
+      recovery_scheduled: 0,
+      recovery_connecting: 0,
+      recovery_cooldown: 0,
+      recovery_blocked: 0,
+      reconnect_attempts_total: 0,
+      restore_pending: 0
     };
   }
   const commandWorker = await readWorkerStatus({
@@ -97,6 +111,13 @@ export async function getWhatsappCommandWorkerHealth({
 
   let desiredConnectedSessions = 0;
   let configuredSessions = 0;
+  let recoveryHealth = {
+    recovery_scheduled: 0,
+    recovery_connecting: 0,
+    recovery_cooldown: 0,
+    recovery_blocked: 0,
+    reconnect_attempts_total: 0
+  };
 
   try {
     const [rows] = await queryFn(
@@ -109,6 +130,18 @@ export async function getWhatsappCommandWorkerHealth({
   } catch {
     configuredSessions = 0;
     desiredConnectedSessions = 0;
+  }
+
+  try {
+    recoveryHealth = await recoveryService.aggregateHealth();
+  } catch {
+    recoveryHealth = {
+      recovery_scheduled: 0,
+      recovery_connecting: 0,
+      recovery_cooldown: 0,
+      recovery_blocked: 0,
+      reconnect_attempts_total: 0
+    };
   }
 
   const leaderKey = `${String(config.queue.redisPrefix ?? 'nexus').replace(/:+$/g, '') || 'nexus'}:whatsapp:gateway:leader`;
@@ -128,6 +161,8 @@ export async function getWhatsappCommandWorkerHealth({
     gateway_leader_status: leaderTtl > 0 ? 'active' : 'missing',
     gateway_lease_remaining_ms: leaderTtl > 0 ? leaderTtl : 0,
     configured_sessions: configuredSessions,
-    desired_connected_sessions: desiredConnectedSessions
+    desired_connected_sessions: desiredConnectedSessions,
+    restore_pending: 0,
+    ...recoveryHealth
   };
 }

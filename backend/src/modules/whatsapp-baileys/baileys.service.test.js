@@ -47,6 +47,24 @@ function createHarness(options = {}) {
   const savedCreds = [];
   const statuses = new Map();
   const timers = [];
+  const recoveryEvents = [];
+  const recoveryStore = options.recoveryStore ?? {
+    async schedule(event) { recoveryEvents.push(['schedule', event]); return {}; },
+    async started(event) { recoveryEvents.push(['started', event]); return {}; },
+    async connected(event) { recoveryEvents.push(['connected', event]); return {}; },
+    async disconnected(event) { recoveryEvents.push(['disconnected', event]); return {}; },
+    async cancel(event) { recoveryEvents.push(['cancel', event]); return {}; },
+    async blocked(event) { recoveryEvents.push(['blocked', event]); return {}; },
+    async retryableFailure(event) {
+      recoveryEvents.push(['retryableFailure', event]);
+      return {
+        consecutiveFailures: recoveryEvents.filter(([name]) => name === 'retryableFailure').length,
+        delayMs: 10,
+        shouldRetry: true,
+        nextRetryAt: new Date(Date.now() + 10).toISOString()
+      };
+    }
+  };
   const service = createBaileysService({
     config: config(options.config),
     loggerInstance: { info() {}, warn() {}, error() {} },
@@ -86,6 +104,7 @@ function createHarness(options = {}) {
         return Array.from(statuses.values());
       }
     },
+    recoveryStore,
     getRegistry: () => ({
       whatsappInboundQueue: {
         status: 'ready',
@@ -103,7 +122,7 @@ function createHarness(options = {}) {
     clearTimeoutFn() {}
   });
 
-  return { enqueued, removedAuth, savedCreds, service, sockets, timers };
+  return { enqueued, recoveryEvents, removedAuth, savedCreds, service, sockets, timers };
 }
 
 test('Baileys credentials are isolated per company', async () => {
@@ -188,7 +207,20 @@ test('temporary disconnect schedules reconnect without deleting credentials', as
   assert.deepEqual(removedAuth, []);
 });
 
-test('loggedOut removes auth and does not schedule reconnect forever', async () => {
+test('stable connection resets recovery only after stable timer fires', async () => {
+  const { recoveryEvents, service, sockets, timers } = createHarness();
+
+  await service.startSession(5);
+  sockets[0].ev.emit('connection.update', { connection: 'open' });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(recoveryEvents.some(([name]) => name === 'connected'), false);
+  timers.at(-1).callback();
+
+  assert.equal(recoveryEvents.some(([name]) => name === 'connected'), true);
+});
+
+test('loggedOut blocks recovery without deleting credentials automatically', async () => {
   const { removedAuth, service, sockets, timers } = createHarness();
 
   await service.startSession(5);
@@ -198,7 +230,7 @@ test('loggedOut removes auth and does not schedule reconnect forever', async () 
   });
   await new Promise((resolve) => setImmediate(resolve));
 
-  assert.deepEqual(removedAuth, [5]);
+  assert.deepEqual(removedAuth, []);
   assert.equal((await service.getStatusSnapshot(5)).status, 'AUTH_FAILED');
   assert.equal(timers.some((timer) => timer.delay === 10), false);
 });
@@ -240,6 +272,62 @@ test('auth store failure marks AUTH_FAILED without creating a socket', async () 
   assert.equal(sockets.length, 0);
   assert.equal((await service.getStatusSnapshot(5)).status, 'AUTH_FAILED');
   assert.equal(errors.some((entry) => entry.message === 'baileys_auth_mysql_error'), true);
+});
+
+test('late events from an old socket are ignored after restart', async () => {
+  const warnings = [];
+  const sockets = [];
+  const instrumented = createBaileysService({
+    config: config(),
+    loggerInstance: { info() {}, error() {}, warn(message, meta) { warnings.push({ message, meta }); } },
+    importBaileys: async () => ({
+      DisconnectReason: { connectionClosed: 428 },
+      makeWASocket: () => {
+        const socket = createFakeSocket();
+        sockets.push(socket);
+        return socket;
+      }
+    }),
+    authStore: {
+      async createAuthState() {
+        return { state: { creds: { me: { id: '5@s.whatsapp.net' } }, keys: {} }, async saveCreds() {} };
+      },
+      async removeAuthState() {}
+    },
+    statusStore: { async persistStatus() {}, async getStatus() { return null; }, async listStatuses() { return []; } },
+    recoveryStore: {
+      async started() {},
+      async connected() {},
+      async cancel() {},
+      async disconnected() {},
+      async blocked() {},
+      async retryableFailure() { return { consecutiveFailures: 1, delayMs: 10, shouldRetry: true }; }
+    },
+    setTimeoutFn(callback, delay) {
+      return { callback, delay, unref() {} };
+    },
+    clearTimeoutFn() {}
+  });
+
+  await instrumented.startSession(5);
+  instrumented._sessions.get(5).generation += 1;
+  sockets[0].ev.emit('messages.upsert', { messages: [] });
+  sockets[0].ev.emit('connection.update', { connection: 'open' });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(warnings.some((entry) => entry.message === 'whatsapp_stale_socket_event_ignored'), true);
+});
+
+test('closeSession closes only the target company without removing credentials', async () => {
+  const { removedAuth, service } = createHarness();
+
+  await service.startSession(5);
+  await service.startSession(6);
+  assert.equal(await service.closeSession(5, 'lease_lost'), true);
+
+  assert.equal(service._sessions.has(5), false);
+  assert.equal(service._sessions.has(6), true);
+  assert.deepEqual(removedAuth, []);
 });
 
 test('messages.upsert processes all supported messages and deduplicates by messageId', async () => {
