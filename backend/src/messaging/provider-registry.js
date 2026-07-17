@@ -1,7 +1,7 @@
 import { env } from '../config/env.js';
 import { validateMessagingProvider } from './messaging-provider.js';
 
-const DEFAULT_PROVIDER_NAME = 'whatsapp-web';
+const DEFAULT_PROVIDER_NAME = 'baileys';
 const DEFAULT_PROVIDER_LOADERS = {
   async 'whatsapp-web'() {
     return (await import('./providers/whatsapp-web.provider.js')).whatsappWebProvider;

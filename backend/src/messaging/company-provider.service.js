@@ -6,7 +6,7 @@ import { createProviderRegistry } from './provider-registry.js';
 
 export const SUPPORTED_WHATSAPP_PROVIDERS = ['whatsapp-web', 'baileys'];
 export const DESIRED_SESSION_STATES = ['CONNECTED', 'DISCONNECTED'];
-const DEFAULT_PROVIDER = 'whatsapp-web';
+const DEFAULT_PROVIDER = 'baileys';
 const DEFAULT_CACHE_TTL_MS = 5000;
 
 function normalizeEmpresaId(empresaId) {
@@ -146,6 +146,23 @@ export function createCompanyProviderService({
     return getSessionConfig(id);
   }
 
+  async function ensureDefaultSessionConfig(empresaId) {
+    const id = normalizeEmpresaId(empresaId);
+
+    if (!(await empresaExists(id))) {
+      throw createHttpError(404, 'Empresa no encontrada o inactiva');
+    }
+
+    await queryFn(
+      `INSERT IGNORE INTO whatsapp_session_config
+        (empresa_id, provider, desired_state, auto_restore)
+       VALUES (?, 'baileys', 'DISCONNECTED', 1)`,
+      [id]
+    );
+    invalidate(id);
+    return getSessionConfig(id);
+  }
+
   return {
     normalizeProvider,
     normalizeDesiredState,
@@ -220,6 +237,10 @@ export function createCompanyProviderService({
       return setDesiredState(empresaId, state);
     },
 
+    async ensureDefaultSessionConfig(empresaId) {
+      return ensureDefaultSessionConfig(empresaId);
+    },
+
     async listRestorableSessions() {
       const [rows] = await queryFn(
         `SELECT c.empresa_id, c.provider, c.desired_state, c.auto_restore
@@ -240,6 +261,32 @@ export function createCompanyProviderService({
           autoRestore: Boolean(row.auto_restore)
         }))
         .filter((row) => SUPPORTED_WHATSAPP_PROVIDERS.includes(row.effectiveProvider));
+    },
+
+    async listProviderInventory() {
+      const [rows] = await queryFn(
+        `SELECT e.id AS empresa_id,
+                c.provider,
+                c.desired_state,
+                c.auto_restore,
+                s.status AS session_status
+           FROM empresas e
+           LEFT JOIN whatsapp_session_config c ON c.empresa_id = e.id
+           LEFT JOIN whatsapp_session_status s ON s.empresa_id = e.id
+          ORDER BY e.id ASC`
+      );
+
+      return rows.map((row) => {
+        const configuredProvider = row.provider ?? null;
+        return {
+          empresa_id: Number(row.empresa_id),
+          provider_configurado: configuredProvider,
+          provider_efectivo: configuredProvider ? normalizeProvider(configuredProvider) : fallbackProvider(config),
+          desired_state: row.desired_state ?? 'DISCONNECTED',
+          auto_restore: row.auto_restore === null || row.auto_restore === undefined ? true : Boolean(row.auto_restore),
+          session_status: row.session_status ?? 'DISCONNECTED'
+        };
+      });
     }
   };
 }

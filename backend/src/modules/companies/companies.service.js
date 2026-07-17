@@ -3,6 +3,7 @@ import { getAuthenticatedEmpresaId, isSuperAdmin, resolveScopedEmpresaId } from 
 import { getPlanConfig } from '../../config/plans.js';
 import { createToken, sanitizeUser } from '../auth/auth.service.js';
 import { createHttpError } from '../../utils/http-error.js';
+import { companyProviderService } from '../../messaging/company-provider.service.js';
 
 const COMPANY_COLUMNS = `
   id,
@@ -108,7 +109,11 @@ export async function findCompanyById(companyId, auth) {
   return rows[0] ?? null;
 }
 
-export async function createCompany(payload) {
+export async function createCompany(payload, {
+  queryFn = query,
+  providerService = companyProviderService,
+  findCompany = findCompanyById
+} = {}) {
   const company = normalizeCompanyPayload(payload);
   assertValidPlan(company.plan);
 
@@ -116,7 +121,7 @@ export async function createCompany(payload) {
   const estado = company.activo ? 'ACTIVA' : 'INACTIVA';
 
   try {
-    const [result] = await query(
+    const [result] = await queryFn(
       `INSERT INTO empresas
         (nombre, slug, telefono, direccion, tipo_negocio, logo, plan, activo, estado)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -133,7 +138,8 @@ export async function createCompany(payload) {
       ]
     );
 
-    return findCompanyById(result.insertId, { user: { rol: 'SUPER_ADMIN' } });
+    await providerService.ensureDefaultSessionConfig(result.insertId);
+    return findCompany(result.insertId, { user: { rol: 'SUPER_ADMIN' } });
   } catch (error) {
     mapDuplicateError(error);
   }

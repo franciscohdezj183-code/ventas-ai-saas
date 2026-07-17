@@ -45,6 +45,18 @@ function queryFnFactory(rows, calls = []) {
       return [[]];
     }
 
+    if (sql.includes('INSERT IGNORE INTO whatsapp_session_config')) {
+      const empresaId = Number(params[0]);
+      if (!rows.configs.has(empresaId)) {
+        rows.configs.set(empresaId, {
+          provider: 'baileys',
+          desired_state: 'DISCONNECTED',
+          auto_restore: 1
+        });
+      }
+      return [[{ affectedRows: rows.configs.has(empresaId) ? 0 : 1 }]];
+    }
+
     if (sql.includes('INSERT INTO whatsapp_session_config') && sql.includes('desired_state')) {
       const empresaId = Number(params[0]);
       rows.configs.set(empresaId, {
@@ -106,8 +118,34 @@ function serviceHarnessWithOptions(options = {}) {
   return { calls, providers, rows, service };
 }
 
+function serviceHarnessNoProvider() {
+  const rows = createRows();
+  const calls = [];
+  const service = createCompanyProviderService({
+    config: { whatsapp: {} },
+    queryFn: queryFnFactory(rows, calls),
+    loggerInstance: { info() {}, warn() {}, error() {} },
+    cacheTtlMs: 1000,
+    now: () => 1000
+  });
+  return { calls, rows, service };
+}
+
 test('company without config uses env provider fallback', async () => {
   const { service } = serviceHarness();
+
+  assert.equal(await service.getProviderName(5), 'whatsapp-web');
+});
+
+test('fallback without WHATSAPP_PROVIDER returns baileys', async () => {
+  const { service } = serviceHarnessNoProvider();
+
+  assert.equal(await service.getProviderName(5), 'baileys');
+});
+
+test('explicit whatsapp-web provider keeps priority over baileys default', async () => {
+  const { rows, service } = serviceHarnessNoProvider();
+  rows.configs.set(5, { provider: 'whatsapp-web', desired_state: 'DISCONNECTED', auto_restore: 1 });
 
   assert.equal(await service.getProviderName(5), 'whatsapp-web');
 });
@@ -214,4 +252,73 @@ test('listRestorableSessions returns only desired connected auto restore session
     desiredState: 'CONNECTED',
     autoRestore: true
   }]);
+});
+
+test('onboarding default config is baileys and idempotent without altering existing config', async () => {
+  const { rows, service } = serviceHarness();
+  rows.configs.set(6, { provider: 'whatsapp-web', desired_state: 'CONNECTED', auto_restore: 0 });
+
+  await service.ensureDefaultSessionConfig(5);
+  await service.ensureDefaultSessionConfig(5);
+  await service.ensureDefaultSessionConfig(6);
+
+  assert.deepEqual(rows.configs.get(5), {
+    provider: 'baileys',
+    desired_state: 'DISCONNECTED',
+    auto_restore: 1
+  });
+  assert.deepEqual(rows.configs.get(6), {
+    provider: 'whatsapp-web',
+    desired_state: 'CONNECTED',
+    auto_restore: 0
+  });
+});
+
+test('provider inventory is read-only and isolated per company', async () => {
+  const rows = createRows();
+  rows.configs.set(5, { provider: 'baileys', desired_state: 'CONNECTED', auto_restore: 1, session_status: 'CONNECTED' });
+  rows.configs.set(6, { provider: 'whatsapp-web', desired_state: 'DISCONNECTED', auto_restore: 0, session_status: 'DISCONNECTED' });
+  const calls = [];
+  const service = createCompanyProviderService({
+    config: { whatsapp: {} },
+    queryFn: async (sql) => {
+      calls.push(sql);
+
+      if (sql.includes('LEFT JOIN whatsapp_session_status')) {
+        return [[...rows.empresas.keys()].map((empresaId) => {
+          const config = rows.configs.get(empresaId);
+          return {
+            empresa_id: empresaId,
+            provider: config?.provider ?? null,
+            desired_state: config?.desired_state ?? null,
+            auto_restore: config?.auto_restore ?? null,
+            session_status: config?.session_status ?? null
+          };
+        })];
+      }
+
+      throw new Error(`Unexpected query: ${sql}`);
+    },
+    loggerInstance: { info() {}, warn() {}, error() {} }
+  });
+
+  assert.deepEqual(await service.listProviderInventory(), [
+    {
+      empresa_id: 5,
+      provider_configurado: 'baileys',
+      provider_efectivo: 'baileys',
+      desired_state: 'CONNECTED',
+      auto_restore: true,
+      session_status: 'CONNECTED'
+    },
+    {
+      empresa_id: 6,
+      provider_configurado: 'whatsapp-web',
+      provider_efectivo: 'whatsapp-web',
+      desired_state: 'DISCONNECTED',
+      auto_restore: false,
+      session_status: 'DISCONNECTED'
+    }
+  ]);
+  assert.equal(calls.length, 1);
 });

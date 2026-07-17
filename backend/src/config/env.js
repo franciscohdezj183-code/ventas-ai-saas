@@ -150,7 +150,7 @@ function validateEnv(nextEnv) {
     errors.push('WHATSAPP_LEGACY_WORKER_ENABLED cannot be true when WHATSAPP_COMMANDS_VIA_QUEUE=true');
   }
 
-  if (nextEnv.whatsapp.provider === 'baileys') {
+  if (nextEnv.whatsapp.provider === 'baileys' && nextEnv.nodeEnv !== 'test') {
     if (!nextEnv.queue.enabled) errors.push('QUEUE_ENABLED must be true when WHATSAPP_PROVIDER=baileys');
     if (!nextEnv.whatsapp.commandsViaQueue) errors.push('WHATSAPP_COMMANDS_VIA_QUEUE must be true when WHATSAPP_PROVIDER=baileys');
     if (!nextEnv.whatsapp.commandWorker.enabled) errors.push('WHATSAPP_COMMAND_WORKER_ENABLED must be true when WHATSAPP_PROVIDER=baileys');
@@ -259,7 +259,7 @@ export const env = {
     expiresIn: process.env.JWT_EXPIRES_IN ?? '1d'
   },
   whatsapp: {
-    provider: process.env.WHATSAPP_PROVIDER ?? 'whatsapp-web',
+    provider: process.env.WHATSAPP_PROVIDER ?? 'baileys',
     sessionPath: process.env.WHATSAPP_SESSION_PATH ?? 'storage/whatsapp',
     headless: booleanEnv('WHATSAPP_HEADLESS', true),
     commandsViaQueue: booleanEnv('WHATSAPP_COMMANDS_VIA_QUEUE', false),

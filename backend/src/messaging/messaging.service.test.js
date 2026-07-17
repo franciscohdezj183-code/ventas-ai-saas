@@ -59,6 +59,31 @@ test('throws a clear error for an unknown messaging provider', () => {
   );
 });
 
+test('selecting only Baileys stays lazy and does not load whatsapp-web provider', async () => {
+  let baileysLoaded = 0;
+  let whatsappWebLoaded = 0;
+  const selectedProvider = createProviderRegistry({
+    providerName: 'baileys',
+    providerLoaders: {
+      baileys: async () => {
+        baileysLoaded += 1;
+        return createFakeProvider({ providerName: 'baileys' });
+      },
+      'whatsapp-web': async () => {
+        whatsappWebLoaded += 1;
+        throw new Error('whatsapp-web should not be loaded');
+      }
+    }
+  });
+
+  assert.equal(selectedProvider.providerName, 'baileys');
+  assert.equal(baileysLoaded, 0);
+  assert.equal(whatsappWebLoaded, 0);
+  await selectedProvider.getStatusSnapshot(5);
+  assert.equal(baileysLoaded, 1);
+  assert.equal(whatsappWebLoaded, 0);
+});
+
 test('delegates sendText to the active provider', async () => {
   const calls = [];
   const service = createMessagingService(createFakeProvider({
