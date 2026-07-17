@@ -23,6 +23,8 @@ backend/storage/*
 
 backend/storage/whatsapp/*
 !backend/storage/whatsapp/.gitkeep
+backend/storage/baileys/*
+!backend/storage/baileys/.gitkeep
 
 backend/.wwebjs_cache/
 backend/.wwebjs_auth/

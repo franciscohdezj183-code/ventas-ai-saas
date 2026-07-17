@@ -79,6 +79,9 @@ export function createWhatsappCommandProcessor({
       case 'DISCONNECT_SESSION':
         return service.disconnectSession(commandJob.empresaId);
       case 'RESTART_SESSION':
+        if (typeof service.restartSession === 'function') {
+          return service.restartSession(commandJob.empresaId);
+        }
         await service.disconnectSession(commandJob.empresaId);
         return service.startSession(commandJob.empresaId);
       case 'GET_STATUS':

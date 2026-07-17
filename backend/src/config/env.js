@@ -150,6 +150,16 @@ function validateEnv(nextEnv) {
     errors.push('WHATSAPP_LEGACY_WORKER_ENABLED cannot be true when WHATSAPP_COMMANDS_VIA_QUEUE=true');
   }
 
+  if (nextEnv.whatsapp.provider === 'baileys') {
+    if (!nextEnv.queue.enabled) errors.push('QUEUE_ENABLED must be true when WHATSAPP_PROVIDER=baileys');
+    if (!nextEnv.whatsapp.commandsViaQueue) errors.push('WHATSAPP_COMMANDS_VIA_QUEUE must be true when WHATSAPP_PROVIDER=baileys');
+    if (!nextEnv.whatsapp.commandWorker.enabled) errors.push('WHATSAPP_COMMAND_WORKER_ENABLED must be true when WHATSAPP_PROVIDER=baileys');
+    if (!nextEnv.whatsapp.inboundViaQueue) errors.push('WHATSAPP_INBOUND_VIA_QUEUE must be true when WHATSAPP_PROVIDER=baileys');
+    if (!nextEnv.whatsapp.outboundViaQueue) errors.push('WHATSAPP_OUTBOUND_VIA_QUEUE must be true when WHATSAPP_PROVIDER=baileys');
+    if (!nextEnv.whatsapp.inboundWorker.enabled) errors.push('WHATSAPP_INBOUND_WORKER_ENABLED must be true when WHATSAPP_PROVIDER=baileys');
+    if (!nextEnv.whatsapp.outboundWorker.enabled) errors.push('WHATSAPP_OUTBOUND_WORKER_ENABLED must be true when WHATSAPP_PROVIDER=baileys');
+  }
+
   if (nextEnv.nodeEnv === 'production') {
     if (!nextEnv.apiUrl.startsWith('https://')) {
       errors.push('API_URL must use https in production');
@@ -213,6 +223,12 @@ export const env = {
     outboundWorker: {
       enabled: booleanEnv('WHATSAPP_OUTBOUND_WORKER_ENABLED', false),
       concurrency: numberEnv('WHATSAPP_OUTBOUND_CONCURRENCY', 3)
+    },
+    baileys: {
+      authPath: stringEnv('BAILEYS_AUTH_PATH', 'storage/baileys'),
+      reconnectMaxAttempts: numberEnv('BAILEYS_RECONNECT_MAX_ATTEMPTS', 5),
+      reconnectBaseDelayMs: numberEnv('BAILEYS_RECONNECT_BASE_DELAY_MS', 2000),
+      qrTtlMs: numberEnv('BAILEYS_QR_TTL_MS', 60000)
     }
   },
   openai: {

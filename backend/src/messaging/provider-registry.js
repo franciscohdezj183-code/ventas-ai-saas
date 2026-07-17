@@ -1,13 +1,15 @@
 import { env } from '../config/env.js';
 import { validateMessagingProvider } from './messaging-provider.js';
 import { whatsappWebProvider } from './providers/whatsapp-web.provider.js';
+import { baileysProvider } from './providers/baileys.provider.js';
 
 const DEFAULT_PROVIDER_NAME = 'whatsapp-web';
 
 export function createProviderRegistry({
   providerName = DEFAULT_PROVIDER_NAME,
   providers = {
-    'whatsapp-web': whatsappWebProvider
+    'whatsapp-web': whatsappWebProvider,
+    baileys: baileysProvider
   }
 } = {}) {
   const configuredProviderName = String(providerName || DEFAULT_PROVIDER_NAME).trim();

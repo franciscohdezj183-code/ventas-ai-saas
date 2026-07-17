@@ -32,6 +32,15 @@ export function createMessagingService(provider = getMessagingProvider(), { enqu
       return provider.disconnectSession(empresaId);
     },
 
+    async restartSession(empresaId) {
+      if (typeof provider.restartSession === 'function') {
+        return provider.restartSession(empresaId);
+      }
+
+      await provider.disconnectSession(empresaId);
+      return provider.startSession(empresaId);
+    },
+
     sendText(empresaId, telefono, mensaje, options = {}) {
       if (config.whatsapp.outboundViaQueue) {
         return enqueueOutbound({

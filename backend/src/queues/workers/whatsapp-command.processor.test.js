@@ -68,6 +68,31 @@ test('RESTART executes disconnect then start in order', async () => {
   assert.deepEqual(calls, [['disconnect', 5], ['start', 5]]);
 });
 
+test('RESTART uses provider restartSession when available', async () => {
+  const calls = [];
+  const processor = createWhatsappCommandProcessor({
+    service: {
+      async restartSession(empresaId) {
+        calls.push(['restart', empresaId]);
+        return { status: 'INITIALIZING' };
+      },
+      async disconnectSession(empresaId) {
+        calls.push(['disconnect', empresaId]);
+      },
+      async startSession(empresaId) {
+        calls.push(['start', empresaId]);
+      }
+    },
+    config: config(),
+    loggerInstance: logger()
+  });
+
+  await processor(job({ command: 'RESTART_SESSION' }));
+
+  assert.deepEqual(calls, [['restart', 5]]);
+});
+
+
 test('GET_STATUS reads snapshot and does not create a session', async () => {
   let startCalls = 0;
   const processor = createWhatsappCommandProcessor({

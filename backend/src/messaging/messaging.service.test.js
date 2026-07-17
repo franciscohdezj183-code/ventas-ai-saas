@@ -33,6 +33,20 @@ test('selects the configured messaging provider', () => {
   assert.equal(selectedProvider.providerName, 'whatsapp-web');
 });
 
+test('selects baileys messaging provider when configured', () => {
+  const provider = createFakeProvider({ providerName: 'baileys' });
+  const selectedProvider = createProviderRegistry({
+    providerName: 'baileys',
+    providers: {
+      'whatsapp-web': createFakeProvider({ providerName: 'whatsapp-web' }),
+      baileys: provider
+    }
+  });
+
+  assert.equal(selectedProvider, provider);
+  assert.equal(selectedProvider.providerName, 'baileys');
+});
+
 test('throws a clear error for an unknown messaging provider', () => {
   assert.throws(
     () => createProviderRegistry({

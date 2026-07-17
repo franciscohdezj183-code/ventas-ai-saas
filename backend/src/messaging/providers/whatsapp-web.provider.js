@@ -1,39 +1,33 @@
 import { createHttpError } from '../../utils/http-error.js';
-import {
-  disconnectWhatsappSession,
-  getWhatsappStatus,
-  getWhatsappStatusSnapshot,
-  listWhatsappStatusSnapshots,
-  sendWhatsappMessage,
-  sendWhatsappTextDirect,
-  shutdownWhatsappSessions,
-  startWhatsappSession
-} from '../../modules/whatsapp/whatsapp.service.js';
 import { validateMessagingProvider, validateStatusSnapshot } from '../messaging-provider.js';
+
+async function whatsappService() {
+  return import('../../modules/whatsapp/whatsapp.service.js');
+}
 
 export const whatsappWebProvider = validateMessagingProvider({
   providerName: 'whatsapp-web',
 
-  startSession(empresaId) {
-    return startWhatsappSession(empresaId);
+  async startSession(empresaId) {
+    return (await whatsappService()).startWhatsappSession(empresaId);
   },
 
-  getStatus(empresaId) {
-    return validateStatusSnapshot(getWhatsappStatus(empresaId));
+  async getStatus(empresaId) {
+    return validateStatusSnapshot((await whatsappService()).getWhatsappStatus(empresaId));
   },
 
   async getStatusSnapshot(empresaId) {
-    return validateStatusSnapshot(await getWhatsappStatusSnapshot(empresaId));
+    return validateStatusSnapshot(await (await whatsappService()).getWhatsappStatusSnapshot(empresaId));
   },
 
   async listStatusSnapshots() {
-    const statuses = await listWhatsappStatusSnapshots();
+    const statuses = await (await whatsappService()).listWhatsappStatusSnapshots();
     statuses.forEach(validateStatusSnapshot);
     return statuses;
   },
 
   async getQr(empresaId) {
-    const status = await getWhatsappStatusSnapshot(empresaId);
+    const status = await (await whatsappService()).getWhatsappStatusSnapshot(empresaId);
     validateStatusSnapshot(status);
     return {
       empresa_id: status.empresa_id,
@@ -44,23 +38,29 @@ export const whatsappWebProvider = validateMessagingProvider({
     };
   },
 
-  disconnectSession(empresaId) {
-    return disconnectWhatsappSession(empresaId);
+  async disconnectSession(empresaId) {
+    return (await whatsappService()).disconnectWhatsappSession(empresaId);
   },
 
-  sendText(empresaId, telefono, mensaje) {
-    return sendWhatsappMessage(empresaId, telefono, mensaje);
+  async restartSession(empresaId) {
+    const service = await whatsappService();
+    await service.disconnectWhatsappSession(empresaId);
+    return service.startWhatsappSession(empresaId);
   },
 
-  sendTextDirect(empresaId, destination, mensaje) {
-    return sendWhatsappTextDirect(empresaId, destination, mensaje);
+  async sendText(empresaId, telefono, mensaje) {
+    return (await whatsappService()).sendWhatsappMessage(empresaId, telefono, mensaje);
+  },
+
+  async sendTextDirect(empresaId, destination, mensaje) {
+    return (await whatsappService()).sendWhatsappTextDirect(empresaId, destination, mensaje);
   },
 
   async sendMedia() {
     throw createHttpError(501, 'El envio de media por proveedor neutral aun no esta implementado');
   },
 
-  shutdown() {
-    return shutdownWhatsappSessions();
+  async shutdown() {
+    return (await whatsappService()).shutdownWhatsappSessions();
   }
 });
