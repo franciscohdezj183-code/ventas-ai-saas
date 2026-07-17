@@ -146,6 +146,14 @@ function validateEnv(nextEnv) {
     errors.push('WHATSAPP_MESSAGE_MAX_ATTEMPTS must be a positive integer');
   }
 
+  if (!Number.isInteger(nextEnv.whatsapp.idempotency.staleMs) || nextEnv.whatsapp.idempotency.staleMs <= 0) {
+    errors.push('WHATSAPP_IDEMPOTENCY_STALE_MS must be a positive integer');
+  }
+
+  if (!Number.isInteger(nextEnv.whatsapp.idempotency.retentionDays) || nextEnv.whatsapp.idempotency.retentionDays <= 0) {
+    errors.push('WHATSAPP_IDEMPOTENCY_RETENTION_DAYS must be a positive integer');
+  }
+
   if (nextEnv.whatsapp.commandsViaQueue && process.env.WHATSAPP_LEGACY_WORKER_ENABLED === 'true') {
     errors.push('WHATSAPP_LEGACY_WORKER_ENABLED cannot be true when WHATSAPP_COMMANDS_VIA_QUEUE=true');
   }
@@ -301,6 +309,10 @@ export const env = {
     restore: {
       concurrency: numberEnv('WHATSAPP_RESTORE_CONCURRENCY', 3),
       delayMs: numberEnv('WHATSAPP_RESTORE_DELAY_MS', 500)
+    },
+    idempotency: {
+      staleMs: numberEnv('WHATSAPP_IDEMPOTENCY_STALE_MS', 10 * 60 * 1000),
+      retentionDays: numberEnv('WHATSAPP_IDEMPOTENCY_RETENTION_DAYS', 30)
     }
   },
   openai: {

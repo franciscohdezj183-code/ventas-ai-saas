@@ -2,6 +2,7 @@ import { UnrecoverableError } from 'bullmq';
 import { validateWhatsappInboundJob } from '../queue-payloads.js';
 import { processSerializedInboundMessage } from '../../modules/whatsapp/whatsapp.service.js';
 import { logger } from '../../utils/logger.js';
+import { whatsappIdempotencyService } from '../../modules/whatsapp/whatsapp-idempotency.service.js';
 
 function normalizeError(error) {
   return {
@@ -14,7 +15,8 @@ function normalizeError(error) {
 
 export function createWhatsappInboundProcessor({
   processInbound = processSerializedInboundMessage,
-  loggerInstance = logger
+  loggerInstance = logger,
+  idempotency = null
 } = {}) {
   return async function processWhatsappInbound(job) {
     let inboundJob;
@@ -37,8 +39,31 @@ export function createWhatsappInboundProcessor({
       bodyLength: String(inboundJob.body ?? '').length
     });
 
+    if (idempotency) {
+      const claim = await idempotency.claimInbound({
+        empresaId: inboundJob.empresaId,
+        provider: inboundJob.provider,
+        externalMessageId: inboundJob.messageId,
+        correlationId: inboundJob.eventId
+      });
+
+      if (!claim.claimed) {
+        return {
+          handled: true,
+          duplicate: true,
+          skipped: true,
+          status: claim.status
+        };
+      }
+    }
+
     try {
       const result = await processInbound(inboundJob);
+      await idempotency?.completeInbound({
+        empresaId: inboundJob.empresaId,
+        provider: inboundJob.provider,
+        externalMessageId: inboundJob.messageId
+      });
       loggerInstance.info('whatsapp_inbound_completed', {
         jobId: job?.id,
         empresaId: inboundJob.empresaId,
@@ -47,6 +72,12 @@ export function createWhatsappInboundProcessor({
       });
       return result;
     } catch (error) {
+      await idempotency?.failInbound({
+        empresaId: inboundJob.empresaId,
+        provider: inboundJob.provider,
+        externalMessageId: inboundJob.messageId,
+        error
+      }).catch(() => {});
       loggerInstance.error('whatsapp_inbound_failed', {
         jobId: job?.id,
         empresaId: inboundJob.empresaId,
@@ -58,4 +89,6 @@ export function createWhatsappInboundProcessor({
   };
 }
 
-export const processWhatsappInbound = createWhatsappInboundProcessor();
+export const processWhatsappInbound = createWhatsappInboundProcessor({
+  idempotency: whatsappIdempotencyService
+});

@@ -4,6 +4,11 @@ import { messagingService } from '../../messaging/messaging.service.js';
 import { logger } from '../../utils/logger.js';
 import { companyProviderService } from '../../messaging/company-provider.service.js';
 import { whatsappSessionLeaseService } from '../whatsapp-session-lease.service.js';
+import {
+  createOutboundIdempotencyKey,
+  createOutboundPayloadHash,
+  whatsappIdempotencyService
+} from '../../modules/whatsapp/whatsapp-idempotency.service.js';
 
 function maskIdentifier(value) {
   const rawValue = String(value ?? '');
@@ -32,7 +37,8 @@ export function createWhatsappOutboundProcessor({
   service = messagingService,
   loggerInstance = logger,
   companyProvider = null,
-  sessionLease = null
+  sessionLease = null,
+  idempotency = null
 } = {}) {
   return async function processWhatsappOutbound(job) {
     let outboundJob;
@@ -84,6 +90,33 @@ export function createWhatsappOutboundProcessor({
     }
 
     const attempts = [];
+    const idempotencyKey = createOutboundIdempotencyKey(outboundJob);
+
+    if (idempotency) {
+      const payloadHash = createOutboundPayloadHash(outboundJob);
+      const claim = await idempotency.claimOutbound({
+        empresaId: outboundJob.empresaId,
+        provider: outboundJob.provider,
+        idempotencyKey,
+        correlationId: outboundJob.correlationId ?? outboundJob.messageId,
+        payloadHash
+      });
+
+      if (!claim.claimed) {
+        if (claim.sent) {
+          return {
+            status: 'SENT',
+            duplicate: true,
+            provider_message_id: claim.providerMessageId ?? null
+          };
+        }
+
+        const error = new Error('Entrega outbound ya esta en proceso para esta idempotency_key');
+        error.code = 'WHATSAPP_OUTBOUND_IN_PROGRESS';
+        throw error;
+      }
+    }
+
     const destinations = [
       { method: 'whatsappChatId', value: outboundJob.whatsappChatId },
       { method: 'resolvedPhoneId', value: outboundJob.resolvedPhoneId },
@@ -97,16 +130,10 @@ export function createWhatsappOutboundProcessor({
     });
 
     for (const destination of destinations) {
+      let result;
+
       try {
-        const result = await service.sendTextDirect(outboundJob.empresaId, destination.value, outboundJob.text);
-        attempts.push({ method: destination.method, success: true });
-        loggerInstance.info('whatsapp_outbound_sent', {
-          jobId: job?.id,
-          empresaId: outboundJob.empresaId,
-          method: destination.method,
-          destination: maskIdentifier(destination.value)
-        });
-        return { ...result, attempts };
+        result = await service.sendTextDirect(outboundJob.empresaId, destination.value, outboundJob.text);
       } catch (error) {
         attempts.push({ method: destination.method, success: false, error: normalizeError(error) });
         loggerInstance.warn('whatsapp_outbound_send_failed', {
@@ -116,11 +143,45 @@ export function createWhatsappOutboundProcessor({
           destination: maskIdentifier(destination.value),
           error: normalizeError(error)
         });
+        continue;
       }
+
+      try {
+        await idempotency?.completeOutbound({
+          empresaId: outboundJob.empresaId,
+          provider: outboundJob.provider,
+          idempotencyKey,
+          providerMessageId: result?.provider_message_id ?? result?.messageId ?? result?.id ?? null
+        });
+      } catch (error) {
+        loggerInstance.warn('whatsapp_outbound_delivery_uncertain', {
+          jobId: job?.id,
+          empresaId: outboundJob.empresaId,
+          provider: outboundJob.provider,
+          idempotencyKey,
+          error: normalizeError(error)
+        });
+        throw error;
+      }
+
+      attempts.push({ method: destination.method, success: true });
+      loggerInstance.info('whatsapp_outbound_sent', {
+        jobId: job?.id,
+        empresaId: outboundJob.empresaId,
+        method: destination.method,
+        destination: maskIdentifier(destination.value)
+      });
+      return { ...result, attempts };
     }
 
     const error = new Error('No se pudo enviar la respuesta de WhatsApp por ningun destino disponible');
     error.attempts = attempts;
+    await idempotency?.failOutbound({
+      empresaId: outboundJob.empresaId,
+      provider: outboundJob.provider,
+      idempotencyKey,
+      error
+    }).catch(() => {});
     loggerInstance.error('whatsapp_outbound_failed', {
       jobId: job?.id,
       empresaId: outboundJob.empresaId,
@@ -132,5 +193,6 @@ export function createWhatsappOutboundProcessor({
 
 export const processWhatsappOutbound = createWhatsappOutboundProcessor({
   companyProvider: companyProviderService,
-  sessionLease: whatsappSessionLeaseService
+  sessionLease: whatsappSessionLeaseService,
+  idempotency: whatsappIdempotencyService
 });

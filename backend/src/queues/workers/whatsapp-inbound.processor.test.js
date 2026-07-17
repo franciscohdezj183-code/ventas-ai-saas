@@ -53,3 +53,47 @@ test('inbound processor enqueues exactly one outbound through business handler',
   assert.equal(calls.length, 1);
   assert.equal(calls[0].empresaId, 5);
 });
+
+test('inbound duplicate does not execute business handler', async () => {
+  let calls = 0;
+  const processor = createWhatsappInboundProcessor({
+    processInbound: async () => {
+      calls += 1;
+      throw new Error('should not run');
+    },
+    idempotency: {
+      async claimInbound() {
+        return { claimed: false, duplicate: true, status: 'COMPLETED' };
+      }
+    },
+    loggerInstance: { info() {}, warn() {}, error() {} }
+  });
+
+  const result = await processor(inboundJob());
+
+  assert.equal(result.duplicate, true);
+  assert.equal(calls, 0);
+});
+
+test('inbound failure marks FAILED before retrying', async () => {
+  const failures = [];
+  const error = new Error('temporary');
+  const processor = createWhatsappInboundProcessor({
+    processInbound: async () => {
+      throw error;
+    },
+    idempotency: {
+      async claimInbound() {
+        return { claimed: true };
+      },
+      async failInbound(payload) {
+        failures.push(payload);
+      }
+    },
+    loggerInstance: { info() {}, warn() {}, error() {} }
+  });
+
+  await assert.rejects(() => processor(inboundJob()), error);
+  assert.equal(failures.length, 1);
+  assert.equal(failures[0].externalMessageId, 'msg-1');
+});

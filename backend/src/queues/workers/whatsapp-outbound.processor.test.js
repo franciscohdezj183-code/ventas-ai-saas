@@ -148,3 +148,49 @@ test('outbound requires this gateway to own the session lease when lease service
     /gateway no posee el lease/
   );
 });
+
+test('outbound SENT duplicate completes without provider send', async () => {
+  let sends = 0;
+  const processor = createWhatsappOutboundProcessor({
+    service: {
+      async sendTextDirect() {
+        sends += 1;
+      }
+    },
+    idempotency: {
+      async claimOutbound() {
+        return { claimed: false, duplicate: true, sent: true, providerMessageId: 'provider-1' };
+      }
+    },
+    loggerInstance: { info() {}, warn() {}, error() {} }
+  });
+
+  const result = await processor(outboundJob());
+
+  assert.equal(result.duplicate, true);
+  assert.equal(result.provider_message_id, 'provider-1');
+  assert.equal(sends, 0);
+});
+
+test('outbound provider failure marks FAILED before retry', async () => {
+  const failures = [];
+  const processor = createWhatsappOutboundProcessor({
+    service: {
+      async sendTextDirect() {
+        throw new Error('temporary send failure');
+      }
+    },
+    idempotency: {
+      async claimOutbound() {
+        return { claimed: true };
+      },
+      async failOutbound(payload) {
+        failures.push(payload);
+      }
+    },
+    loggerInstance: { info() {}, warn() {}, error() {} }
+  });
+
+  await assert.rejects(() => processor(outboundJob({ resolvedPhoneId: null, phone: null })), /No se pudo enviar/);
+  assert.equal(failures.length, 1);
+});
