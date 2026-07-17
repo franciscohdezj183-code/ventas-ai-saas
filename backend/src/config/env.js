@@ -160,6 +160,26 @@ function validateEnv(nextEnv) {
     if (!nextEnv.whatsapp.outboundWorker.enabled) errors.push('WHATSAPP_OUTBOUND_WORKER_ENABLED must be true when WHATSAPP_PROVIDER=baileys');
   }
 
+  if (!['file', 'mysql'].includes(nextEnv.whatsapp.baileys.authStore)) {
+    errors.push('BAILEYS_AUTH_STORE must be file or mysql');
+  }
+
+  if (!Number.isInteger(nextEnv.whatsapp.baileys.authDbBatchSize) || nextEnv.whatsapp.baileys.authDbBatchSize <= 0) {
+    errors.push('BAILEYS_AUTH_DB_BATCH_SIZE must be a positive integer');
+  }
+
+  if (nextEnv.whatsapp.baileys.authStore === 'mysql') {
+    if (!nextEnv.whatsapp.baileys.authEncryptionKey) {
+      errors.push('BAILEYS_AUTH_ENCRYPTION_KEY is required when BAILEYS_AUTH_STORE=mysql');
+    } else {
+      const decodedKey = Buffer.from(nextEnv.whatsapp.baileys.authEncryptionKey, 'base64');
+
+      if (decodedKey.length !== 32 || decodedKey.toString('base64') !== nextEnv.whatsapp.baileys.authEncryptionKey) {
+        errors.push('BAILEYS_AUTH_ENCRYPTION_KEY must be valid Base64 for exactly 32 bytes');
+      }
+    }
+  }
+
   if (nextEnv.nodeEnv === 'production') {
     if (!nextEnv.apiUrl.startsWith('https://')) {
       errors.push('API_URL must use https in production');
@@ -226,6 +246,9 @@ export const env = {
     },
     baileys: {
       authPath: stringEnv('BAILEYS_AUTH_PATH', 'storage/baileys'),
+      authStore: stringEnv('BAILEYS_AUTH_STORE', 'file'),
+      authEncryptionKey: stringEnv('BAILEYS_AUTH_ENCRYPTION_KEY', ''),
+      authDbBatchSize: numberEnv('BAILEYS_AUTH_DB_BATCH_SIZE', 100),
       reconnectMaxAttempts: numberEnv('BAILEYS_RECONNECT_MAX_ATTEMPTS', 5),
       reconnectBaseDelayMs: numberEnv('BAILEYS_RECONNECT_BASE_DELAY_MS', 2000),
       qrTtlMs: numberEnv('BAILEYS_QR_TTL_MS', 60000)

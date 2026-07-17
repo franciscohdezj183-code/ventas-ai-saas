@@ -203,6 +203,45 @@ test('loggedOut removes auth and does not schedule reconnect forever', async () 
   assert.equal(timers.some((timer) => timer.delay === 10), false);
 });
 
+test('auth store failure marks AUTH_FAILED without creating a socket', async () => {
+  const sockets = [];
+  const statuses = new Map();
+  const errors = [];
+  const service = createBaileysService({
+    config: config({ whatsapp: { baileys: { authStore: 'mysql', authPath: 'storage/baileys-test', reconnectMaxAttempts: 2, reconnectBaseDelayMs: 10, qrTtlMs: 1000 } } }),
+    loggerInstance: { info() {}, warn() {}, error(message, meta) { errors.push({ message, meta }); } },
+    importBaileys: async () => ({
+      makeWASocket: () => {
+        sockets.push(createFakeSocket());
+        return sockets.at(-1);
+      }
+    }),
+    authStore: {
+      async createAuthState() {
+        throw Object.assign(new Error('database unavailable'), { code: 'ECONNREFUSED' });
+      },
+      async removeAuthState() {}
+    },
+    statusStore: {
+      async persistStatus(status) {
+        statuses.set(Number(status.empresa_id), status);
+      },
+      async getStatus(empresaId) {
+        return statuses.get(Number(empresaId)) ?? null;
+      },
+      async listStatuses() {
+        return Array.from(statuses.values());
+      }
+    }
+  });
+
+  await assert.rejects(service.startSession(5), /database unavailable/);
+
+  assert.equal(sockets.length, 0);
+  assert.equal((await service.getStatusSnapshot(5)).status, 'AUTH_FAILED');
+  assert.equal(errors.some((entry) => entry.message === 'baileys_auth_mysql_error'), true);
+});
+
 test('messages.upsert processes all supported messages and deduplicates by messageId', async () => {
   const { enqueued, service, sockets } = createHarness();
 

@@ -265,7 +265,12 @@ export function createBaileysService({
       if (loggedOut) {
         session.manualDisconnect = true;
         loggerInstance.warn('baileys_auth_logged_out', { empresaId: session.companyId });
-        await authStore.removeAuthState(session.companyId, { authPath: config.whatsapp.baileys.authPath });
+        await authStore.removeAuthState(session.companyId, {
+          authPath: config.whatsapp.baileys.authPath,
+          authStore: config.whatsapp.baileys.authStore,
+          loggerInstance,
+          importBaileys
+        });
         updateState(session, {
           status: 'AUTH_FAILED',
           qr: null,
@@ -323,10 +328,31 @@ export function createBaileysService({
     }
 
     if (!session) {
-      const authState = await authStore.createAuthState(id, {
-        authPath: config.whatsapp.baileys.authPath,
-        importBaileys
-      });
+      let authState;
+
+      try {
+        authState = await authStore.createAuthState(id, {
+          authPath: config.whatsapp.baileys.authPath,
+          authStore: config.whatsapp.baileys.authStore,
+          importBaileys,
+          loggerInstance
+        });
+      } catch (error) {
+        const failedState = {
+          ...baseWhatsappStatus(id),
+          status: 'AUTH_FAILED',
+          last_error: 'No se pudo cargar la autenticacion de Baileys',
+          updated_at: new Date(now()).toISOString(),
+          events: [statusEvent('AUTH_FAILED', 'Error de autenticacion Baileys')]
+        };
+        lastStatuses.set(id, failedState);
+        await statusStore.persistStatus(failedState).catch(() => {});
+        loggerInstance.error(config.whatsapp.baileys.authStore === 'mysql' ? 'baileys_auth_mysql_error' : 'baileys_auth_store_error', {
+          empresaId: id,
+          error: normalizeBaileysError(error)
+        });
+        throw error;
+      }
       session = {
         companyId: id,
         authState,
@@ -402,7 +428,12 @@ export function createBaileysService({
           sessions.delete(id);
         }
 
-        await authStore.removeAuthState(id, { authPath: config.whatsapp.baileys.authPath });
+        await authStore.removeAuthState(id, {
+          authPath: config.whatsapp.baileys.authPath,
+          authStore: config.whatsapp.baileys.authStore,
+          loggerInstance,
+          importBaileys
+        });
         lastStatuses.set(id, disconnectedState);
         await statusStore.persistStatus(disconnectedState).catch(() => {});
         return disconnectedState;
