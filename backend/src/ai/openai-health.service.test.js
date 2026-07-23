@@ -37,8 +37,12 @@ describe('OpenAI health service', () => {
     assert.equal(classifyOpenAIError({ status: 429 }).status, 'rate_limited');
     assert.equal(classifyOpenAIError({ name: 'TimeoutError' }).status, 'timeout');
     assert.equal(classifyOpenAIError({ status: 503 }).status, 'server_error');
+    assert.equal(classifyOpenAIError({ code: 'model_not_found' }).status, 'model_error');
+    assert.equal(classifyOpenAIError({ code: 'ENOTFOUND' }).status, 'network_error');
+    assert.equal(classifyOpenAIError({ code: 'insufficient_quota' }).status, 'rate_limited');
     assert.equal(classifyOpenAIError({ status: 429 }).retryable, true);
     assert.equal(classifyOpenAIError({ status: 401 }).retryable, false);
+    assert.equal(classifyOpenAIError({ code: 'ENOTFOUND' }).retryable, true);
   });
 
   it('stores a sanitized invalid-key result', async () => {
@@ -60,6 +64,7 @@ describe('OpenAI health service', () => {
     assert.equal(health.configured, true);
     assert.equal(health.validated, false);
     assert.equal(health.status, 'invalid_api_key');
+    assert.equal(health.lastErrorCode, 'invalid_api_key');
     assert.equal(JSON.stringify(health).includes('test-secret-value'), false);
   });
 

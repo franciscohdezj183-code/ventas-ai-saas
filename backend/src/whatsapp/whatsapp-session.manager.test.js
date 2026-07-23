@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
+import { getCompanyLocalAuthPath } from './whatsapp-client.factory.js';
 import {
   disconnectSession,
   destroySession,
@@ -88,19 +92,28 @@ async function waitForStatus(companyId, expectedStatus, timeoutMs = 1000) {
 }
 
 describe('whatsapp session manager', () => {
+  let tempSessionPath = null;
+
   beforeEach(() => {
+    tempSessionPath = path.join(os.tmpdir(), `ventas-ai-whatsapp-test-${process.pid}-${Date.now()}`);
     process.env.WHATSAPP_INITIALIZE_TIMEOUT_MS = '1000';
     process.env.WHATSAPP_INIT_POLL_INTERVAL_MS = '5';
     process.env.WHATSAPP_AUTO_RECONNECT = 'false';
     process.env.WHATSAPP_ALLOW_AUTH_DELETE = 'false';
+    process.env.WHATSAPP_SESSION_PATH = tempSessionPath;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     resetWhatsappSessionsForTests();
     delete process.env.WHATSAPP_INITIALIZE_TIMEOUT_MS;
     delete process.env.WHATSAPP_INIT_POLL_INTERVAL_MS;
     delete process.env.WHATSAPP_AUTO_RECONNECT;
     delete process.env.WHATSAPP_ALLOW_AUTH_DELETE;
+    delete process.env.WHATSAPP_SESSION_PATH;
+    if (tempSessionPath) {
+      await fs.rm(tempSessionPath, { recursive: true, force: true });
+      tempSessionPath = null;
+    }
   });
 
   it('returns idle when no session exists', async () => {
@@ -333,7 +346,7 @@ describe('whatsapp session manager', () => {
     assert.equal(status.lastError, null);
   });
 
-  it('disconnect keeps LocalAuth and leaves the session disconnected', async () => {
+  it('disconnect removes LocalAuth and leaves the session disconnected', async () => {
     let client;
     setWhatsappClientFactoryForTests(() => {
       client = new FakeWhatsappClient();
@@ -342,10 +355,16 @@ describe('whatsapp session manager', () => {
     });
 
     await startSession(1);
+    const localAuthPath = getCompanyLocalAuthPath(1);
+    await fs.mkdir(localAuthPath, { recursive: true });
+    await fs.writeFile(path.join(localAuthPath, 'session.json'), '{}');
+
     const status = await disconnectSession(1);
+    const localAuthExists = await fs.access(localAuthPath).then(() => true, () => false);
 
     assert.equal(client.destroyCalls, 1);
     assert.equal(status.status, 'disconnected');
+    assert.equal(localAuthExists, false);
   });
 
   it('disconnect cancels an initialization without waiting for its full timeout', async () => {

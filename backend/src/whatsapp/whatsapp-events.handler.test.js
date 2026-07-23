@@ -38,11 +38,36 @@ class StoreUnavailableClient extends PollingClient {
   }
 }
 
+class MinifiedGetChatsRuntimeClient extends PollingClient {
+  async getChats() {
+    this.getChatsCalls += 1;
+    const error = new Error('r');
+    error.name = 'r';
+    error.stack = [
+      'r: r',
+      '    at async Client.getChats (/home/app/node_modules/whatsapp-web.js/src/Client.js:1669:23)',
+      '    at async Timeout._onTimeout (src/whatsapp/whatsapp-events.handler.js:391:23)'
+    ].join('\n');
+    throw error;
+  }
+}
+
+const controls = [];
+
+function registerTestWhatsappClientEvents(options) {
+  const control = registerWhatsappClientEvents(options);
+  controls.push(control);
+  return control;
+}
+
 function waitForTick() {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
 afterEach(() => {
+  for (const control of controls.splice(0)) {
+    control.stop();
+  }
   delete process.env.WHATSAPP_POLLING_CONTEXT_BACKOFF_BASE_MS;
   delete process.env.WHATSAPP_POLLING_CONTEXT_BACKOFF_MAX_MS;
   delete process.env.WHATSAPP_POLLING_CONTEXT_MAX_RECOVERY_FAILURES;
@@ -55,7 +80,7 @@ test('mantiene la sesion lista y reintenta polling cuando WhatsApp navega tempor
   const client = new PollingClient();
   const disconnects = [];
   markStarted(5, client);
-  registerWhatsappClientEvents({
+  registerTestWhatsappClientEvents({
     companyId: 5,
     client,
     unreadPollIntervalMs: 15,
@@ -77,7 +102,7 @@ test('marca la sesion para reconexion despues de backoff cuando getState pierde 
   const client = new SocketLostClient();
   const disconnects = [];
   markStarted(5, client);
-  registerWhatsappClientEvents({
+  registerTestWhatsappClientEvents({
     companyId: 5,
     client,
     unreadPollIntervalMs: 15,
@@ -100,7 +125,7 @@ test('fuerza reconexion cuando getState sigue CONNECTED pero Store.getChats no e
   const client = new StoreUnavailableClient();
   const disconnects = [];
   markStarted(5, client);
-  registerWhatsappClientEvents({
+  registerTestWhatsappClientEvents({
     companyId: 5,
     client,
     unreadPollIntervalMs: 15,
@@ -116,10 +141,33 @@ test('fuerza reconexion cuando getState sigue CONNECTED pero Store.getChats no e
   assert.match(getSession(5).lastError, /getChats|contexto|polling/i);
 });
 
+test('fuerza reconexion cuando getChats falla con error minificado de WhatsApp Web', async () => {
+  process.env.WHATSAPP_POLLING_CONTEXT_BACKOFF_BASE_MS = '10';
+  process.env.WHATSAPP_POLLING_CONTEXT_BACKOFF_MAX_MS = '10';
+  process.env.WHATSAPP_POLLING_CONTEXT_MAX_RECOVERY_FAILURES = '3';
+  const client = new MinifiedGetChatsRuntimeClient();
+  const disconnects = [];
+  markStarted(5, client);
+  registerTestWhatsappClientEvents({
+    companyId: 5,
+    client,
+    unreadPollIntervalMs: 15,
+    onDisconnected: (event) => disconnects.push(event)
+  });
+
+  client.emit('ready');
+  await new Promise((resolve) => setTimeout(resolve, 300));
+
+  assert.equal(client.getChatsCalls >= 3, true);
+  assert.equal(disconnects.length, 1);
+  assert.equal(getSession(5).status, 'disconnected');
+  assert.match(getSession(5).lastError, /contexto|polling|r/i);
+});
+
 test('no inicia polling mientras la sesion solo esta esperando QR', async () => {
   const client = new PollingClient();
   markStarted(5, client);
-  registerWhatsappClientEvents({
+  registerTestWhatsappClientEvents({
     companyId: 5,
     client,
     unreadPollIntervalMs: 15

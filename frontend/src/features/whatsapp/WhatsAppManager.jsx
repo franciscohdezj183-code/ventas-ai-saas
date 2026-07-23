@@ -29,6 +29,7 @@ import {
   getWhatsappSocketToken,
   restartWhatsappSession,
   resolveSocketPath,
+  resolveSocketTransports,
   resolveSocketUrl,
   startWhatsappSession
 } from './whatsappApi.js';
@@ -597,7 +598,9 @@ export function WhatsAppManager() {
     const socket = io(socketUrl, {
       path: socketPath,
       auth: { token },
-      transports: ['websocket', 'polling']
+      transports: resolveSocketTransports(),
+      forceNew: true,
+      upgrade: false
     });
 
     socketRef.current = socket;

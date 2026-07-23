@@ -19,6 +19,7 @@ import { isPlanLimitAvailable } from '../plans/plan-limits.service.js';
 import { registerAIUsage } from '../ai-usage/ai-usage.service.js';
 import { normalizeMexicanPhoneNumber } from '../../whatsapp/whatsapp-number.helper.js';
 import { logger } from '../../utils/logger.js';
+import { classifyAppError } from '../../utils/error-classifier.js';
 import { requestHandoff } from '../../bot/humanHandoffManager.js';
 import {
   classifyOpenAIError,
@@ -347,12 +348,12 @@ export async function generateCompanyReply({
 
     return legacyResult;
   } catch (error) {
-    const classified = classifyOpenAIError(error);
+    const classified = classifyAppError(error);
     await createAuditLog({
       empresaId,
       accion: 'ERROR',
       modulo: 'ai',
-      descripcion: `Error IA generando respuesta: ${classified.status}`
+      descripcion: `Error generando respuesta automatica (${classified.category}): ${classified.status}`
     });
     throw error;
   }
@@ -403,12 +404,12 @@ export async function interpretCustomerIntent({ empresaId, userId = null, messag
 
     return diagnostics;
   } catch (error) {
-    const classified = classifyOpenAIError(error);
+    const classified = classifyAppError(error);
     await createAuditLog({
       empresaId,
       accion: 'ERROR',
       modulo: 'ai',
-      descripcion: `Error IA interpretando intencion: ${classified.status}`
+      descripcion: `Error interpretando intencion (${classified.category}): ${classified.status}`
     });
     throw error;
   }
@@ -480,18 +481,25 @@ export async function processIncomingCustomerMessage({
       incomingMedia
     });
   } catch (error) {
+    const appError = classifyAppError(error);
     const openaiError = classifyOpenAIError(error);
     logger.error('whatsapp_ai_fallback', {
       empresaId,
       telefonoCliente: cleanPhone,
       whatsappChatId,
-      openaiStatus: openaiError.status,
-      httpStatus: openaiError.httpStatus,
-      retryable: openaiError.retryable,
+      errorCategory: appError.category,
+      botErrorStatus: appError.status,
+      openaiStatus: appError.category === 'openai' ? openaiError.status : null,
+      httpStatus: appError.category === 'openai' ? openaiError.httpStatus : null,
+      openaiErrorCode: appError.category === 'openai' ? openaiError.errorCode : null,
+      openaiErrorType: appError.category === 'openai' ? openaiError.errorType : null,
+      openaiErrorName: appError.category === 'openai' ? openaiError.errorName : null,
+      openaiModel: appError.category === 'openai' ? env.openai.model : null,
+      retryable: appError.retryable,
+      mysqlError: appError.mysql ?? null,
       error: {
         name: error?.name,
-        message: openaiError.message,
-        code: error?.code,
+        message: appError.safeMessage,
         status: error?.status
       }
     });
@@ -506,17 +514,17 @@ export async function processIncomingCustomerMessage({
       incomingMedia
     });
 
-    logger.info('[WA][MESSAGE_SAVED] messageId', {
+    logger.info('[WA][CONVERSATION_SAVED] fallback', {
       empresaId,
-      messageId: conversationId,
+      conversationId,
       telefonoCliente: cleanPhone,
       reason: 'ai_or_bot_error_fallback'
     });
 
     return {
-      respuesta: null,
-      intencion: 'AI_ERROR_FALLBACK',
-      error_tipo: 'AI_ERROR_FALLBACK',
+      respuesta: appError.category === 'mysql' ? appError.safeMessage : null,
+      intencion: appError.category === 'mysql' ? 'MYSQL_ERROR_FALLBACK' : 'AI_ERROR_FALLBACK',
+      error_tipo: appError.status,
       herramienta_mcp: null,
       lead_id: null,
       conversacion_id: conversationId

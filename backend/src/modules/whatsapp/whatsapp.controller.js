@@ -72,7 +72,7 @@ export async function disconnectSession(req, res, next) {
     await auditFromRequest(req, {
       accion: 'DESCONECTAR_SESION',
       modulo: 'whatsapp',
-      descripcion: `Desconexion de sesion WhatsApp para empresa #${empresaId} conservando credenciales`,
+      descripcion: `Desconexion de sesion WhatsApp para empresa #${empresaId} eliminando credenciales locales`,
       empresaId
     });
     res.json({ data: status });

@@ -16,17 +16,37 @@ export function resolveSocketUrl() {
 }
 
 export function resolveSocketPath() {
-  const configuredSocketPath = import.meta.env.VITE_SOCKET_PATH;
+  const configuredSocketPath = import.meta.env.VITE_SOCKET_IO_PATH ?? import.meta.env.VITE_SOCKET_PATH;
 
   if (configuredSocketPath) {
     return configuredSocketPath.startsWith('/') ? configuredSocketPath : `/${configuredSocketPath}`;
   }
 
-  return '/socket.io';
+  const configuredApiUrl = import.meta.env.VITE_API_URL;
+
+  if (configuredApiUrl) {
+    const pathname = new URL(configuredApiUrl).pathname.replace(/\/$/, '');
+    return `${pathname}/socket.io`;
+  }
+
+  return '/api/socket.io';
 }
 
 export function getWhatsappSocketToken() {
   return getStoredToken();
+}
+
+export function resolveSocketTransports() {
+  const configuredTransports = import.meta.env.VITE_SOCKET_TRANSPORTS;
+
+  if (!configuredTransports) {
+    return ['polling'];
+  }
+
+  return configuredTransports
+    .split(',')
+    .map((transport) => transport.trim())
+    .filter(Boolean);
 }
 
 export async function startWhatsappSession(empresaId) {

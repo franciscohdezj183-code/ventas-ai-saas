@@ -306,6 +306,32 @@ async function removeCompanyLocalAuthQuietly(companyId) {
   }
 }
 
+async function removeCompanyLocalAuthOnManualDisconnect(companyId) {
+  const sessionPath = getCompanyLocalAuthPath(companyId);
+
+  try {
+    await fs.rm(sessionPath, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 300
+    });
+    logger.info('whatsapp_auth_deleted_after_manual_disconnect', {
+      empresaId: companyId,
+      sessionPath
+    });
+    return true;
+  } catch (error) {
+    logger.error('whatsapp_manual_disconnect_auth_remove_error', {
+      empresaId: companyId,
+      sessionPath,
+      lockedLocalAuth: isLockedLocalAuthError(error),
+      error
+    });
+    return false;
+  }
+}
+
 async function archiveCompanyLocalAuthQuietly(companyId) {
   const sessionPath = getCompanyLocalAuthPath(companyId);
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -445,7 +471,7 @@ function scheduleReconnect(companyId, client, reason) {
   }
 
   const attempt = (reconnectAttempts.get(id) ?? 0) + 1;
-  const maxAttempts = Math.max(0, numberEnv('WHATSAPP_RECONNECT_MAX_ATTEMPTS', 5));
+  const maxAttempts = Math.max(0, numberEnv('WHATSAPP_RECONNECT_MAX_ATTEMPTS', 0));
 
   if (maxAttempts > 0 && attempt > maxAttempts) {
     reconnectAttempts.delete(id);
@@ -822,10 +848,10 @@ export async function restartSession(companyId) {
 export async function disconnectSession(companyId) {
   const id = normalizeCompanyId(companyId);
   invalidatePendingOperations(id);
-  return disconnectSessionNow(id, { backgroundDestroy: true });
+  return disconnectSessionNow(id, { cleanupLocalAuth: true });
 }
 
-async function disconnectSessionNow(companyId, { backgroundDestroy = false } = {}) {
+async function disconnectSessionNow(companyId, { backgroundDestroy = false, cleanupLocalAuth = false } = {}) {
   const id = normalizeCompanyId(companyId);
   const existing = getSession(id);
 
@@ -856,6 +882,11 @@ async function disconnectSessionNow(companyId, { backgroundDestroy = false } = {
     } else {
       await trackClientDestroy(id, existing.client);
     }
+  }
+
+  if (cleanupLocalAuth) {
+    await waitForPendingClientDestroy(id);
+    await removeCompanyLocalAuthOnManualDisconnect(id);
   }
 
   return getPublicSession(id);

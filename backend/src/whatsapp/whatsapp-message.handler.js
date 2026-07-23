@@ -1,6 +1,7 @@
 import whatsappWeb from 'whatsapp-web.js';
 import { logger } from '../utils/logger.js';
 import { processIncomingCustomerMessage } from '../modules/ai/ai.service.js';
+import { isTargetClosedError } from './whatsapp-startup.coordinator.js';
 import {
   handleOwnerResponse,
   isBotPausedForCustomer,
@@ -374,9 +375,9 @@ export async function handleIncomingWhatsappMessage({ companyId, client, message
         telefonoCliente: customerPhone,
         id: result.conversacion_id ?? null
       });
-      logger.info('[WA][MESSAGE_SAVED] messageId', {
+      logger.info('[WA][CONVERSATION_SAVED]', {
         empresaId,
-        messageId: result.conversacion_id ?? null,
+        conversationId: result.conversacion_id ?? null,
         telefonoCliente: customerPhone
       });
 
@@ -401,7 +402,20 @@ export async function handleIncomingWhatsappMessage({ companyId, client, message
         });
 
         const sentAt = new Date().toISOString();
-        const sendResult = await sendBotResultToChat({ chat, result });
+        let sendResult;
+        try {
+          sendResult = await sendBotResultToChat({ chat, result });
+        } catch (error) {
+          logger[isTargetClosedError(error) ? 'warn' : 'error']('whatsapp_bot_response_send_failed', {
+            empresaId,
+            telefonoCliente: customerPhone,
+            whatsappId,
+            conversacionId: result.conversacion_id ?? null,
+            contextLost: isTargetClosedError(error),
+            error
+          });
+          throw error;
+        }
 
         logger.info('[WA][BOT_REPLY_SENT]', {
           empresaId,

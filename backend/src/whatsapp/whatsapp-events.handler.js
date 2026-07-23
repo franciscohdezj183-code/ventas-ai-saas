@@ -32,10 +32,21 @@ function pollingContextMaxRecoveryFailures() {
 }
 
 function isPollingStoreUnavailableError(error) {
+  const name = String(error?.name ?? '').toLowerCase();
   const message = String(error?.message ?? error ?? '').toLowerCase();
+  const stack = String(error?.stack ?? '').toLowerCase();
+  const hasGetChatsStack =
+    stack.includes('client.getchats')
+    || stack.includes('/whatsapp-web.js/src/client.js')
+    || stack.includes('\\whatsapp-web.js\\src\\client.js');
+  const isMinifiedGetChatsRuntimeError =
+    hasGetChatsStack
+    && (name === 'r' || message === 'r' || message === '');
+
   return message.includes("reading 'getchats'")
     || message.includes('getchats is unavailable')
-    || (message.includes('store') && message.includes('getchats'));
+    || (message.includes('store') && message.includes('getchats'))
+    || isMinifiedGetChatsRuntimeError;
 }
 
 function buildPollingContextLostError(error) {
@@ -438,6 +449,7 @@ export function registerWhatsappClientEvents({
         consecutiveUnreadPollFailures += 1;
         const clientContextLost =
           isTargetClosedError(error)
+          || isPollingStoreUnavailableError(error)
           || ['WHATSAPP_PAGE_CLOSED', 'WHATSAPP_NOT_CONNECTED', 'WHATSAPP_GETCHATS_UNAVAILABLE', 'WHATSAPP_CONTEXT_LOST']
             .includes(error?.code);
 
@@ -450,7 +462,15 @@ export function registerWhatsappClientEvents({
         if (clientContextLost) {
           await probeClientStateAfterPollingError(error);
         } else if (consecutiveUnreadPollFailures >= 3) {
-          markPollingConnectionLost(error);
+          logger.warn('whatsapp_unread_poll_disabled_after_failures', {
+            empresaId,
+            consecutiveFailures: consecutiveUnreadPollFailures,
+            errorName: error?.name ?? null,
+            errorMessage: error?.message ?? String(error ?? 'unknown'),
+            errorStack: error?.stack ?? null
+          });
+
+          stopUnreadMessagePoll();
         }
       } finally {
         unreadPollRunning = false;
@@ -586,16 +606,20 @@ export function registerWhatsappClientEvents({
     try {
       await handleWhatsappMessageEvent(message, 'message');
     } catch (error) {
+      const contextLost = isTargetClosedError(error);
       upsertSession(empresaId, {
         lastError: error instanceof Error ? error.message : String(error ?? 'Error procesando mensaje')
       });
       emitWhatsappError(empresaId, error);
-      logger.error('whatsapp_message_processing_error', {
+      logger[contextLost ? 'warn' : 'error'](contextLost ? 'whatsapp_message_processing_context_lost' : 'whatsapp_message_processing_error', {
         empresaId,
         source: 'message',
-        error
+        error: contextLost ? {
+          name: error?.name ?? null,
+          message: error?.message ?? String(error ?? 'unknown')
+        } : error
       });
-      if (isTargetClosedError(error)) {
+      if (contextLost) {
         consecutiveUnreadPollFailures += 1;
         markPollingConnectionLost(error);
       }
@@ -606,16 +630,20 @@ export function registerWhatsappClientEvents({
     try {
       await handleWhatsappMessageEvent(message, 'message_create');
     } catch (error) {
+      const contextLost = isTargetClosedError(error);
       upsertSession(empresaId, {
         lastError: error instanceof Error ? error.message : String(error ?? 'Error procesando mensaje')
       });
       emitWhatsappError(empresaId, error);
-      logger.error('whatsapp_message_processing_error', {
+      logger[contextLost ? 'warn' : 'error'](contextLost ? 'whatsapp_message_processing_context_lost' : 'whatsapp_message_processing_error', {
         empresaId,
         source: 'message_create',
-        error
+        error: contextLost ? {
+          name: error?.name ?? null,
+          message: error?.message ?? String(error ?? 'unknown')
+        } : error
       });
-      if (isTargetClosedError(error)) {
+      if (contextLost) {
         consecutiveUnreadPollFailures += 1;
         markPollingConnectionLost(error);
       }

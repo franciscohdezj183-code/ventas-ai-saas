@@ -17,9 +17,11 @@ import { logger } from './utils/logger.js';
 
 const server = http.createServer(app);
 const io = new Server(server, {
+  path: '/api/socket.io',
   cors: {
     origin(origin, callback) {
-      if (!origin && env.nodeEnv !== 'production') {
+      // Las conexiones del mismo dominio pueden llegar sin Origin.
+      if (!origin) {
         callback(null, true);
         return;
       }
@@ -29,7 +31,7 @@ const io = new Server(server, {
         return;
       }
 
-      callback(new Error('CORS origin not allowed'));
+      callback(new Error(`CORS origin not allowed: ${origin}`));
     },
     credentials: true,
     methods: ['GET', 'POST']
